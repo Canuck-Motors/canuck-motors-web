@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 
 export async function FeaturedProducts() {
@@ -21,46 +22,64 @@ export async function FeaturedProducts() {
   }
 
   return (
-    <section className="bg-gray-50 py-14">
+    <section className="bg-secondary py-16 md:py-20">
       <div className="mx-auto max-w-7xl px-6">
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-widest text-brand">
+              Popular
+            </p>
+            <h2 className="mt-2 text-3xl font-bold text-ink md:text-4xl">
+              Featured Products
+            </h2>
+          </div>
+          <Link
+            href="/products"
+            className="hidden text-sm font-medium text-ink/70 transition hover:text-brand sm:block"
+          >
+            View all →
+          </Link>
+        </div>
 
-        <h2 className="text-3xl font-bold">
-          Featured Products
-        </h2>
-
-        <div className="mt-8 grid gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-
+        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           {products?.map((product) => (
-            <div
+            <Link
               key={product.id}
-              className="rounded-xl border bg-white p-5 shadow-sm"
+              href={`/products/${product.id}`}
+              className="group flex flex-col overflow-hidden rounded-2xl border border-border bg-white transition duration-300 hover:-translate-y-1 hover:shadow-xl"
             >
-              <div className="mb-4 flex h-40 items-center justify-center rounded-lg bg-gray-100">
-                <span className="text-gray-400">
+              {/* Image area */}
+              <div className="relative flex h-48 items-center justify-center overflow-hidden bg-gradient-to-br from-secondary to-white">
+                <span className="text-sm text-muted-foreground transition duration-500 group-hover:scale-110">
                   Product Image
+                </span>
+                <span className="absolute left-3 top-3 rounded-full bg-brand-tint px-3 py-1 text-xs font-semibold text-brand">
+                  In stock
                 </span>
               </div>
 
-              <p className="text-sm text-gray-500">
-                SKU: {product.sku}
-              </p>
+              {/* Info */}
+              <div className="flex flex-1 flex-col p-5">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  SKU: {product.sku}
+                </p>
 
-              <h3 className="mt-2 text-lg font-semibold">
-                {product.product_name}
-              </h3>
+                <h3 className="mt-2 line-clamp-2 text-base font-semibold leading-snug text-ink">
+                  {product.product_name}
+                </h3>
 
-              <p className="mt-3 text-xl font-bold">
-                ${product.price}
-              </p>
-
-              <button className="mt-5 w-full rounded-md bg-black px-4 py-2 text-white">
-                View Product
-              </button>
-            </div>
+                <div className="mt-auto flex items-center justify-between pt-5">
+                  <p className="text-xl font-bold text-ink">
+                    ${Number(product.price).toFixed(2)}
+                  </p>
+                  <span className="rounded-full bg-ink px-4 py-2 text-sm font-medium text-white transition group-hover:bg-brand">
+                    View
+                  </span>
+                </div>
+              </div>
+            </Link>
           ))}
-
         </div>
-
       </div>
     </section>
   );

@@ -5,30 +5,38 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --foreground: 0 0% 4.5%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 0 0% 4.5%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
+    --popover-foreground: 0 0% 4.5%;
+
+    /* Canuck Motors brand */
+    --primary: 5 74% 56%;              /* #E24A3B red */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 97%;
+    --secondary-foreground: 0 0% 4.5%;
+    --muted: 240 5% 97%;
+    --muted-foreground: 217 7% 38%;
+    --accent: 6 73% 95%;               /* red tint */
+    --accent-foreground: 6 63% 47%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
+    --border: 240 6% 91%;
+    --input: 240 6% 91%;
+    --ring: 5 74% 56%;
+
+    --brand: 5 74% 56%;
+    --brand-dark: 6 63% 47%;           /* #C23A2C hover */
+    --brand-tint: 6 73% 95%;           /* #FCEDEB soft bg */
+    --ink: 0 0% 4.5%;                  /* #0B0B0C */
+
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+    --radius: 1rem;
   }
   .dark {
     --background: 0 0% 3.9%;
@@ -64,5 +72,6 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-family: var(--font-sans), system-ui, sans-serif;
   }
 }
