@@ -1,26 +1,25 @@
-import { createClient } from "@/lib/supabase/server";
+import { Suspense } from "react";
 
-export default async function Home() {
-  const supabase = await createClient();
+import Header from "@/components/Header";
+import Navbar from "@/components/Navbar";
+import { Hero } from "@/components/hero";
+import { CategorySection } from "@/components/CategorySection";
+import { FeaturedProducts } from "@/components/FeaturedProducts";
 
-  const { data, error } = await supabase.auth.getUser();
-
+export default function Home() {
   return (
-    <main>
-      <h1>Canuck Motors</h1>
+    <>
+      <Header />
+      <Navbar />
+      <Hero />
 
-      <p>Supabase connection loaded.</p>
+      <Suspense fallback={<p>Loading categories...</p>}>
+        <CategorySection />
+      </Suspense>
 
-      <pre>
-        {JSON.stringify(
-          {
-            user: data.user,
-            error: error?.message,
-          },
-          null,
-          2
-        )}
-      </pre>
-    </main>
+      <Suspense fallback={<p>Loading products...</p>}>
+        <FeaturedProducts />
+      </Suspense>
+    </>
   );
 }
