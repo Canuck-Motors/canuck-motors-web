@@ -40,40 +40,58 @@ export default function LoginPage() {
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
-      {/* Brand side */}
-      <section className="relative hidden flex-col justify-end bg-ink p-12 lg:flex">
-        <div className="absolute inset-0 bg-gradient-to-br from-brand/30 via-transparent to-transparent" />
-        <div className="relative max-w-md">
+      {/* Left: video panel */}
+      <section className="relative hidden overflow-hidden bg-ink lg:block">
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          className="absolute inset-0 h-full w-full object-cover"
+        >
+          <source src="/hero/login.mp4" type="video/mp4" />
+        </video>
+
+        <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-ink/20" />
+
+        <div className="absolute inset-x-0 bottom-0 p-12">
           <p className="text-sm font-semibold uppercase tracking-widest text-brand">
             Canuck Motors
           </p>
-          <h2 className="mt-3 text-4xl font-bold leading-tight text-white">
+          <h2 className="mt-3 max-w-md text-4xl font-bold leading-tight text-white">
             Engineered for reliability.
           </h2>
-          <p className="mt-3 text-white/70">
+          <p className="mt-3 max-w-md text-white/70">
             Sign in to track orders and find the right parts faster.
           </p>
         </div>
       </section>
 
-      {/* Form side */}
+      {/* Right: form */}
       <section className="flex items-center justify-center bg-white px-6 py-12">
-        <div className="w-full max-w-md">
-          <Link href="/" aria-label="Canuck Motors home" className="flex justify-center">
+        <div className="mx-auto w-full max-w-md">
+          <Link
+            href="/"
+            aria-label="Canuck Motors home"
+            className="flex justify-center"
+          >
             <Image
               src="/logo/canuck-motors-icon.png"
               alt="Canuck Motors"
-              width={400}
+              width={160}
               height={110}
               priority
-              className="h-12 w-auto"
+              className="h-20 w-auto"
             />
           </Link>
 
-          <h1 className="mt-8 text-center text-3xl font-bold text-ink">Welcome back</h1>
-<p className="mt-2 text-center text-sm text-muted-foreground">
-  Log in to your account.
-</p>
+          <h1 className="mt-8 text-center text-3xl font-bold text-ink">
+            Welcome back
+          </h1>
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            Log in to your account.
+          </p>
+
           <form onSubmit={handleLogin} className="mt-8 space-y-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-ink">

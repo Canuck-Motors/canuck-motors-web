@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
+import { ThemeProvider } from "next-themes";
+import ChatLauncher from "@/components/chat/ChatLauncher";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -37,7 +39,17 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${outfit.variable} ${outfit.className} antialiased`}>
-        {children}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="light"
+          forcedTheme="light"
+          enableSystem={false}
+          disableTransitionOnChange
+        >
+          {children}
+
+          <ChatLauncher />
+        </ThemeProvider>
       </body>
     </html>
   );

@@ -49,6 +49,8 @@ export async function updateSession(request: NextRequest) {
 
   const publicPaths = [
   "/login",
+  "/api/chat",
+  "/api/mcp",
   "/register",
   "/auth",
   "/products",
