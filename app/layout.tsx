@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
-import { ThemeProvider } from "next-themes";
 import "./globals.css";
 
 const defaultUrl = process.env.VERCEL_URL
@@ -9,9 +8,19 @@ const defaultUrl = process.env.VERCEL_URL
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Canuck Motors | North America's Automotive Parts Experts",
+
+  title: {
+    default: "Canuck Motors | North America's Automotive Parts Experts",
+    template: "%s | Canuck Motors",
+  },
+
   description:
-    "Find compatible auto parts by year, manufacturer, model, and engine.",
+    "Find compatible automotive parts by year, manufacturer, model, engine, and trim at Canuck Motors.",
+
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 const outfit = Outfit({
@@ -26,17 +35,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en">
       <body className={`${outfit.variable} ${outfit.className} antialiased`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          forcedTheme="light"
-          enableSystem={false}
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
+        {children}
       </body>
     </html>
   );

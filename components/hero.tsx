@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/router";
+import { useRouter } from "next/navigation";
 
 const field =
   "w-full rounded-xl border border-input bg-white px-4 py-3 text-sm text-ink outline-none transition duration-200 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground";
@@ -15,21 +15,25 @@ type YearOption = {
 type ManufacturerOption = {
   id: number;
   manufacturer_name: string;
+  slug: string;
 };
 
 type ModelOption = {
   id: number;
   model_name: string;
+  slug: string;
 };
 
 type EngineOption = {
   id: number;
   engine_name: string;
+  slug: string;
 };
 
 type TrimOption = {
   id: number;
   trim_name: string;
+  slug: string;
 };
 
 function slugify(value: string) {
@@ -134,7 +138,8 @@ export function Hero() {
         manufacturer_id,
         manufacturer (
           id,
-          manufacturer_name
+          manufacturer_name,
+          slug
         )
       `)
       .eq("year_id", Number(yearId));
@@ -189,7 +194,8 @@ export function Hero() {
         model_id,
         models (
           id,
-          model_name
+          model_name,
+          slug
         )
       `)
       .eq("year_id", Number(year))
@@ -243,7 +249,8 @@ export function Hero() {
         engine_size_id,
         engine_sizes (
           id,
-          engine_name
+          engine_name,
+          slug
         )
       `)
       .eq("year_id", Number(year))
@@ -295,7 +302,8 @@ export function Hero() {
         trim_id,
         trim (
           id,
-          trim_name
+          trim_name,
+          slug
         )
       `)
       .eq("year_id", Number(year))
@@ -331,60 +339,59 @@ export function Hero() {
   // ---------------------------------------------
 
   const handleSearch = () => {
-    // OE search
-    if (oeNumber.trim()) {
-      router.push(
-        `/products/search/${encodeURIComponent(oeNumber.trim())}`
-      );
-      return;
-    }
-
-    if (!year || !make || !model || !engine) {
-      alert("Please select Year, Make, Model and Engine.");
-      return;
-    }
-
-    const selectedYear = years.find(
-      (item) => item.id === Number(year)
+  if (oeNumber.trim()) {
+    router.push(
+      `/products/search/${encodeURIComponent(oeNumber.trim())}`
     );
+    return;
+  }
 
-    const selectedMake = manufacturers.find(
-      (item) => item.id === Number(make)
-    );
+  if (!year || !make || !model || !engine) {
+    alert("Please select Year, Make, Model and Engine.");
+    return;
+  }
 
-    const selectedModel = models.find(
-      (item) => item.id === Number(model)
-    );
+  const selectedYear = years.find(
+    (item) => item.id === Number(year)
+  );
 
-    const selectedEngine = engines.find(
-      (item) => item.id === Number(engine)
-    );
+  const selectedMake = manufacturers.find(
+    (item) => item.id === Number(make)
+  );
 
-    const selectedTrim = trims.find(
-      (item) => item.id === Number(trim)
-    );
+  const selectedModel = models.find(
+    (item) => item.id === Number(model)
+  );
 
-    if (
-      !selectedYear ||
-      !selectedMake ||
-      !selectedModel ||
-      !selectedEngine
-    ) {
-      return;
-    }
+  const selectedEngine = engines.find(
+    (item) => item.id === Number(engine)
+  );
 
-    let url =
-      `/products/` +
-      `${selectedYear.year}/` +
-      `${slugify(selectedMake.manufacturer_name)}/` +
-      `${slugify(selectedModel.model_name)}/` +
-      `${slugify(selectedEngine.engine_name)}`;
+  const selectedTrim = trims.find(
+    (item) => item.id === Number(trim)
+  );
 
-    if (selectedTrim) {
-      url += `/${slugify(selectedTrim.trim_name)}`;
-    }
+  if (
+    !selectedYear ||
+    !selectedMake ||
+    !selectedModel ||
+    !selectedEngine
+  ) {
+    return;
+  }
 
-    router.push(url);
+  let url =
+    `/products/` +
+    `${selectedYear.year}/` +
+    `${selectedMake.slug}/` +
+    `${selectedModel.slug}/` +
+    `${selectedEngine.slug}`;
+
+  if (selectedTrim) {
+    url += `/${selectedTrim.slug}`;
+  }
+
+  router.push(url);
   };
 
   // ---------------------------------------------
