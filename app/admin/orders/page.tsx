@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { updateOrderStatus } from "@/app/admin/actions";
 import { AdminNav } from "@/components/AdminNav";
 
-export const metadata: Metadata = {
+export const instant = false;\n\nexport const metadata: Metadata = {
   title: "Orders Admin",
   robots: { index: false, follow: false },
 };
