@@ -271,7 +271,7 @@ export default async function ProductDetailPage({
         <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr]">
           <section
             aria-label={`${product.product_name} image`}
-            className="flex min-h-[420px] items-center justify-center rounded-3xl border bg-white p-8"
+            className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-[30px] border border-black/5 bg-white p-8 shadow-[0_18px_55px_rgba(0,0,0,0.07)] before:absolute before:-right-24 before:-top-24 before:h-72 before:w-72 before:rounded-full before:bg-brand/10 before:blur-3xl"
           >
             <div className="text-center">
               <p className="text-base font-semibold text-ink">Product Image</p>
@@ -286,7 +286,7 @@ export default async function ProductDetailPage({
               {categoryName || "Automotive Part"}
             </p>
 
-            <h1 className="mt-3 text-3xl font-bold leading-tight text-ink md:text-5xl">
+            <h1 className="mt-3 text-4xl font-black leading-[1.02] tracking-[-0.04em] text-ink md:text-6xl">
               {product.product_name}
             </h1>
 
@@ -304,7 +304,7 @@ export default async function ProductDetailPage({
 
             <div className="mt-8">
               {product.price !== null ? (
-                <p className="text-3xl font-bold text-ink">
+                <p className="text-4xl font-black tracking-[-0.03em] text-ink">
                   ${Number(product.price).toFixed(2)}
                 </p>
               ) : (
@@ -366,30 +366,30 @@ export default async function ProductDetailPage({
           </article>
 
           <aside className="rounded-[28px] border border-black/5 bg-ink p-7 text-white shadow-[0_16px_46px_rgba(0,0,0,0.10)]">
-            <h2 className="text-lg font-bold text-ink">Product information</h2>
+            <h2 className="text-lg font-bold text-white">Product information</h2>
             <dl className="mt-5 space-y-4 text-sm">
               {product.sku && (
                 <div>
-                  <dt className="text-muted-foreground">Part number</dt>
-                  <dd className="mt-1 font-medium text-ink">{product.sku}</dd>
+                  <dt className="text-white/45">Part number</dt>
+                  <dd className="mt-1 font-semibold text-white">{product.sku}</dd>
                 </div>
               )}
               {categoryName && (
                 <div>
-                  <dt className="text-muted-foreground">Category</dt>
-                  <dd className="mt-1 font-medium text-ink">{categoryName}</dd>
+                  <dt className="text-white/45">Category</dt>
+                  <dd className="mt-1 font-semibold text-white">{categoryName}</dd>
                 </div>
               )}
               {product.position && (
                 <div>
-                  <dt className="text-muted-foreground">Position</dt>
-                  <dd className="mt-1 font-medium text-ink">{product.position}</dd>
+                  <dt className="text-white/45">Position</dt>
+                  <dd className="mt-1 font-semibold text-white">{product.position}</dd>
                 </div>
               )}
               {product.product_super_type && (
                 <div>
-                  <dt className="text-muted-foreground">Product type</dt>
-                  <dd className="mt-1 font-medium capitalize text-ink">
+                  <dt className="text-white/45">Product type</dt>
+                  <dd className="mt-1 font-semibold capitalize text-white">
                     {product.product_super_type}
                   </dd>
                 </div>
