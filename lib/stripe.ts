@@ -232,3 +232,69 @@ export function retrieveStripeDispute(id: string) {
     metadata?: Record<string, string>;
   }>(`/disputes/${encodeURIComponent(id)}`);
 }
+
+
+export async function createStripeAmountCheckoutSession(input: {
+  orderId: string;
+  orderNumber: string;
+  customerEmail: string | null;
+  successUrl: string;
+  cancelUrl: string;
+  label: string;
+  amountCents: number;
+  metadata?: Record<string, string>;
+}) {
+  const body = new URLSearchParams();
+
+  body.set("mode", "payment");
+  body.set("payment_method_types[0]", "card");
+  body.set("success_url", input.successUrl);
+  body.set("cancel_url", input.cancelUrl);
+  body.set("client_reference_id", input.orderId);
+  body.set("metadata[order_id]", input.orderId);
+  body.set("metadata[order_number]", input.orderNumber);
+  body.set("metadata[checkout_type]", "exchange_difference");
+
+  for (const [key, value] of Object.entries(input.metadata ?? {})) {
+    body.set(`metadata[${key}]`, value);
+  }
+
+  if (input.customerEmail) {
+    body.set("customer_email", input.customerEmail);
+  }
+
+  body.set("line_items[0][quantity]", "1");
+  body.set("line_items[0][price_data][currency]", "cad");
+  body.set(
+    "line_items[0][price_data][unit_amount]",
+    String(input.amountCents)
+  );
+  body.set(
+    "line_items[0][price_data][product_data][name]",
+    input.label
+  );
+
+  const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getStripeSecretKey()}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+    cache: "no-store",
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      payload?.error?.message || "Stripe Checkout session creation failed."
+    );
+  }
+
+  return payload as {
+    id: string;
+    url: string | null;
+    payment_intent?: string | null;
+  };
+}
