@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { CheckCircle2, CircleAlert, CreditCard } from "lucide-react";
+import Link from "next/link";
+import { CheckCircle2, CircleAlert, CreditCard, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AdminNav } from "@/components/AdminNav";
 
@@ -17,8 +18,8 @@ export default async function StripeAdminPage() {
   const supabase = await createClient();
   const { data: role } = await supabase.rpc("current_user_staff_role");
 
-  if (!role) {
-    redirect("/");
+  if (role !== "admin") {
+    redirect("/admin");
   }
 
   const secretKey = process.env.STRIPE_SECRET_KEY || "";
