@@ -98,6 +98,8 @@ async function searchProducts(searchTerm: string): Promise<SearchProduct[]> {
   return products ?? [];
 }
 
+export const instant = false;
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
