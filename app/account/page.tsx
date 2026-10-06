@@ -5,6 +5,8 @@ import { Gauge, Package, ShoppingCart, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { updateCommunicationPreferences } from "@/app/account/actions";
 
+export const instant = false;
+
 export const metadata: Metadata = {
   title: "My Account",
   robots: { index: false, follow: false },
