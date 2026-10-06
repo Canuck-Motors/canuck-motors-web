@@ -136,11 +136,21 @@ export async function createStripeRefund(input: {
   paymentIntentId: string;
   amountCents: number;
   idempotencyKey: string;
+  refundId?: string;
+  orderId?: string;
 }) {
   const body = new URLSearchParams();
   body.set("payment_intent", input.paymentIntentId);
   body.set("amount", String(input.amountCents));
   body.set("reason", "requested_by_customer");
+
+  if (input.refundId) {
+    body.set("metadata[refund_id]", input.refundId);
+  }
+
+  if (input.orderId) {
+    body.set("metadata[order_id]", input.orderId);
+  }
 
   const response = await fetch(`${STRIPE_API_BASE}/refunds`, {
     method: "POST",
