@@ -10,6 +10,44 @@ type Brand = {
   slug: string | null;
 };
 
+const simpleIconSlugs: Record<string, string> = {
+  Acura: "acura",
+  Audi: "audi",
+  BMW: "bmw",
+  Buick: "buick",
+  Cadillac: "cadillac",
+  Chevrolet: "chevrolet",
+  Chrysler: "chrysler",
+  Dodge: "dodge",
+  Fiat: "fiat",
+  Ford: "ford",
+  Genesis: "genesis",
+  GMC: "gmc",
+  Honda: "honda",
+  Hyundai: "hyundai",
+  INFINITI: "infiniti",
+  Isuzu: "isuzu",
+  Jaguar: "jaguar",
+  Jeep: "jeep",
+  Kia: "kia",
+  "Land Rover": "landrover",
+  Lexus: "lexus",
+  Mazda: "mazda",
+  "Mercedes-Benz": "mercedes",
+  Mini: "mini",
+  Mitsubishi: "mitsubishi",
+  Nissan: "nissan",
+  Porsche: "porsche",
+  Ram: "ram",
+  Saab: "saab",
+  Smart: "smart",
+  Subaru: "subaru",
+  Suzuki: "suzuki",
+  Toyota: "toyota",
+  Volkswagen: "volkswagen",
+  Volvo: "volvo",
+};
+
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -19,44 +57,38 @@ function initials(name: string) {
     .join("");
 }
 
-function CarSilhouette() {
+function BrandMark({ name }: { name: string }) {
+  const iconSlug = simpleIconSlugs[name];
+
+  if (!iconSlug) {
+    return (
+      <div className="flex h-14 w-20 items-center justify-center rounded-2xl border border-black/5 bg-secondary/70 text-base font-black tracking-[0.08em] text-ink/45">
+        {initials(name)}
+      </div>
+    );
+  }
+
   return (
-    <svg
-      viewBox="0 0 320 120"
-      className="h-full w-full"
-      aria-hidden="true"
-      fill="none"
-    >
-      <path
-        d="M38 77c6-16 13-28 25-34 15-8 41-10 64-10h48c19 0 34 4 49 12l27 14c8 4 16 8 23 16l8 10H38Z"
-        stroke="currentColor"
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
+    <div className="flex h-14 w-24 items-center justify-center rounded-2xl border border-black/5 bg-secondary/60 p-3 transition duration-300 group-hover:bg-brand-tint">
+      <img
+        src={`https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/${iconSlug}.svg`}
+        alt={`${name} logo`}
+        loading="lazy"
+        className="max-h-8 max-w-[68px] object-contain opacity-80 transition duration-300 group-hover:scale-105 group-hover:opacity-100"
+        onError={(event) => {
+          const image = event.currentTarget;
+          image.style.display = "none";
+          const fallback = image.nextElementSibling as HTMLElement | null;
+          if (fallback) fallback.style.display = "flex";
+        }}
       />
-      <path
-        d="M102 34c10 0 21 1 30 4 10 3 19 9 26 18H76c6-9 14-15 26-22Z"
-        stroke="currentColor"
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M165 34c18 0 33 4 46 11l19 11h-67c-3-10-2-16 2-22Z"
-        stroke="currentColor"
-        strokeWidth="5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="94" cy="84" r="18" stroke="currentColor" strokeWidth="6" />
-      <circle cx="232" cy="84" r="18" stroke="currentColor" strokeWidth="6" />
-      <path
-        d="M112 84h102M48 84h28M250 84h28"
-        stroke="currentColor"
-        strokeWidth="5"
-        strokeLinecap="round"
-      />
-    </svg>
+      <div
+        className="hidden h-10 w-16 items-center justify-center text-sm font-black tracking-[0.08em] text-ink/45"
+        aria-hidden="true"
+      >
+        {initials(name)}
+      </div>
+    </div>
   );
 }
 
@@ -129,40 +161,25 @@ export function BrandSearchGrid({ brands }: { brands: Brand[] }) {
           </button>
         </div>
       ) : (
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {filteredBrands.map((brand) => (
             <Link
               key={brand.id}
               href={`/brands/${brand.slug}`}
-              className="group overflow-hidden rounded-[26px] border border-black/5 bg-white shadow-[0_12px_34px_rgba(0,0,0,0.05)] transition duration-300 hover:-translate-y-1.5 hover:border-brand/25 hover:shadow-[0_24px_54px_rgba(0,0,0,0.11)]"
+              className="group flex min-h-[150px] flex-col justify-between rounded-[24px] border border-black/5 bg-white p-5 shadow-[0_12px_34px_rgba(0,0,0,0.05)] transition duration-300 hover:-translate-y-1 hover:border-brand/25 hover:shadow-[0_20px_46px_rgba(0,0,0,0.09)]"
             >
-              <div className="relative h-[150px] overflow-hidden bg-[linear-gradient(145deg,#111111_0%,#1d1d1d_72%,#2a160b_100%)]">
-                <div className="absolute -right-10 -top-12 h-40 w-40 rounded-full bg-brand/20 blur-3xl transition duration-500 group-hover:bg-brand/30" />
+              <div className="flex items-start justify-between gap-4">
+                <BrandMark name={brand.manufacturer_name} />
 
-                <div className="absolute left-5 top-5 flex h-12 min-w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/10 px-3 text-sm font-black tracking-[0.08em] text-white backdrop-blur-sm">
-                  {initials(brand.manufacturer_name)}
-                </div>
-
-                <div className="absolute inset-x-5 bottom-2 top-7 text-white/22 transition duration-500 group-hover:translate-x-1 group-hover:text-brand/45">
-                  <CarSilhouette />
-                </div>
-
-                <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/45 to-transparent" />
-              </div>
-
-              <div className="flex min-h-[94px] items-center justify-between gap-4 p-5">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-brand">
-                    Vehicle brand
-                  </p>
-                  <h2 className="mt-1 text-xl font-black tracking-[-0.03em] text-ink">
-                    {brand.manufacturer_name}
-                  </h2>
-                </div>
-
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-ink text-white transition duration-300 group-hover:bg-brand group-hover:shadow-[0_8px_24px_rgba(249,115,22,0.3)]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink text-white transition duration-300 group-hover:bg-brand">
                   <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
                 </span>
+              </div>
+
+              <div className="mt-8">
+                <h2 className="text-xl font-black tracking-[-0.025em] text-ink">
+                  {brand.manufacturer_name}
+                </h2>
               </div>
             </Link>
           ))}
