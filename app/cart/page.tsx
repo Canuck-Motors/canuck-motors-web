@@ -5,7 +5,9 @@ import { createClient } from "@/lib/supabase/server";
 import { removeCartItem, updateCartQuantity } from "./actions";
 import { beginCheckout } from "@/app/checkout/actions";
 
-export const instant = false;\n\nexport const metadata: Metadata = {
+export const instant = false;
+
+export const metadata: Metadata = {
   title: "Your Cart",
   robots: {
     index: false,
