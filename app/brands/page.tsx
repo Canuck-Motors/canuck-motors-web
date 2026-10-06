@@ -1,10 +1,9 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
 import { cacheLife, cacheTag } from "next/cache";
 import Header from "@/components/Header";
 import Navbar from "@/components/Navbar";
 import { createPublicClient } from "@/lib/supabase/public";
+import { BrandSearchGrid } from "@/components/BrandSearchGrid";
 
 export const metadata: Metadata = {
   title: "Vehicle Brands",
@@ -50,22 +49,15 @@ export default async function BrandsPage() {
         </section>
 
         <section className="cm-container py-12 md:py-16">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {brands.map((brand) => (
-              <Link
-                key={brand.id}
-                href={`/brands/${brand.slug}`}
-                className="group flex min-h-[140px] items-end justify-between rounded-[24px] border border-black/5 bg-white p-5 shadow-[0_12px_34px_rgba(0,0,0,0.05)] transition hover:-translate-y-1 hover:border-brand/25 hover:shadow-[0_18px_44px_rgba(0,0,0,0.08)]"
-              >
-                <h2 className="text-xl font-black tracking-[-0.025em] text-ink">
-                  {brand.manufacturer_name}
-                </h2>
-                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-ink text-white transition group-hover:bg-brand">
-                  <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-                </span>
-              </Link>
-            ))}
+          <div className="mb-8 text-center">
+            <p className="cm-eyebrow">Find your brand</p>
+            <h2 className="cm-section-title mt-3">Search vehicle manufacturers</h2>
+            <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Start typing a brand name to instantly narrow the list.
+            </p>
           </div>
+
+          <BrandSearchGrid brands={brands} />
         </section>
       </main>
     </>
