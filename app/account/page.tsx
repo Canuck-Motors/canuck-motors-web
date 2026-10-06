@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Gauge, Package, ShoppingCart, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { updateCommunicationPreferences } from "@/app/account/actions";
 
 export const metadata: Metadata = {
   title: "My Account",
@@ -19,7 +20,7 @@ export default async function AccountPage() {
 
   const { data: profile } = await supabase
     .from("users")
-    .select("id, first_name, last_name, email_id")
+    .select("id, first_name, last_name, email_id, phone_number, whatsapp_opt_in")
     .eq("auth_user_id", authData.user.id)
     .maybeSingle();
 
@@ -62,8 +63,29 @@ export default async function AccountPage() {
           </Link>
           <div className="rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_38px_rgba(0,0,0,0.06)]">
             <UserRound className="h-6 w-6 text-brand" aria-hidden="true" />
-            <h2 className="mt-5 text-xl font-black text-ink">Profile</h2>
+            <h2 className="mt-5 text-xl font-black text-ink">Updates</h2>
             <p className="mt-2 text-sm text-muted-foreground">{profile.email_id}</p>
+            <form action={updateCommunicationPreferences} className="mt-4 space-y-3">
+              <input
+                name="phone_number"
+                type="tel"
+                defaultValue={profile.phone_number || ""}
+                placeholder="+1 416 555 0123"
+                className="w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
+              />
+              <label className="flex items-start gap-2 text-sm text-muted-foreground">
+                <input
+                  name="whatsapp_opt_in"
+                  type="checkbox"
+                  defaultChecked={profile.whatsapp_opt_in}
+                  className="mt-1"
+                />
+                <span>Send WhatsApp order and delivery updates.</span>
+              </label>
+              <button type="submit" className="cm-button-dark w-full">
+                Save preferences
+              </button>
+            </form>
           </div>
           {staffRole && (
             <Link href="/admin" className="group rounded-[26px] border border-black/5 bg-ink p-6 text-white shadow-[0_14px_38px_rgba(0,0,0,0.10)] transition hover:-translate-y-1 hover:border-brand/40">
