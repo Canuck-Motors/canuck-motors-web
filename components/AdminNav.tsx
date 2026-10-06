@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Boxes, ClipboardList, Gauge, Home } from "lucide-react";
+import { Boxes, ClipboardList, CreditCard, Gauge, Home } from "lucide-react";
 
 const links = [
   { href: "/admin", label: "Overview", icon: Gauge },
   { href: "/admin/orders", label: "Orders", icon: ClipboardList },
   { href: "/admin/inventory", label: "Inventory", icon: Boxes },
+  { href: "/admin/stripe", label: "Stripe", icon: CreditCard },
 ];
 
 export function AdminNav() {
