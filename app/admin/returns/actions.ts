@@ -100,6 +100,8 @@ export async function issueReturnRefund(
       paymentIntentId: payment.provider_payment_intent_id,
       amountCents: Math.round(Number(refund.amount) * 100),
       idempotencyKey: refund.idempotency_key,
+      refundId: refund.id,
+      orderId,
     });
 
     const { error: finalizeError } = await admin.rpc("finalize_refund", {
