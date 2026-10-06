@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { setInventoryQuantity } from "@/app/admin/actions";
 import { AdminNav } from "@/components/AdminNav";
 
+export const instant = false;
+
 export const metadata: Metadata = {
   title: "Inventory Admin",
   robots: { index: false, follow: false },
