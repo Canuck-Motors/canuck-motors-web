@@ -3,6 +3,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
+export const instant = false;
+
 export const metadata: Metadata = {
   title: "Order History",
   robots: { index: false, follow: false },
