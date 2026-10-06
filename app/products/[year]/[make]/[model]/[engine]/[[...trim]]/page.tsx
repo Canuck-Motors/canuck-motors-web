@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createPublicClient } from "@/lib/supabase/public";
+import { ProductCard } from "@/components/ProductCard";
 
 type PageProps = {
   params: Promise<{
@@ -240,7 +241,8 @@ export default async function VehicleProductsPage({
           id,
           product_name,
           price,
-          default_image,
+          sku,
+          slug,
           meta_description,
           title_tag
         `)
@@ -331,43 +333,7 @@ export default async function VehicleProductsPage({
           ) : (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {products.map((product) => (
-                <article
-                  key={product.id}
-                  className="overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-                >
-                  <div className="aspect-square bg-secondary">
-                    <div className="flex h-full items-center justify-center">
-                        <div className="text-center">
-                            <div className="text-sm font-medium text-muted-foreground">
-                            Product Image
-                            </div>
-
-                            <div className="mt-1 text-xs text-muted-foreground/60">
-                            Coming soon
-                            </div>
-                        </div>
-                        </div>
-                  </div>
-
-                  <div className="p-5">
-                    <h2 className="font-semibold text-ink">
-                      {product.product_name}
-                    </h2>
-
-                    {product.price != null && (
-                      <p className="mt-2 text-lg font-bold text-brand">
-                        $
-                        {Number(
-                          product.price
-                        ).toFixed(2)}
-                      </p>
-                    )}
-
-                    <button className="mt-5 w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark">
-                      View Product
-                    </button>
-                  </div>
-                </article>
+                <ProductCard key={product.id} product={product} />
               ))}
             </div>
           )}
