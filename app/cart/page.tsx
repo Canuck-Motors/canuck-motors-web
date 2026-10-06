@@ -124,7 +124,7 @@ export default async function CartPage({ searchParams }: PageProps) {
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand">
               Shopping Cart
             </p>
-            <h1 className="mt-2 text-4xl font-bold text-ink">Your cart</h1>
+            <h1 className="mt-2 text-4xl font-black tracking-[-0.04em] text-ink md:text-5xl">Your cart</h1>
           </div>
           <Link href="/" className="text-sm font-semibold text-brand hover:underline">
             Continue shopping
@@ -236,24 +236,24 @@ export default async function CartPage({ searchParams }: PageProps) {
             </section>
 
             <aside className="h-fit rounded-[28px] border border-black/5 bg-ink p-6 text-white shadow-[0_20px_55px_rgba(0,0,0,0.12)]">
-              <h2 className="text-xl font-bold text-ink">Order summary</h2>
+              <h2 className="text-xl font-black tracking-[-0.02em] text-white">Order summary</h2>
               <dl className="mt-6 space-y-4 text-sm">
                 <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">Subtotal</dt>
-                  <dd className="font-semibold text-ink">${subtotal.toFixed(2)}</dd>
+                  <dt className="text-white/50">Subtotal</dt>
+                  <dd className="font-semibold text-white">${subtotal.toFixed(2)}</dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">Shipping</dt>
-                  <dd className="text-muted-foreground">Calculated at checkout</dd>
+                  <dt className="text-white/50">Shipping</dt>
+                  <dd className="text-white/65">Calculated at checkout</dd>
                 </div>
                 <div className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">Taxes</dt>
-                  <dd className="text-muted-foreground">Calculated at checkout</dd>
+                  <dt className="text-white/50">Taxes</dt>
+                  <dd className="text-white/65">Calculated at checkout</dd>
                 </div>
               </dl>
 
               <div className="mt-6 border-t pt-5">
-                <div className="flex justify-between gap-4 text-lg font-bold text-ink">
+                <div className="flex justify-between gap-4 text-lg font-black text-white">
                   <span>Subtotal</span>
                   <span>${subtotal.toFixed(2)}</span>
                 </div>
@@ -267,7 +267,7 @@ export default async function CartPage({ searchParams }: PageProps) {
                   Secure Checkout
                 </button>
               </form>
-              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              <p className="mt-3 text-xs leading-5 text-white/45">
                 Pricing is revalidated on the server before payment. Checkout is blocked until inventory is configured for every item.
               </p>
             </aside>
