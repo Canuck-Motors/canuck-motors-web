@@ -51,6 +51,7 @@ export async function updateSession(request: NextRequest) {
   "/login",
   "/api/chat",
   "/api/mcp",
+  "/api/stripe/webhook",
   "/register",
   "/auth",
   "/products",
