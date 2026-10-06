@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -9,29 +10,51 @@ const field =
   "w-full rounded-xl border border-input bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
 
 export default function RegisterPage() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
+  const router = useRouter();
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const handleRegister = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setLoading(true);
     setMessage("");
     setSuccess(false);
 
-    const { error } = await supabase.auth.signUp({
-      email,
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedFirstName = firstName.trim();
+    const normalizedLastName = lastName.trim();
+
+    if (!normalizedFirstName || !normalizedLastName) {
+      setMessage("Please enter your first and last name.");
+      return;
+    }
+
+    if (password.length < 8) {
+      setMessage("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setMessage("Passwords do not match.");
+      return;
+    }
+
+    setLoading(true);
+
+    const { data, error } = await supabase.auth.signUp({
+      email: normalizedEmail,
       password,
       options: {
         data: {
-          first_name: firstName,
-          last_name: lastName,
+          first_name: normalizedFirstName,
+          last_name: normalizedLastName,
         },
       },
     });
@@ -43,15 +66,20 @@ export default function RegisterPage() {
       return;
     }
 
+    if (data.session) {
+      router.replace("/");
+      router.refresh();
+      return;
+    }
+
     setSuccess(true);
     setMessage(
-      "Registration successful. Check your email if confirmation is enabled."
+      "Account created. Check your email to confirm your account, then log in."
     );
   };
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
-      {/* Left: video panel */}
       <section className="relative hidden overflow-hidden bg-ink lg:block">
         <video
           autoPlay
@@ -79,7 +107,6 @@ export default function RegisterPage() {
         </div>
       </section>
 
-      {/* Right: form */}
       <section className="flex items-center justify-center bg-white px-6 py-12">
         <div className="mx-auto w-full max-w-md">
           <Link
@@ -101,17 +128,23 @@ export default function RegisterPage() {
             Create your account
           </h1>
           <p className="mt-2 text-center text-sm text-muted-foreground">
-            It only takes a minute.
+            Create a Canuck Motors account for faster checkout and order tracking.
           </p>
 
           <form onSubmit={handleRegister} className="mt-8 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-ink">
+                <label
+                  htmlFor="first-name"
+                  className="mb-1.5 block text-sm font-medium text-ink"
+                >
                   First name
                 </label>
                 <input
+                  id="first-name"
+                  name="firstName"
                   type="text"
+                  autoComplete="given-name"
                   required
                   placeholder="John"
                   value={firstName}
@@ -120,11 +153,17 @@ export default function RegisterPage() {
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-ink">
+                <label
+                  htmlFor="last-name"
+                  className="mb-1.5 block text-sm font-medium text-ink"
+                >
                   Last name
                 </label>
                 <input
+                  id="last-name"
+                  name="lastName"
                   type="text"
+                  autoComplete="family-name"
                   required
                   placeholder="Smith"
                   value={lastName}
@@ -135,11 +174,18 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-ink">
+              <label
+                htmlFor="email"
+                className="mb-1.5 block text-sm font-medium text-ink"
+              >
                 Email
               </label>
               <input
+                id="email"
+                name="email"
                 type="email"
+                autoComplete="email"
+                inputMode="email"
                 required
                 placeholder="you@example.com"
                 value={email}
@@ -149,16 +195,43 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-ink">
+              <label
+                htmlFor="password"
+                className="mb-1.5 block text-sm font-medium text-ink"
+              >
                 Password
               </label>
               <input
+                id="password"
+                name="password"
                 type="password"
+                autoComplete="new-password"
                 required
-                minLength={6}
-                placeholder="At least 6 characters"
+                minLength={8}
+                placeholder="At least 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                className={field}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="confirm-password"
+                className="mb-1.5 block text-sm font-medium text-ink"
+              >
+                Confirm password
+              </label>
+              <input
+                id="confirm-password"
+                name="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                placeholder="Re-enter your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 className={field}
               />
             </div>
@@ -166,7 +239,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-60"
+              className="w-full rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Creating account..." : "Register"}
             </button>
@@ -174,6 +247,8 @@ export default function RegisterPage() {
 
           {message && (
             <p
+              role={success ? "status" : "alert"}
+              aria-live="polite"
               className={`mt-4 rounded-xl px-4 py-3 text-sm ${
                 success
                   ? "bg-green-50 text-green-700"
