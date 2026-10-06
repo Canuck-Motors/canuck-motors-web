@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AdminNav } from "@/components/AdminNav";
 import {
+  createExchangeReplacement,
   issueReturnRefund,
   updateReturnRequest,
 } from "./actions";
@@ -25,7 +26,7 @@ export default async function ReturnsAdminPage() {
   const { data: requests, error } = await supabase
     .from("return_requests")
     .select(
-      "id, order_id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_carrier, return_tracking_number, orders!inner(order_number, customer_name, customer_email, currency), return_request_items(id, quantity, received_quantity, order_items!inner(product_name, sku, unit_price))"
+      "id, order_id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_carrier, return_tracking_number, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due, orders!inner(order_number, customer_name, customer_email, currency), return_request_items(id, quantity, received_quantity, order_items!inner(product_id, product_name, sku, unit_price))"
     )
     .order("requested_on", { ascending: false })
     .limit(200);
@@ -33,6 +34,15 @@ export default async function ReturnsAdminPage() {
   if (error) {
     throw new Error("Unable to load return requests.");
   }
+
+  const { data: products } = await supabase
+    .from("products")
+    .select("id, sku, product_name, price")
+    .eq("is_active", true)
+    .eq("is_delete", false)
+    .not("price", "is", null)
+    .order("sku")
+    .limit(1000);
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_24%,#fafafa_100%)]">
@@ -125,7 +135,7 @@ export default async function ReturnsAdminPage() {
                                 </p>
                               </div>
                               <p className="font-bold text-ink">
-                                $\{Number(orderItem?.unit_price ?? 0).toFixed(2)}
+                                ${Number(orderItem?.unit_price ?? 0).toFixed(2)}
                               </p>
                             </div>
                           );
@@ -185,6 +195,104 @@ export default async function ReturnsAdminPage() {
                           Save
                         </button>
                       </form>
+
+                      {request.request_type === "exchange" &&
+                        ["received", "exchange_processing"].includes(request.status) && (
+                          <div className="rounded-2xl bg-ink p-4 text-white">
+                            <p className="font-bold">Replacement order</p>
+
+                            {request.replacement_order_id ? (
+                              <div className="mt-3 space-y-2 text-sm text-white/65">
+                                <p>Replacement order created.</p>
+                                {Number(request.replacement_amount_due) > 0 && (
+                                  <p>
+                                    Customer payment due: $
+                                    {Number(request.replacement_amount_due).toFixed(2)}
+                                  </p>
+                                )}
+                                {Number(request.replacement_refund_due) > 0 && (
+                                  <p>
+                                    Customer refund: $
+                                    {Number(request.replacement_refund_due).toFixed(2)}
+                                  </p>
+                                )}
+                                {request.replacement_payment_url && (
+                                  <a
+                                    href={request.replacement_payment_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex font-bold text-brand hover:underline"
+                                  >
+                                    Open payment link
+                                  </a>
+                                )}
+                              </div>
+                            ) : (
+                              <form
+                                action={async (formData) => {
+                                  "use server";
+
+                                  await createExchangeReplacement({
+                                    requestId: request.id,
+                                    replacementProductId: Number(
+                                      formData.get("replacement_product_id")
+                                    ),
+                                    quantity: Number(formData.get("quantity")),
+                                  });
+                                }}
+                                className="mt-3 space-y-3"
+                              >
+                                <select
+                                  name="replacement_product_id"
+                                  defaultValue={String(
+                                    Array.isArray(request.return_request_items?.[0]?.order_items)
+                                      ? request.return_request_items?.[0]?.order_items?.[0]?.product_id ?? ""
+                                      : request.return_request_items?.[0]?.order_items?.product_id ?? ""
+                                  )}
+                                  className="w-full rounded-xl border border-white/10 bg-white px-3 py-2.5 text-sm text-ink"
+                                  required
+                                >
+                                  <option value="">Choose replacement product</option>
+                                  {(products ?? []).map((product) => (
+                                    <option key={product.id} value={product.id}>
+                                      {product.sku} · {product.product_name} · $
+                                      {Number(product.price).toFixed(2)}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                <input
+                                  name="quantity"
+                                  type="number"
+                                  min={1}
+                                  max={
+                                    request.return_request_items?.[0]?.received_quantity ||
+                                    request.return_request_items?.[0]?.quantity ||
+                                    1
+                                  }
+                                  defaultValue={
+                                    request.return_request_items?.[0]?.received_quantity ||
+                                    request.return_request_items?.[0]?.quantity ||
+                                    1
+                                  }
+                                  className="w-full rounded-xl border border-white/10 bg-white px-3 py-2.5 text-sm text-ink"
+                                  required
+                                />
+
+                                <p className="text-xs leading-5 text-white/50">
+                                  Equal price: replacement proceeds automatically. Higher
+                                  price: customer receives a Stripe payment link. Lower
+                                  price: admin-only difference refund is issued before
+                                  fulfillment.
+                                </p>
+
+                                <button type="submit" className="cm-button-primary w-full">
+                                  Create replacement
+                                </button>
+                              </form>
+                            )}
+                          </div>
+                        )}
 
                       {request.request_type === "return" &&
                         ["received", "refund_pending"].includes(request.status) && (
