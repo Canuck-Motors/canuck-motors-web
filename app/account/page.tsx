@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Package, ShoppingCart, UserRound } from "lucide-react";
+import { Gauge, Package, ShoppingCart, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -27,6 +27,8 @@ export default async function AccountPage() {
     throw new Error("Customer profile is unavailable.");
   }
 
+  const { data: staffRole } = await supabase.rpc("current_user_staff_role");
+
   const { data: orders } = await supabase
     .from("orders")
     .select("id, order_number, status, payment_status, total_amount, currency, created_on")
@@ -47,7 +49,7 @@ export default async function AccountPage() {
           </p>
         </div>
 
-        <div className="mt-8 grid gap-5 md:grid-cols-3">
+        <div className={`mt-8 grid gap-5 ${staffRole ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
           <Link href="/account/orders" className="group rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_38px_rgba(0,0,0,0.06)] transition hover:-translate-y-1 hover:border-brand/25">
             <Package className="h-6 w-6 text-brand" aria-hidden="true" />
             <h2 className="mt-5 text-xl font-black text-ink">Order history</h2>
@@ -63,6 +65,13 @@ export default async function AccountPage() {
             <h2 className="mt-5 text-xl font-black text-ink">Profile</h2>
             <p className="mt-2 text-sm text-muted-foreground">{profile.email_id}</p>
           </div>
+          {staffRole && (
+            <Link href="/admin" className="group rounded-[26px] border border-black/5 bg-ink p-6 text-white shadow-[0_14px_38px_rgba(0,0,0,0.10)] transition hover:-translate-y-1 hover:border-brand/40">
+              <Gauge className="h-6 w-6 text-brand" aria-hidden="true" />
+              <h2 className="mt-5 text-xl font-black">Admin</h2>
+              <p className="mt-2 text-sm text-white/55">Manage orders, inventory and payment readiness.</p>
+            </Link>
+          )}
         </div>
 
         <section className="mt-10 rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_16px_46px_rgba(0,0,0,0.06)] md:p-8">
