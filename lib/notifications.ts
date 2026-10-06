@@ -11,7 +11,21 @@ type OutboxRow = {
 };
 
 function messageFor(row: OutboxRow) {
+  if (row.event_type === "exchange_payment_required") {
+    const amount = Number(row.payload?.amount_due || 0).toFixed(2);
+    const currency = String(row.payload?.currency || "CAD");
+    const paymentUrl = String(row.payload?.payment_url || "");
+
+    return {
+      subject: "Action required for your Canuck Motors exchange",
+      text:
+        `Your exchange requires an additional payment of ${amount} ${currency}. ` +
+        `Complete payment here: ${paymentUrl}`,
+    };
+  }
+
   const status = String(row.payload?.status || "updated").replaceAll("_", " ");
+
   return {
     subject: "Canuck Motors order update",
     text: `Your Canuck Motors order status is now: ${status}.`,
