@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { setInventoryQuantity } from "@/app/admin/actions";
+import { AdminNav } from "@/components/AdminNav";
 
 export const metadata: Metadata = {
   title: "Inventory Admin",
@@ -29,21 +30,23 @@ export default async function InventoryAdminPage() {
   }
 
   return (
-    <main className="min-h-screen bg-secondary/40">
-      <div className="mx-auto max-w-7xl px-6 py-12">
-        <div className="flex flex-wrap items-end justify-between gap-4">
+    <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_24%,#fafafa_100%)]">
+      <div className="cm-container py-12">
+        <AdminNav />
+
+        <div className="mt-10 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand">
               Admin
             </p>
-            <h1 className="mt-2 text-4xl font-bold text-ink">Inventory</h1>
+            <h1 className="mt-2 text-4xl font-black tracking-[-0.04em] text-ink">Inventory</h1>
           </div>
           <p className="text-sm text-muted-foreground">
             Signed in as {role}
           </p>
         </div>
 
-        <div className="mt-8 overflow-hidden rounded-2xl border bg-white">
+        <div className="mt-8 overflow-hidden rounded-[26px] border border-black/5 bg-white shadow-[0_16px_46px_rgba(0,0,0,0.06)]">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[850px] text-left text-sm">
               <thead className="bg-secondary">
