@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Outfit } from "next/font/google";
-import { ThemeProvider } from "next-themes";
 import ChatLauncher from "@/components/chat/ChatLauncher";
 import "./globals.css";
 
@@ -39,17 +38,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${outfit.variable} ${outfit.className} antialiased`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          forcedTheme="light"
-          enableSystem={false}
-          disableTransitionOnChange
-        >
-          {children}
-
-          <ChatLauncher />
-        </ThemeProvider>
+        {children}
+        <ChatLauncher />
       </body>
     </html>
   );
