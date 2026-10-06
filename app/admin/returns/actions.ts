@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createStripeRefund } from "@/lib/stripe";
+import { createStripeAmountCheckoutSession, createStripeRefund } from "@/lib/stripe";
 
 async function requireAuthenticatedStaff() {
   const supabase = await createClient();
@@ -127,4 +127,216 @@ export async function issueReturnRefund(
 
   revalidatePath("/admin/returns");
   revalidatePath(`/account/orders/${orderId}`);
+}
+
+
+function getSiteUrl() {
+  return (
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    (process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000")
+  );
+}
+
+export async function createExchangeReplacement(input: {
+  requestId: string;
+  replacementProductId: number;
+  quantity: number;
+}) {
+  if (!Number.isInteger(input.replacementProductId) || input.replacementProductId <= 0) {
+    throw new Error("Choose a valid replacement product.");
+  }
+
+  if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+    throw new Error("Exchange quantity must be a positive whole number.");
+  }
+
+  const supabase = await requireAuthenticatedStaff();
+
+  const { data: prepared, error: prepareError } = await supabase.rpc(
+    "prepare_exchange_replacement",
+    {
+      p_request_id: input.requestId,
+      p_replacement_product_id: input.replacementProductId,
+      p_quantity: input.quantity,
+    }
+  );
+
+  if (prepareError || !prepared?.[0]) {
+    throw new Error(
+      prepareError?.message || "Unable to prepare replacement order."
+    );
+  }
+
+  const preparedRow = prepared[0] as {
+    replacement_order_id: string;
+    amount_due: number | string;
+    refund_due: number | string;
+    currency: string;
+    original_order_id: string;
+    original_payment_intent_id: string | null;
+    refund_id: string | null;
+    refund_idempotency_key: string | null;
+    replacement_sku: string;
+    replacement_name: string;
+  };
+
+  const admin = createAdminClient();
+  const amountDue = Number(preparedRow.amount_due);
+  const refundDue = Number(preparedRow.refund_due);
+
+  try {
+    if (refundDue > 0) {
+      if (
+        !preparedRow.original_payment_intent_id ||
+        !preparedRow.refund_id ||
+        !preparedRow.refund_idempotency_key
+      ) {
+        throw new Error("Original Stripe payment information is unavailable.");
+      }
+
+      const stripeRefund = await createStripeRefund({
+        paymentIntentId: preparedRow.original_payment_intent_id,
+        amountCents: Math.round(refundDue * 100),
+        idempotencyKey: preparedRow.refund_idempotency_key,
+        refundId: preparedRow.refund_id,
+        orderId: preparedRow.original_order_id,
+      });
+
+      const { error: finalizeError } = await admin.rpc("finalize_refund", {
+        p_refund_id: preparedRow.refund_id,
+        p_stripe_refund_id: stripeRefund.id,
+        p_succeeded: true,
+        p_failure_reason: null,
+      });
+
+      if (finalizeError) {
+        throw new Error(finalizeError.message);
+      }
+
+      await supabase.rpc("mark_exchange_price_difference_refund", {
+        p_request_id: input.requestId,
+        p_refund_due: refundDue,
+      });
+    }
+
+    if (amountDue > 0) {
+      const { data: replacementOrder, error: orderError } = await supabase
+        .from("orders")
+        .select("id, order_number, customer_email, currency")
+        .eq("id", preparedRow.replacement_order_id)
+        .single();
+
+      if (orderError || !replacementOrder) {
+        throw new Error("Replacement order could not be loaded.");
+      }
+
+      const session = await createStripeAmountCheckoutSession({
+        orderId: replacementOrder.id,
+        orderNumber: replacementOrder.order_number,
+        customerEmail: replacementOrder.customer_email,
+        successUrl: `${getSiteUrl()}/account/orders/${preparedRow.original_order_id}?exchange_paid=1`,
+        cancelUrl: `${getSiteUrl()}/account/orders/${preparedRow.original_order_id}?exchange_payment_cancelled=1`,
+        label: `Exchange price difference - ${preparedRow.replacement_name}`,
+        amountCents: Math.round(amountDue * 100),
+        metadata: {
+          return_request_id: input.requestId,
+          original_order_id: preparedRow.original_order_id,
+        },
+      });
+
+      if (!session.url) {
+        throw new Error("Stripe did not return an exchange checkout URL.");
+      }
+
+      const { error: paymentError } = await admin.from("payments").upsert(
+        {
+          order_id: replacementOrder.id,
+          provider: "stripe",
+          provider_checkout_session_id: session.id,
+          provider_payment_intent_id: session.payment_intent ?? null,
+          amount: amountDue,
+          currency: replacementOrder.currency,
+          status: "pending",
+          updated_on: new Date().toISOString(),
+        },
+        { onConflict: "provider_checkout_session_id" }
+      );
+
+      if (paymentError) {
+        throw new Error("Unable to record exchange payment session.");
+      }
+
+      const { error: attachError } = await supabase.rpc("attach_exchange_checkout", {
+        p_request_id: input.requestId,
+        p_checkout_session_id: session.id,
+        p_checkout_url: session.url,
+        p_amount_due: amountDue,
+      });
+
+      if (attachError) {
+        throw new Error(attachError.message);
+      }
+
+      const { data: requestRow } = await admin
+        .from("return_requests")
+        .select("user_id")
+        .eq("id", input.requestId)
+        .single();
+
+      if (requestRow?.user_id) {
+        const { data: user } = await admin
+          .from("users")
+          .select("email_id, phone_number, whatsapp_opt_in")
+          .eq("id", requestRow.user_id)
+          .single();
+
+        if (user?.email_id) {
+          await admin.from("notification_outbox").insert({
+            order_id: preparedRow.original_order_id,
+            user_id: requestRow.user_id,
+            channel: "email",
+            event_type: "exchange_payment_required",
+            recipient: user.email_id,
+            template_key: "exchange_payment_required",
+            payload: {
+              payment_url: session.url,
+              amount_due: amountDue,
+              currency: replacementOrder.currency,
+              replacement_sku: preparedRow.replacement_sku,
+            },
+          });
+        }
+
+        if (user?.whatsapp_opt_in && user.phone_number) {
+          await admin.from("notification_outbox").insert({
+            order_id: preparedRow.original_order_id,
+            user_id: requestRow.user_id,
+            channel: "whatsapp",
+            event_type: "exchange_payment_required",
+            recipient: user.phone_number,
+            template_key: "exchange_payment_required",
+            payload: {
+              payment_url: session.url,
+              amount_due: amountDue,
+              currency: replacementOrder.currency,
+              replacement_sku: preparedRow.replacement_sku,
+            },
+          });
+        }
+      }
+    }
+  } catch (error) {
+    if (amountDue > 0) {
+      await admin.rpc("release_exchange_replacement", {
+        p_order_id: preparedRow.replacement_order_id,
+        p_reason: "Exchange replacement setup failed",
+      });
+    }
+    throw error;
+  }
+
+  revalidatePath("/admin/returns");
+  revalidatePath(`/account/orders/${preparedRow.original_order_id}`);
 }
