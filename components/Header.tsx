@@ -124,7 +124,7 @@ export default function Header() {
             (isAuthenticated ? (
               <>
                 <Link
-                  href="/protected"
+                  href="/account"
                   className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold text-ink transition hover:bg-brand-tint hover:text-brand"
                 >
                   <UserRound className="h-4 w-4" aria-hidden="true" />
