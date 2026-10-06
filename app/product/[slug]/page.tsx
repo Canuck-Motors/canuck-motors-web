@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cacheLife, cacheTag } from "next/cache";
 import { notFound } from "next/navigation";
 import { createPublicClient } from "@/lib/supabase/public";
+import { addToCart } from "@/app/cart/actions";
 
 type PageProps = {
   params: Promise<{
@@ -333,15 +334,14 @@ export default async function ProductDetailPage({
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              <button
-                type="button"
-                disabled
-                aria-disabled="true"
-                title="Cart functionality is being implemented"
-                className="rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white opacity-60"
-              >
-                Add to Cart
-              </button>
+              <form action={addToCart.bind(null, product.id)}>
+                <button
+                  type="submit"
+                  className="rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
+                >
+                  Add to Cart
+                </button>
+              </form>
 
               {product.amazon_url && (
                 <a
