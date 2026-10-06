@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -9,38 +10,38 @@ const field =
   "w-full rounded-xl border border-input bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
 
 export default function LoginPage() {
-  const supabase = createClient();
+  const [supabase] = useState(() => createClient());
+  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setMessage("");
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     const { error } = await supabase.auth.signInWithPassword({
-      email,
+      email: normalizedEmail,
       password,
     });
 
-    setLoading(false);
-
     if (error) {
       setMessage(error.message);
+      setLoading(false);
       return;
     }
 
-    setMessage("Login Successful!");
+    router.replace("/");
+    router.refresh();
   };
-
-  const isError = message && message !== "Login Successful!";
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
-      {/* Left: video panel */}
       <section className="relative hidden overflow-hidden bg-ink lg:block">
         <video
           autoPlay
@@ -67,7 +68,6 @@ export default function LoginPage() {
         </div>
       </section>
 
-      {/* Right: form */}
       <section className="flex items-center justify-center bg-white px-6 py-12">
         <div className="mx-auto w-full max-w-md">
           <Link
@@ -89,16 +89,23 @@ export default function LoginPage() {
             Welcome back
           </h1>
           <p className="mt-2 text-center text-sm text-muted-foreground">
-            Log in to your account.
+            Log in to your Canuck Motors account.
           </p>
 
           <form onSubmit={handleLogin} className="mt-8 space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-ink">
+              <label
+                htmlFor="email"
+                className="mb-1.5 block text-sm font-medium text-ink"
+              >
                 Email
               </label>
               <input
+                id="email"
+                name="email"
                 type="email"
+                autoComplete="email"
+                inputMode="email"
                 required
                 placeholder="you@example.com"
                 value={email}
@@ -108,11 +115,22 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-ink">
-                Password
-              </label>
+              <div className="mb-1.5 flex items-center justify-between">
+                <label htmlFor="password" className="text-sm font-medium text-ink">
+                  Password
+                </label>
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-sm font-medium text-brand hover:underline"
+                >
+                  Forgot password?
+                </Link>
+              </div>
               <input
+                id="password"
+                name="password"
                 type="password"
+                autoComplete="current-password"
                 required
                 placeholder="••••••••"
                 value={password}
@@ -124,7 +142,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:opacity-60"
+              className="w-full rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Logging in..." : "Login"}
             </button>
@@ -132,11 +150,9 @@ export default function LoginPage() {
 
           {message && (
             <p
-              className={`mt-4 rounded-xl px-4 py-3 text-sm ${
-                isError
-                  ? "bg-red-50 text-red-700"
-                  : "bg-green-50 text-green-700"
-              }`}
+              role="alert"
+              aria-live="polite"
+              className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700"
             >
               {message}
             </p>
