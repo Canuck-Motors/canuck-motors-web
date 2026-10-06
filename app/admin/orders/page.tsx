@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { updateOrderStatus } from "@/app/admin/actions";
+import {
+  createShipment,
+  updateOrderStatus,
+} from "@/app/admin/actions";
 import { AdminNav } from "@/components/AdminNav";
 
-export const instant = false;\n\nexport const metadata: Metadata = {
+export const instant = false;
+
+export const metadata: Metadata = {
   title: "Orders Admin",
   robots: { index: false, follow: false },
 };
@@ -14,8 +19,14 @@ function nextStatus(status: string) {
     case "paid":
       return "processing";
     case "processing":
+      return "packed";
+    case "packed":
+      return "ready_to_ship";
+    case "ready_to_ship":
       return "shipped";
     case "shipped":
+      return "out_for_delivery";
+    case "out_for_delivery":
       return "delivered";
     case "pending":
     case "payment_pending":
@@ -35,7 +46,9 @@ export default async function OrdersAdminPage() {
 
   const { data: orders, error } = await supabase
     .from("orders")
-    .select("id, order_number, status, payment_status, total_amount, currency, customer_email, customer_name, created_on")
+    .select(
+      "id, order_number, status, fulfillment_status, payment_status, total_amount, currency, customer_email, customer_name, created_on, shipments(id, carrier, tracking_number, tracking_url, status, estimated_delivery)"
+    )
     .order("created_on", { ascending: false })
     .limit(200);
 
@@ -50,70 +63,159 @@ export default async function OrdersAdminPage() {
 
         <div className="mt-10 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand">
-              Admin
+            <p className="cm-eyebrow">Operations</p>
+            <h1 className="cm-section-title mt-3">Orders</h1>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Manage fulfillment, create shipments, and monitor payment state.
             </p>
-            <h1 className="mt-2 text-4xl font-black tracking-[-0.04em] text-ink">Orders</h1>
           </div>
           <p className="text-sm text-muted-foreground">Signed in as {role}</p>
         </div>
 
-        <div className="mt-8 overflow-hidden rounded-[26px] border border-black/5 bg-white shadow-[0_16px_46px_rgba(0,0,0,0.06)]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[950px] text-left text-sm">
-              <thead className="bg-secondary">
-                <tr>
-                  <th className="px-5 py-4 font-semibold text-ink">Order</th>
-                  <th className="px-5 py-4 font-semibold text-ink">Customer</th>
-                  <th className="px-5 py-4 font-semibold text-ink">Payment</th>
-                  <th className="px-5 py-4 font-semibold text-ink">Status</th>
-                  <th className="px-5 py-4 font-semibold text-ink">Total</th>
-                  <th className="px-5 py-4 font-semibold text-ink">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {(orders ?? []).map((order) => {
-                  const next = nextStatus(order.status);
+        <div className="mt-8 space-y-5">
+          {(orders ?? []).map((order) => {
+            const next = nextStatus(order.status);
+            const latestShipment = Array.isArray(order.shipments)
+              ? order.shipments[0]
+              : order.shipments;
 
-                  return (
-                    <tr key={order.id}>
-                      <td className="px-5 py-4">
-                        <div className="font-semibold text-ink">{order.order_number}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {new Date(order.created_on).toLocaleString()}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="font-medium text-ink">{order.customer_name || "Customer"}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {order.customer_email || "No email"}
-                        </div>
-                      </td>
-                      <td className="px-5 py-4 capitalize">{order.payment_status}</td>
-                      <td className="px-5 py-4 capitalize">{order.status}</td>
-                      <td className="px-5 py-4 font-semibold text-ink">
-                        ${Number(order.total_amount).toFixed(2)} {order.currency}
-                      </td>
-                      <td className="px-5 py-4">
-                        {next ? (
-                          <form action={updateOrderStatus.bind(null, order.id, next)}>
-                            <button
-                              type="submit"
-                              className="rounded-full bg-ink px-4 py-2 font-semibold text-white transition hover:bg-brand"
+            return (
+              <article
+                key={order.id}
+                className="rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_16px_46px_rgba(0,0,0,0.06)]"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-5">
+                  <div>
+                    <p className="text-lg font-black text-ink">
+                      {order.order_number}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {order.customer_name || "Customer"} ·{" "}
+                      {order.customer_email || "No email"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {new Date(order.created_on).toLocaleString()}
+                    </p>
+                  </div>
+
+                  <div className="text-right">
+                    <p className="text-lg font-black text-ink">
+                      $\{Number(order.total_amount).toFixed(2)} {order.currency}
+                    </p>
+                    <div className="mt-2 flex flex-wrap justify-end gap-2">
+                      <span className="rounded-full bg-brand-tint px-3 py-1 text-xs font-bold capitalize text-brand">
+                        {order.status.replaceAll("_", " ")}
+                      </span>
+                      <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold capitalize text-ink/70">
+                        {order.payment_status.replaceAll("_", " ")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
+                  <div>
+                    <div className="rounded-2xl bg-secondary/60 p-4">
+                      <p className="text-sm font-bold text-ink">
+                        Fulfillment:{" "}
+                        <span className="capitalize">
+                          {order.fulfillment_status.replaceAll("_", " ")}
+                        </span>
+                      </p>
+
+                      {latestShipment ? (
+                        <div className="mt-3 text-sm text-muted-foreground">
+                          <p>
+                            {latestShipment.carrier} ·{" "}
+                            {latestShipment.tracking_number || "Tracking pending"}
+                          </p>
+                          <p className="mt-1 capitalize">
+                            {latestShipment.status.replaceAll("_", " ")}
+                          </p>
+                          {latestShipment.tracking_url && (
+                            <a
+                              href={latestShipment.tracking_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 inline-flex font-bold text-brand hover:underline"
                             >
-                              Mark {next.replace("_", " ")}
-                            </button>
-                          </form>
-                        ) : (
-                          <span className="text-muted-foreground">No action</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                              Open carrier tracking
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          No shipment has been created yet.
+                        </p>
+                      )}
+                    </div>
+
+                    {next && (
+                      <form
+                        action={updateOrderStatus.bind(null, order.id, next)}
+                        className="mt-4"
+                      >
+                        <button type="submit" className="cm-button-dark">
+                          Mark {next.replaceAll("_", " ")}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+
+                  <form
+                    action={async (formData) => {
+                      "use server";
+                      await createShipment(
+                        order.id,
+                        String(formData.get("carrier") || ""),
+                        String(formData.get("tracking_number") || ""),
+                        String(formData.get("tracking_url") || ""),
+                        String(formData.get("service_level") || ""),
+                        String(formData.get("estimated_delivery") || "")
+                      );
+                    }}
+                    className="rounded-2xl border border-black/5 p-4"
+                  >
+                    <p className="font-bold text-ink">Create / update shipment</p>
+
+                    <input
+                      name="carrier"
+                      defaultValue={latestShipment?.carrier || ""}
+                      placeholder="Carrier"
+                      className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
+                      required
+                    />
+                    <input
+                      name="tracking_number"
+                      defaultValue={latestShipment?.tracking_number || ""}
+                      placeholder="Tracking number"
+                      className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
+                      required
+                    />
+                    <input
+                      name="tracking_url"
+                      defaultValue={latestShipment?.tracking_url || ""}
+                      placeholder="Carrier tracking URL"
+                      className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
+                    />
+                    <input
+                      name="service_level"
+                      placeholder="Service level, e.g. Ground"
+                      className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
+                    />
+                    <input
+                      name="estimated_delivery"
+                      type="datetime-local"
+                      className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
+                    />
+                    <button type="submit" className="cm-button-primary mt-3 w-full">
+                      Save shipment
+                    </button>
+                  </form>
+                </div>
+              </article>
+            );
+          })}
         </div>
       </div>
     </main>
