@@ -54,6 +54,7 @@ export async function updateSession(request: NextRequest) {
   "/register",
   "/auth",
   "/products",
+  "/product",
   "/categories",
   "/brands",
   "/deals",
