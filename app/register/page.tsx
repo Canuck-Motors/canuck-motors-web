@@ -7,7 +7,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 const field =
-  "w-full rounded-xl border border-input bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20";
+  "w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 text-sm font-medium text-ink shadow-sm outline-none transition focus:border-brand/60 focus:ring-4 focus:ring-brand/10";
 
 export default function RegisterPage() {
   const [supabase] = useState(() => createClient());
@@ -91,24 +91,24 @@ export default function RegisterPage() {
           <source src="/hero/login.mp4" type="video/mp4" />
         </video>
 
-        <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-ink/20" />
+        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(8,8,8,0.28),rgba(8,8,8,0.92))]" />
 
-        <div className="absolute inset-x-0 bottom-0 p-12">
-          <p className="text-sm font-semibold uppercase tracking-widest text-brand">
+        <div className="absolute inset-x-0 bottom-0 p-12 xl:p-16">
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-brand">
             Canuck Motors
           </p>
-          <h2 className="mt-3 max-w-md text-4xl font-bold leading-tight text-white">
+          <h2 className="mt-4 max-w-lg text-5xl font-black leading-[1.02] tracking-[-0.04em] text-white">
             Join North America&apos;s parts experts.
           </h2>
-          <p className="mt-3 max-w-md text-white/70">
+          <p className="mt-5 max-w-md text-base leading-7 text-white/65">
             Create an account to save vehicles, track orders, and check out
             faster.
           </p>
         </div>
       </section>
 
-      <section className="flex items-center justify-center bg-white px-6 py-12">
-        <div className="mx-auto w-full max-w-md">
+      <section className="relative flex items-center justify-center overflow-hidden bg-[linear-gradient(145deg,#fff,#fff7ed)] px-6 py-12">
+        <div className="relative mx-auto w-full max-w-md rounded-[30px] border border-black/5 bg-white p-7 shadow-[0_24px_70px_rgba(0,0,0,0.10)] sm:p-9">
           <Link
             href="/"
             aria-label="Canuck Motors home"
@@ -124,7 +124,7 @@ export default function RegisterPage() {
             />
           </Link>
 
-          <h1 className="mt-8 text-center text-3xl font-bold text-ink">
+          <h1 className="mt-7 text-center text-3xl font-black tracking-[-0.035em] text-ink">
             Create your account
           </h1>
           <p className="mt-2 text-center text-sm text-muted-foreground">
@@ -239,7 +239,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-full bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+              className="cm-button-primary mt-2 w-full py-3.5 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Creating account..." : "Register"}
             </button>
