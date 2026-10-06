@@ -164,7 +164,7 @@ export default async function StripeReconciliationPage() {
                       </div>
                       <div className="text-right">
                         <p className="font-black text-ink">
-                          $\{Number(dispute.amount).toFixed(2)} {dispute.currency}
+                          ${Number(dispute.amount).toFixed(2)} {dispute.currency}
                         </p>
                         <p className="mt-1 text-sm font-bold capitalize text-brand">
                           {dispute.status.replaceAll("_", " ")}
