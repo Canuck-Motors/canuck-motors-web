@@ -91,10 +91,17 @@ export default async function StripeAdminPage() {
               /api/stripe/webhook
             </p>
             <p className="mt-5 text-sm leading-6 text-white/55">
-              Subscribe to checkout.session.completed, checkout.session.expired,
-              checkout.session.async_payment_succeeded, and
-              checkout.session.async_payment_failed.
+              Keep Checkout, refunds, and disputes synchronized through the verified
+              webhook endpoint.
             </p>
+
+            <Link
+              href="/admin/stripe/reconciliation"
+              className="mt-5 inline-flex items-center gap-2 rounded-full bg-brand px-4 py-2.5 text-sm font-bold text-white transition hover:bg-brand-dark"
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden="true" />
+              Reconciliation & disputes
+            </Link>
           </aside>
         </div>
       </div>
