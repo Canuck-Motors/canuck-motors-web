@@ -233,7 +233,7 @@ export default async function ProductDetailPage({
   };
 
   return (
-    <main className="min-h-screen bg-secondary/40">
+    <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -247,7 +247,7 @@ export default async function ProductDetailPage({
         }}
       />
 
-      <div className="mx-auto max-w-7xl px-6 py-10 md:py-14">
+      <div className="cm-container py-10 md:py-14">
         <nav aria-label="Breadcrumb" className="mb-8 text-sm text-muted-foreground">
           <ol className="flex flex-wrap items-center gap-2">
             <li>
@@ -314,7 +314,7 @@ export default async function ProductDetailPage({
               )}
             </div>
 
-            <div className="mt-8 rounded-2xl border bg-white p-5">
+            <div className="mt-8 rounded-[24px] border border-brand/15 bg-brand-tint/55 p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-ink">
                 Vehicle compatibility
               </h2>
@@ -337,7 +337,7 @@ export default async function ProductDetailPage({
               <form action={addToCart.bind(null, product.id)}>
                 <button
                   type="submit"
-                  className="rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
+                  className="cm-button-primary"
                 >
                   Add to Cart
                 </button>
@@ -358,14 +358,14 @@ export default async function ProductDetailPage({
         </div>
 
         <section className="mt-14 grid gap-8 lg:grid-cols-[1fr_320px]">
-          <article className="rounded-3xl border bg-white p-7 md:p-9">
+          <article className="rounded-[28px] border border-black/5 bg-white p-7 shadow-[0_16px_46px_rgba(0,0,0,0.06)] md:p-9">
             <h2 className="text-2xl font-bold text-ink">Product details</h2>
             <div className="mt-5 whitespace-pre-line leading-7 text-muted-foreground">
               {description}
             </div>
           </article>
 
-          <aside className="rounded-3xl border bg-white p-7">
+          <aside className="rounded-[28px] border border-black/5 bg-ink p-7 text-white shadow-[0_16px_46px_rgba(0,0,0,0.10)]">
             <h2 className="text-lg font-bold text-ink">Product information</h2>
             <dl className="mt-5 space-y-4 text-sm">
               {product.sku && (
