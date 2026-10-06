@@ -5,6 +5,8 @@ import { CheckCircle2, CircleAlert, CreditCard, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AdminNav } from "@/components/AdminNav";
 
+export const instant = false;
+
 export const metadata: Metadata = {
   title: "Stripe Configuration",
   robots: { index: false, follow: false },
