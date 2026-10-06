@@ -130,3 +130,39 @@ export function verifyStripeWebhookSignature(
     }
   });
 }
+
+
+export async function createStripeRefund(input: {
+  paymentIntentId: string;
+  amountCents: number;
+  idempotencyKey: string;
+}) {
+  const body = new URLSearchParams();
+  body.set("payment_intent", input.paymentIntentId);
+  body.set("amount", String(input.amountCents));
+  body.set("reason", "requested_by_customer");
+
+  const response = await fetch(`${STRIPE_API_BASE}/refunds`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getStripeSecretKey()}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Idempotency-Key": input.idempotencyKey,
+    },
+    body,
+    cache: "no-store",
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      payload?.error?.message || "Stripe refund creation failed."
+    );
+  }
+
+  return payload as {
+    id: string;
+    status?: string | null;
+  };
+}
