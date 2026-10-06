@@ -52,6 +52,7 @@ export async function updateSession(request: NextRequest) {
   "/api/chat",
   "/api/mcp",
   "/api/stripe/webhook",
+  "/api/stripe/reconcile",
   "/api/notifications/process",
   "/api/shipping/webhook",
   "/register",
