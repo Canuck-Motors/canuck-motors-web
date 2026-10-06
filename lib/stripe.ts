@@ -176,3 +176,59 @@ export async function createStripeRefund(input: {
     status?: string | null;
   };
 }
+
+
+async function stripeGet<T>(path: string): Promise<T> {
+  const response = await fetch(`${STRIPE_API_BASE}${path}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${getStripeSecretKey()}`,
+    },
+    cache: "no-store",
+  });
+
+  const payload = await response.json();
+
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || "Stripe API request failed.");
+  }
+
+  return payload as T;
+}
+
+export function retrieveStripePaymentIntent(id: string) {
+  return stripeGet<{
+    id: string;
+    status: string;
+    amount: number;
+    amount_received: number;
+    currency: string;
+    metadata?: Record<string, string>;
+  }>(`/payment_intents/${encodeURIComponent(id)}`);
+}
+
+export function retrieveStripeRefund(id: string) {
+  return stripeGet<{
+    id: string;
+    status: string | null;
+    amount: number;
+    currency: string;
+    payment_intent?: string | null;
+    metadata?: Record<string, string>;
+  }>(`/refunds/${encodeURIComponent(id)}`);
+}
+
+export function retrieveStripeDispute(id: string) {
+  return stripeGet<{
+    id: string;
+    status: string;
+    amount: number;
+    currency: string;
+    charge?: string | null;
+    payment_intent?: string | null;
+    reason?: string | null;
+    is_charge_refundable?: boolean | null;
+    evidence_details?: { due_by?: number | null };
+    metadata?: Record<string, string>;
+  }>(`/disputes/${encodeURIComponent(id)}`);
+}
