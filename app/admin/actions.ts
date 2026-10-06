@@ -39,7 +39,7 @@ export async function setInventoryQuantity(
 }
 
 export async function updateOrderStatus(orderId: string, status: string) {
-  const allowed = new Set(["cancelled", "processing", "shipped", "delivered"]);
+  const allowed = new Set(["cancelled", "processing", "packed", "ready_to_ship", "shipped", "out_for_delivery", "delivered"]);
 
   if (!allowed.has(status)) {
     throw new Error("Unsupported order status.");
@@ -57,4 +57,32 @@ export async function updateOrderStatus(orderId: string, status: string) {
   }
 
   revalidatePath("/admin/orders");
+}
+
+
+export async function createShipment(
+  orderId: string,
+  carrier: string,
+  trackingNumber: string,
+  trackingUrl = "",
+  serviceLevel = "",
+  estimatedDelivery = ""
+) {
+  const supabase = await requireStaff();
+
+  const { error } = await supabase.rpc("admin_create_shipment", {
+    p_order_id: orderId,
+    p_carrier: carrier,
+    p_tracking_number: trackingNumber,
+    p_tracking_url: trackingUrl || null,
+    p_service_level: serviceLevel || null,
+    p_estimated_delivery: estimatedDelivery || null,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath("/admin/orders");
+  revalidatePath(`/account/orders/${orderId}`);
 }
