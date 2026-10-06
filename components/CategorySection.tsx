@@ -7,7 +7,7 @@ export async function CategorySection() {
 
   const { data: categories, error } = await supabase
     .from("product_categories")
-    .select("id, category_name")
+    .select("id, category_name, slug")
     .eq("is_active", true)
     .eq("is_delete", false)
     .order("category_name");
@@ -43,7 +43,7 @@ export async function CategorySection() {
           {categories?.map((category, i) => (
             <Link
               key={category.id}
-              href={`/products?category=${category.id}`}
+              href={`/categories/${category.slug}`}
               className="group relative flex min-h-[190px] flex-col justify-between overflow-hidden rounded-[26px] border border-black/5 bg-ink p-6 shadow-[0_14px_36px_rgba(0,0,0,0.10)] transition duration-300 hover:-translate-y-1.5 hover:border-brand/40 hover:shadow-[0_22px_52px_rgba(0,0,0,0.16)]"
             >
               <span className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-brand/20 blur-3xl transition duration-300 group-hover:bg-brand/30" />
