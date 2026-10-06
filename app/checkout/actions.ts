@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeCheckoutSession } from "@/lib/stripe";
 
 function getSiteUrl() {
@@ -54,23 +55,55 @@ export async function beginCheckout() {
     redirect("/cart?checkout_error=Order%20items%20could%20not%20be%20loaded");
   }
 
-  const session = await createStripeCheckoutSession({
-    orderId: orderRow.id,
-    orderNumber: orderRow.order_number,
-    customerEmail: orderRow.customer_email,
-    successUrl: `${getSiteUrl()}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${getSiteUrl()}/cart?checkout_cancelled=1`,
-    items: items.map((item) => ({
-      name: item.product_name,
-      sku: item.sku,
-      unitAmountCents: Math.round(Number(item.unit_price) * 100),
-      quantity: item.quantity,
-    })),
-  });
+  const admin = createAdminClient();
 
-  if (!session.url) {
-    redirect("/cart?checkout_error=Stripe%20did%20not%20return%20a%20checkout%20URL");
+  try {
+    const session = await createStripeCheckoutSession({
+      orderId: orderRow.id,
+      orderNumber: orderRow.order_number,
+      customerEmail: orderRow.customer_email,
+      successUrl: `${getSiteUrl()}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${getSiteUrl()}/cart?checkout_cancelled=1`,
+      items: items.map((item) => ({
+        name: item.product_name,
+        sku: item.sku,
+        unitAmountCents: Math.round(Number(item.unit_price) * 100),
+        quantity: item.quantity,
+      })),
+    });
+
+    if (!session.url) {
+      throw new Error("Stripe did not return a checkout URL.");
+    }
+
+    const { error: paymentError } = await admin.from("payments").upsert(
+      {
+        order_id: orderRow.id,
+        provider: "stripe",
+        provider_checkout_session_id: session.id,
+        provider_payment_intent_id: session.payment_intent ?? null,
+        amount: orderRow.total_amount,
+        currency: orderRow.currency,
+        status: "pending",
+        updated_on: new Date().toISOString(),
+      },
+      { onConflict: "provider_checkout_session_id" }
+    );
+
+    if (paymentError) {
+      throw new Error("Unable to record the pending payment.");
+    }
+
+    redirect(session.url);
+  } catch (error) {
+    await admin.rpc("release_checkout_order", {
+      p_order_id: orderRow.id,
+      p_reason: "Stripe checkout session could not be created",
+    });
+
+    const message =
+      error instanceof Error ? error.message : "Unable to start checkout.";
+
+    redirect(`/cart?checkout_error=${encodeURIComponent(message)}`);
   }
-
-  redirect(session.url);
 }
