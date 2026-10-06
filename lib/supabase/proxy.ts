@@ -52,6 +52,8 @@ export async function updateSession(request: NextRequest) {
   "/api/chat",
   "/api/mcp",
   "/api/stripe/webhook",
+  "/api/notifications/process",
+  "/api/shipping/webhook",
   "/register",
   "/auth",
   "/products",
