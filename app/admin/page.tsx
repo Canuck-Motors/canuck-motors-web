@@ -5,6 +5,8 @@ import { Boxes, ClipboardList, PackageCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AdminNav } from "@/components/AdminNav";
 
+export const instant = false;
+
 export const metadata: Metadata = {
   title: "Admin Dashboard",
   robots: { index: false, follow: false },
