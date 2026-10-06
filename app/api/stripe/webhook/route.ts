@@ -9,6 +9,7 @@ type StripeEvent = {
     object: {
       id: string;
       payment_intent?: string | null;
+      payment_status?: string | null;
       metadata?: Record<string, string>;
       client_reference_id?: string | null;
     };
@@ -36,7 +37,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true });
   }
 
-  if (event.type === "checkout.session.completed") {
+  if (
+    (event.type === "checkout.session.completed" && session.payment_status === "paid") ||
+    event.type === "checkout.session.async_payment_succeeded"
+  ) {
     const { error } = await admin.rpc("finalize_checkout_order", {
       p_order_id: orderId,
       p_checkout_session_id: session.id,
