@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
 const field =
-  "w-full rounded-xl border border-input bg-white px-4 py-3 text-sm text-ink outline-none transition duration-200 focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:bg-secondary disabled:text-muted-foreground";
+  "w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 text-sm font-medium text-ink shadow-sm outline-none transition duration-200 focus:border-brand/60 focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:bg-black/[0.035] disabled:text-muted-foreground";
 
 type YearOption = {
   id: number;
@@ -36,14 +36,6 @@ type TrimOption = {
   trim_name: string;
   slug: string;
 };
-
-function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
 
 export function Hero() {
   const [supabase] = useState(() => createClient());
@@ -95,8 +87,6 @@ export function Hero() {
         .from("year")
         .select("id, year")
         .order("year", { ascending: false });
-      console.log("YEAR DATA:", data);
-      console.log("YEAR ERROR:", error);
       if (error) {
         console.error("Error loading years:", error.message);
       } else {
@@ -107,7 +97,7 @@ export function Hero() {
     };
 
     loadYears();
-  }, []);
+  }, [supabase]);
 
   // ---------------------------------------------
   // YEAR CHANGED
@@ -415,7 +405,7 @@ export function Hero() {
   };
 
   return (
-    <section className="relative isolate overflow-hidden bg-ink">
+    <section id="vehicle-finder" className="relative isolate overflow-hidden bg-ink">
       {/* Background video */}
       <video
         autoPlay
@@ -423,43 +413,60 @@ export function Hero() {
         loop
         playsInline
         preload="auto"
-        className="absolute inset-0 -z-20 h-full w-full scale-110 object-cover"
+        className="absolute inset-0 -z-20 h-full w-full scale-105 object-cover"
       >
         <source src="/hero/hero.mp4" type="video/mp4" />
       </video>
 
       {/* Dark overlay */}
-      <div className="absolute inset-0 -z-10 bg-gradient-to-b from-ink/60 via-ink/30 to-ink/70" />
+      <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(8,8,8,0.96)_0%,rgba(8,8,8,0.82)_44%,rgba(8,8,8,0.44)_100%)]" />
+      <div className="absolute inset-x-0 bottom-0 -z-10 h-48 bg-gradient-to-t from-black/70 to-transparent" />
+      <div className="absolute -right-24 top-10 -z-10 h-80 w-80 rounded-full bg-brand/20 blur-[100px]" />
 
-      <div className="mx-auto max-w-7xl px-6 pb-24 pt-20 md:pt-28">
+      <div className="cm-container pb-20 pt-16 md:pb-28 md:pt-24">
         {/* Hero text */}
         <div className="max-w-3xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-brand">
+          <div className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-3.5 py-2 text-xs font-black uppercase tracking-[0.2em] text-brand backdrop-blur">
+            <span className="h-2 w-2 rounded-full bg-brand shadow-[0_0_16px_rgba(249,115,22,0.8)]" />
             Canuck Motors
-          </p>
+          </div>
 
-          <h1 className="mt-3 text-4xl font-bold leading-tight text-white md:text-6xl">
-            North America&apos;s automotive parts experts
+          <h1 className="mt-5 max-w-4xl text-4xl font-black leading-[0.98] tracking-[-0.045em] text-white sm:text-5xl md:text-7xl">
+            Find the right part. <span className="text-brand">Fit it with confidence.</span>
           </h1>
 
-          <p className="mt-4 text-lg text-white/75">
-            Engineered for reliability. Find the perfect fit for your vehicle.
+          <p className="mt-6 max-w-2xl text-base leading-7 text-white/70 md:text-lg">
+            Search by vehicle, Canuck Motors part number, OE number, or interchange and get to compatible parts without the guesswork.
           </p>
+
+          <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold text-white/75">
+            <span>Vehicle fitment catalog</span>
+            <span className="text-brand">•</span>
+            <span>OE & interchange search</span>
+            <span className="text-brand">•</span>
+            <span>Secure checkout</span>
+          </div>
         </div>
 
         {/* Finder card */}
-        <div className="mt-10 rounded-[28px] border border-white/20 bg-white/95 p-6 shadow-2xl backdrop-blur-xl md:p-8">
-          {/* Heading */}
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-ink">
-              Find parts for your vehicle
-            </h2>
-
-            <p className="mt-1 text-sm text-muted-foreground">
-              Select your vehicle details to see compatible parts.
-            </p>
+        <div className="mt-10 overflow-hidden rounded-[30px] border border-white/10 bg-white shadow-[0_30px_80px_rgba(0,0,0,0.35)] md:mt-12">
+          <div className="border-b border-black/5 bg-[linear-gradient(90deg,#0d0d0d,#181818)] px-6 py-5 text-white md:px-8">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-brand">
+                  Vehicle Finder
+                </p>
+                <h2 className="mt-1 text-xl font-black tracking-[-0.02em] md:text-2xl">
+                  Find parts made for your vehicle
+                </h2>
+              </div>
+              <p className="text-sm font-medium text-white/55">
+                Year → Make → Model → Engine → Trim
+              </p>
+            </div>
           </div>
 
+          <div className="p-6 md:p-8">
           {/* Vehicle dropdowns */}
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             {/* YEAR */}
@@ -590,28 +597,31 @@ export function Hero() {
           </div>
 
           {/* OE search */}
-          <div className="flex flex-col gap-4 lg:flex-row">
+          <div className="rounded-[22px] border border-brand/15 bg-brand-tint/60 p-3 sm:p-4">
+          <div className="flex flex-col gap-3 lg:flex-row">
             <input
               type="text"
               value={oeNumber}
               onChange={(e) => setOeNumber(e.target.value)}
               placeholder="Search by OE Number, CM Number or Interchange"
-              className={`${field} flex-1`}
+              className={`${field} flex-1 border-brand/15`}
             />
 
             <button
               onClick={handleSearch}
-              className="rounded-xl bg-brand px-8 py-3 text-sm font-semibold text-white transition duration-200 hover:-translate-y-0.5 hover:bg-brand-dark hover:shadow-lg"
+              className="cm-button-primary min-h-[48px] px-8"
             >
               Search Parts
             </button>
 
             <button
               onClick={handleReset}
-              className="rounded-xl px-6 py-3 text-sm font-medium text-ink/70 transition hover:bg-brand-tint hover:text-brand"
+              className="min-h-[48px] rounded-full px-6 py-3 text-sm font-bold text-ink/60 transition hover:bg-white hover:text-brand"
             >
               Reset
             </button>
+          </div>
+          </div>
           </div>
         </div>
       </div>
