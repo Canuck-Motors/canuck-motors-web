@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
 import { cacheLife, cacheTag } from "next/cache";
 
 import { createPublicClient } from "@/lib/supabase/public";
@@ -25,7 +26,7 @@ async function getFeaturedProducts(): Promise<FeaturedProduct[]> {
 
   cacheTag("featured-products");
 
-  const supabase = await createPublicClient();
+  const supabase = createPublicClient();
 
   const { data: products, error } = await supabase
     .from("products")
@@ -55,39 +56,36 @@ export async function FeaturedProducts() {
 
   return (
     <section
-      className="bg-secondary py-16 md:py-20"
+      className="relative overflow-hidden bg-secondary py-20 md:py-24"
       aria-labelledby="featured-products-heading"
     >
-      <div className="mx-auto max-w-7xl px-6">
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent,rgba(249,115,22,0.035),transparent)]" />
+
+      <div className="cm-container relative">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-widest text-brand">
-              Popular
-            </p>
+            <p className="cm-eyebrow">Popular right now</p>
 
-            <h2
-              id="featured-products-heading"
-              className="mt-2 text-3xl font-bold text-ink md:text-4xl"
-            >
+            <h2 id="featured-products-heading" className="cm-section-title mt-3">
               Featured Products
             </h2>
 
-            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Explore popular replacement parts and automotive components from
-              Canuck Motors.
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
+              Explore trusted replacement parts and components from the Canuck Motors catalog.
             </p>
           </div>
 
           <Link
             href="/products"
-            className="hidden text-sm font-medium text-ink/70 transition hover:text-brand sm:block"
+            className="hidden items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-bold text-ink transition hover:border-brand/30 hover:text-brand sm:inline-flex"
           >
-            View all →
+            View all
+            <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         </div>
 
         {products.length === 0 ? (
-          <div className="mt-10 rounded-2xl border bg-white p-8 text-center">
+          <div className="cm-card mt-10 p-10 text-center">
             <p className="text-muted-foreground">
               Featured products are currently unavailable.
             </p>
@@ -95,22 +93,10 @@ export async function FeaturedProducts() {
         ) : (
           <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {products.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-              />
+              <ProductCard key={product.id} product={product} />
             ))}
           </div>
         )}
-
-        <div className="mt-8 sm:hidden">
-          <Link
-            href="/products"
-            className="text-sm font-medium text-brand"
-          >
-            View all products →
-          </Link>
-        </div>
       </div>
     </section>
   );
