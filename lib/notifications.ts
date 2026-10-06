@@ -101,13 +101,10 @@ async function sendWhatsApp(row: OutboxRow) {
 export async function processNotificationOutbox(limit = 50) {
   const admin = createAdminClient();
 
-  const { data: rows, error } = await admin
-    .from("notification_outbox")
-    .select("id, channel, recipient, event_type, template_key, payload, attempts")
-    .in("status", ["pending", "failed"])
-    .lte("next_attempt_on", new Date().toISOString())
-    .order("created_on")
-    .limit(limit);
+  const { data: rows, error } = await admin.rpc(
+    "claim_notification_outbox",
+    { p_limit: limit }
+  );
 
   if (error) {
     throw new Error(error.message);
@@ -117,13 +114,6 @@ export async function processNotificationOutbox(limit = 50) {
   let failed = 0;
 
   for (const row of (rows ?? []) as OutboxRow[]) {
-    await admin
-      .from("notification_outbox")
-      .update({
-        status: "processing",
-        attempts: row.attempts + 1,
-      })
-      .eq("id", row.id);
 
     try {
       const providerMessageId =
@@ -141,7 +131,7 @@ export async function processNotificationOutbox(limit = 50) {
 
       sent++;
     } catch (sendError) {
-      const attempts = row.attempts + 1;
+      const attempts = row.attempts;
       const delayMinutes = Math.min(60, 5 * Math.max(1, attempts));
       const nextAttempt = new Date(Date.now() + delayMinutes * 60_000).toISOString();
 
