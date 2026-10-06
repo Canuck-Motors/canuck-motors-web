@@ -79,7 +79,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
       supabase
         .from("return_requests")
         .select(
-          "id, request_type, status, reason_code, reason_text, requested_on, return_tracking_number, return_carrier"
+          "id, request_type, status, reason_code, reason_text, requested_on, return_tracking_number, return_carrier, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due"
         )
         .eq("order_id", order.id)
         .order("requested_on", { ascending: false }),
@@ -196,7 +196,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                                 )}
                                 <p className="mt-1 text-xs text-muted-foreground">
                                   {new Date(event.event_time).toLocaleString()}
-                                  {event.location ? \` · ${event.location}\` : ""}
+                                  {event.location ? ` · ${event.location}` : ""}
                                 </p>
                               </div>
                             </li>
@@ -228,7 +228,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                         </p>
                       </div>
                       <p className="font-black text-ink">
-                        $\{Number(item.line_total).toFixed(2)}
+                        ${Number(item.line_total).toFixed(2)}
                       </p>
                     </div>
 
@@ -338,6 +338,34 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                           {request.status.replaceAll("_", " ")}
                         </span>
                       </div>
+
+                      {request.request_type === "exchange" &&
+                        request.replacement_order_id && (
+                          <div className="mt-4 rounded-2xl bg-secondary/60 p-4">
+                            {Number(request.replacement_amount_due) > 0 && (
+                              <p className="text-sm font-semibold text-ink">
+                                Exchange payment due: $
+                                {Number(request.replacement_amount_due).toFixed(2)}
+                              </p>
+                            )}
+
+                            {Number(request.replacement_refund_due) > 0 && (
+                              <p className="text-sm font-semibold text-ink">
+                                Exchange refund: $
+                                {Number(request.replacement_refund_due).toFixed(2)}
+                              </p>
+                            )}
+
+                            {request.replacement_payment_url && (
+                              <a
+                                href={request.replacement_payment_url}
+                                className="cm-button-primary mt-3"
+                              >
+                                Pay exchange difference
+                              </a>
+                            )}
+                          </div>
+                        )}
                     </div>
                   ))}
                 </div>
@@ -432,23 +460,23 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-white/50">Subtotal</dt>
-                <dd className="font-bold">$\{Number(order.subtotal).toFixed(2)}</dd>
+                <dd className="font-bold">${Number(order.subtotal).toFixed(2)}</dd>
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-white/50">Shipping</dt>
                 <dd className="font-bold">
-                  $\{Number(order.shipping_amount).toFixed(2)}
+                  ${Number(order.shipping_amount).toFixed(2)}
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-white/50">Tax</dt>
-                <dd className="font-bold">$\{Number(order.tax_amount).toFixed(2)}</dd>
+                <dd className="font-bold">${Number(order.tax_amount).toFixed(2)}</dd>
               </div>
               <div className="border-t border-white/10 pt-4">
                 <div className="flex justify-between gap-4 text-lg font-black">
                   <dt>Total</dt>
                   <dd>
-                    $\{Number(order.total_amount).toFixed(2)} {order.currency}
+                    ${Number(order.total_amount).toFixed(2)} {order.currency}
                   </dd>
                 </div>
               </div>
