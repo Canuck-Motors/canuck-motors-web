@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { Boxes, ClipboardList, CreditCard, Gauge, Home } from "lucide-react";
+import { Boxes, ClipboardList, CreditCard, Gauge, Home, RotateCcw, UploadCloud } from "lucide-react";
 
 const links = [
   { href: "/admin", label: "Overview", icon: Gauge },
   { href: "/admin/orders", label: "Orders", icon: ClipboardList },
   { href: "/admin/inventory", label: "Inventory", icon: Boxes },
+  { href: "/admin/inventory/import", label: "Import Stock", icon: UploadCloud },
+  { href: "/admin/returns", label: "Returns", icon: RotateCcw },
   { href: "/admin/stripe", label: "Stripe", icon: CreditCard },
 ];
 
