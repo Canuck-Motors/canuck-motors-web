@@ -186,6 +186,8 @@ export async function createExchangeReplacement(input: {
   const amountDue = Number(preparedRow.amount_due);
   const refundDue = Number(preparedRow.refund_due);
 
+  let exchangeDifferenceRefundCompleted = false;
+
   try {
     if (refundDue > 0) {
       if (
@@ -219,6 +221,19 @@ export async function createExchangeReplacement(input: {
         p_request_id: input.requestId,
         p_refund_due: refundDue,
       });
+
+      exchangeDifferenceRefundCompleted = true;
+
+      if (amountDue === 0) {
+        const { error: exchangeFinalizeError } = await admin.rpc(
+          "finalize_exchange_replacement_no_charge",
+          { p_order_id: preparedRow.replacement_order_id }
+        );
+
+        if (exchangeFinalizeError) {
+          throw new Error(exchangeFinalizeError.message);
+        }
+      }
     }
 
     if (amountDue > 0) {
@@ -328,12 +343,21 @@ export async function createExchangeReplacement(input: {
       }
     }
   } catch (error) {
-    if (amountDue > 0) {
+    if (!exchangeDifferenceRefundCompleted) {
       await admin.rpc("release_exchange_replacement", {
         p_order_id: preparedRow.replacement_order_id,
         p_reason: "Exchange replacement setup failed",
       });
+    } else {
+      await admin
+        .from("orders")
+        .update({
+          status: "exception",
+          updated_on: new Date().toISOString(),
+        })
+        .eq("id", preparedRow.replacement_order_id);
     }
+
     throw error;
   }
 
