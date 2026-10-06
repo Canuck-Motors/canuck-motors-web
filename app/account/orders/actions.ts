@@ -43,6 +43,8 @@ export async function requestCancellation(orderId: string, reason: string) {
           paymentIntentId: refund.payment_intent_id,
           amountCents: Math.round(Number(refund.amount) * 100),
           idempotencyKey: refund.idempotency_key,
+          refundId: refund.refund_id,
+          orderId,
         });
 
         const { error: finalizeError } = await admin.rpc("finalize_refund", {
