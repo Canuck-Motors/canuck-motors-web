@@ -39,20 +39,63 @@ async function searchProducts(searchTerm: string): Promise<SearchProduct[]> {
 
   const supabase = createPublicClient();
 
-  const { data, error } = await supabase
-    .from("products")
-    .select("id, product_name, price, sku, slug, title_tag")
-    .eq("is_active", true)
-    .eq("is_delete", false)
-    .or(`sku.ilike.%${searchTerm}%,product_name.ilike.%${searchTerm}%`)
-    .limit(50);
+  const [{ data: directProducts, error: directError }, { data: interchangeRows }, { data: oeRows }] =
+    await Promise.all([
+      supabase
+        .from("products")
+        .select("id, product_name, price, sku, slug, title_tag")
+        .eq("is_active", true)
+        .eq("is_delete", false)
+        .or(`sku.ilike.%${searchTerm}%,product_name.ilike.%${searchTerm}%`)
+        .limit(50),
+      supabase
+        .from("product_interchanges")
+        .select("product_id")
+        .ilike("interchange_number", `%${searchTerm}%`)
+        .limit(100),
+      supabase
+        .from("product_oe_numbers")
+        .select("product_id")
+        .ilike("oe_number", `%${searchTerm}%`)
+        .limit(100),
+    ]);
 
-  if (error) {
-    console.error("Product search failed:", error.message);
+  if (directError) {
+    console.error("Direct product search failed:", directError.message);
+  }
+
+  const matchedProductIds = new Set<number>();
+
+  for (const product of directProducts ?? []) {
+    matchedProductIds.add(product.id);
+  }
+
+  for (const row of interchangeRows ?? []) {
+    matchedProductIds.add(row.product_id);
+  }
+
+  for (const row of oeRows ?? []) {
+    matchedProductIds.add(row.product_id);
+  }
+
+  if (matchedProductIds.size === 0) {
     return [];
   }
 
-  return data ?? [];
+  const { data: products, error } = await supabase
+    .from("products")
+    .select("id, product_name, price, sku, slug, title_tag")
+    .in("id", Array.from(matchedProductIds))
+    .eq("is_active", true)
+    .eq("is_delete", false)
+    .limit(50);
+
+  if (error) {
+    console.error("Product search result lookup failed:", error.message);
+    return [];
+  }
+
+  return products ?? [];
 }
 
 export async function generateMetadata({
@@ -95,7 +138,8 @@ export default async function ProductSearchPage({
               : "Search Canuck Motors products"}
           </h1>
           <p className="mt-4 text-muted-foreground">
-            Results currently match Canuck Motors part numbers and product names.
+            Search by Canuck Motors part number, product name, interchange number,
+            or OE number.
           </p>
         </header>
 
@@ -103,7 +147,7 @@ export default async function ProductSearchPage({
           <section className="mt-10 rounded-2xl border bg-white p-10 text-center">
             <h2 className="text-xl font-bold text-ink">No products found</h2>
             <p className="mt-2 text-muted-foreground">
-              Try another Canuck Motors part number or product name.
+              Try another part number, OE number, interchange number, or product name.
             </p>
           </section>
         ) : (
