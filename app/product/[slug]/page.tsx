@@ -119,6 +119,8 @@ async function getCompatibilityCount(productId: number) {
   return count ?? 0;
 }
 
+export const instant = false;
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
