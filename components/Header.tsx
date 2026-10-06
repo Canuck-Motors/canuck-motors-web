@@ -96,7 +96,7 @@ export default function Header() {
           <input
             id="site-search"
             type="search"
-            placeholder="Search part number, OE number or product..."
+            placeholder="Search part number or product..."
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
