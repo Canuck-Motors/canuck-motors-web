@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { removeCartItem, updateCartQuantity } from "./actions";
+import { beginCheckout } from "@/app/checkout/actions";
 
 export const metadata: Metadata = {
   title: "Your Cart",
@@ -12,7 +13,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function CartPage() {
+type PageProps = {
+  searchParams: Promise<{
+    checkout_error?: string;
+    checkout_cancelled?: string;
+  }>;
+};
+
+export default async function CartPage({ searchParams }: PageProps) {
+  const { checkout_error: checkoutError, checkout_cancelled: checkoutCancelled } =
+    await searchParams;
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
 
@@ -120,6 +130,24 @@ export default async function CartPage() {
             Continue shopping
           </Link>
         </div>
+
+        {checkoutError && (
+          <div
+            role="alert"
+            className="mt-6 rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700"
+          >
+            Checkout could not start: {checkoutError}
+          </div>
+        )}
+
+        {checkoutCancelled && (
+          <div
+            role="status"
+            className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+          >
+            Checkout was cancelled. Your items are still reserved temporarily until the checkout session expires.
+          </div>
+        )}
 
         {cartLines.length === 0 ? (
           <div className="mt-8 rounded-3xl border bg-white p-10 text-center">
@@ -231,16 +259,16 @@ export default async function CartPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                disabled
-                className="mt-6 w-full rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white opacity-60"
-                title="Stripe checkout is the next implementation step"
-              >
-                Checkout
-              </button>
+              <form action={beginCheckout}>
+                <button
+                  type="submit"
+                  className="mt-6 w-full rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
+                >
+                  Secure Checkout
+                </button>
+              </form>
               <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                Checkout will be enabled after server-side Stripe pricing and inventory validation are connected.
+                Pricing is revalidated on the server before payment. Checkout is blocked until inventory is configured for every item.
               </p>
             </aside>
           </div>
