@@ -13,15 +13,15 @@ type ProductCardProps = {
 
 export function ProductCard({ product }: ProductCardProps) {
   const productUrl = product.slug
-    ? \`/product/\${product.slug}\`
-    : \`/product/\${product.id}\`;
+    ? `/product/${product.slug}`
+    : `/product/${product.id}`;
 
   return (
     <article className="group overflow-hidden rounded-2xl border border-border bg-white transition duration-300 hover:-translate-y-1 hover:shadow-lg">
       <Link
         href={productUrl}
         className="block"
-        aria-label={\`View \${product.product_name}\`}
+        aria-label={`View ${product.product_name}`}
       >
         <div className="relative aspect-[4/3] bg-secondary">
           <div className="flex h-full items-center justify-center">
@@ -38,7 +38,7 @@ export function ProductCard({ product }: ProductCardProps) {
 
         <div className="p-5">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {product.sku ? \`Canuck Motors · \${product.sku}\` : "Canuck Motors"}
+            {product.sku ? `Canuck Motors · ${product.sku}` : "Canuck Motors"}
           </p>
 
           <h2 className="mt-2 line-clamp-2 min-h-[48px] text-base font-semibold leading-6 text-ink">
@@ -49,7 +49,7 @@ export function ProductCard({ product }: ProductCardProps) {
             <div>
               {product.price !== null ? (
                 <p className="text-xl font-bold text-ink">
-                  $\{Number(product.price).toFixed(2)}
+                  ${Number(product.price).toFixed(2)}
                 </p>
               ) : (
                 <p className="text-sm font-medium text-muted-foreground">
