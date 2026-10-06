@@ -49,7 +49,7 @@ export default async function CartPage({ searchParams }: PageProps) {
 
   if (!cart) {
     return (
-      <main className="min-h-screen bg-secondary/40">
+      <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
         <div className="mx-auto max-w-5xl px-6 py-14">
           <h1 className="text-4xl font-bold text-ink">Your cart</h1>
           <div className="mt-8 rounded-3xl border bg-white p-10 text-center">
@@ -117,8 +117,8 @@ export default async function CartPage({ searchParams }: PageProps) {
   );
 
   return (
-    <main className="min-h-screen bg-secondary/40">
-      <div className="mx-auto max-w-6xl px-6 py-14">
+    <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
+      <div className="cm-container py-12 md:py-16">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand">
@@ -164,9 +164,9 @@ export default async function CartPage({ searchParams }: PageProps) {
                 return (
                   <article
                     key={line.id}
-                    className="grid gap-5 rounded-2xl border bg-white p-5 sm:grid-cols-[120px_1fr_auto]"
+                    className="grid gap-5 rounded-[24px] border border-black/5 bg-white p-5 shadow-[0_12px_34px_rgba(0,0,0,0.05)] transition hover:border-brand/20 hover:shadow-[0_18px_46px_rgba(0,0,0,0.08)] sm:grid-cols-[120px_1fr_auto]"
                   >
-                    <div className="flex aspect-square items-center justify-center rounded-xl bg-secondary text-center text-xs text-muted-foreground">
+                    <div className="flex aspect-square items-center justify-center rounded-2xl border border-brand/10 bg-brand-tint/50 text-center text-xs font-semibold text-brand">
                       Product image
                     </div>
 
@@ -235,7 +235,7 @@ export default async function CartPage({ searchParams }: PageProps) {
               })}
             </section>
 
-            <aside className="h-fit rounded-3xl border bg-white p-6">
+            <aside className="h-fit rounded-[28px] border border-black/5 bg-ink p-6 text-white shadow-[0_20px_55px_rgba(0,0,0,0.12)]">
               <h2 className="text-xl font-bold text-ink">Order summary</h2>
               <dl className="mt-6 space-y-4 text-sm">
                 <div className="flex justify-between gap-4">
@@ -262,7 +262,7 @@ export default async function CartPage({ searchParams }: PageProps) {
               <form action={beginCheckout}>
                 <button
                   type="submit"
-                  className="mt-6 w-full rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition hover:bg-brand-dark"
+                  className="cm-button-primary mt-6 w-full"
                 >
                   Secure Checkout
                 </button>
