@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { cacheLife, cacheTag } from "next/cache";
-import Header from "@/components/Header";
-import Navbar from "@/components/Navbar";
 import { createPublicClient } from "@/lib/supabase/public";
 import { BrandSearchGrid } from "@/components/BrandSearchGrid";
 
@@ -32,9 +30,7 @@ export default async function BrandsPage() {
 
   return (
     <>
-      <Header />
-      <Navbar />
-      <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
+      <main className="min-h-screen bg-white">
         <section className="bg-ink text-white">
           <div className="cm-container py-14 md:py-20">
             <p className="cm-eyebrow">Fitment catalog</p>

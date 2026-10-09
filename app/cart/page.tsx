@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
+import { imageUrl } from "@/lib/product-images";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { removeCartItem, updateCartQuantity } from "./actions";
@@ -51,7 +53,7 @@ export default async function CartPage({ searchParams }: PageProps) {
 
   if (!cart) {
     return (
-      <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
+      <main className="min-h-screen bg-white">
         <div className="mx-auto max-w-5xl px-6 py-14">
           <h1 className="text-4xl font-bold text-ink">Your cart</h1>
           <div className="mt-8 rounded-3xl border bg-white p-10 text-center">
@@ -87,7 +89,7 @@ export default async function CartPage({ searchParams }: PageProps) {
     productIds.length > 0
       ? await supabase
           .from("products")
-          .select("id, product_name, sku, slug, price")
+          .select("id, product_name, sku, slug, price, product_images ( path, sort_order )")
           .in("id", productIds)
           .eq("is_active", true)
           .eq("is_delete", false)
@@ -109,6 +111,7 @@ export default async function CartPage({ searchParams }: PageProps) {
         sku: string | null;
         slug: string | null;
         price: number | null;
+        product_images?: { path: string; sort_order: number }[] | null;
       };
     }>;
 
@@ -119,7 +122,7 @@ export default async function CartPage({ searchParams }: PageProps) {
   );
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
+    <main className="min-h-screen bg-white">
       <div className="cm-container py-12 md:py-16">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -168,9 +171,29 @@ export default async function CartPage({ searchParams }: PageProps) {
                     key={line.id}
                     className="grid gap-5 rounded-[24px] border border-black/5 bg-white p-5 shadow-[0_12px_34px_rgba(0,0,0,0.05)] transition hover:border-brand/20 hover:shadow-[0_18px_46px_rgba(0,0,0,0.08)] sm:grid-cols-[120px_1fr_auto]"
                   >
-                    <div className="flex aspect-square items-center justify-center rounded-2xl border border-brand/10 bg-brand-tint/50 text-center text-xs font-semibold text-brand">
-                      Product image
-                    </div>
+                    {(() => {
+                      const main = [...(line.product.product_images ?? [])].sort(
+                        (a, b) => a.sort_order - b.sort_order,
+                      )[0];
+                      return main ? (
+                        <Link
+                          href={productHref}
+                          className="relative block aspect-square overflow-hidden rounded-2xl border border-black/5 bg-white"
+                        >
+                          <Image
+                            src={imageUrl(main.path)}
+                            alt={line.product.product_name}
+                            fill
+                            sizes="120px"
+                            className="object-contain p-2"
+                          />
+                        </Link>
+                      ) : (
+                        <div className="flex aspect-square items-center justify-center rounded-2xl border border-brand/10 bg-brand-tint/50 text-center text-xs font-semibold text-brand">
+                          Photo coming soon
+                        </div>
+                      );
+                    })()}
 
                     <div>
                       <Link href={productHref} className="font-semibold text-ink hover:text-brand">

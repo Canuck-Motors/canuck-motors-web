@@ -5,6 +5,7 @@ import {
   CreditCard,
   Gauge,
   Home,
+  ImageIcon,
   RotateCcw,
   UploadCloud,
 } from "lucide-react";
@@ -15,6 +16,7 @@ const baseLinks = [
   { href: "/admin/orders", label: "Orders", icon: ClipboardList },
   { href: "/admin/inventory", label: "Inventory", icon: Boxes },
   { href: "/admin/inventory/import", label: "Import Stock", icon: UploadCloud },
+  { href: "/admin/images", label: "Images", icon: ImageIcon },
   { href: "/admin/returns", label: "Returns", icon: RotateCcw },
 ];
 

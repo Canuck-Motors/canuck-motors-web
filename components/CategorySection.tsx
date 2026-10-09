@@ -1,3 +1,4 @@
+import { sortByTypeOrder } from "@/lib/product-order";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -5,7 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 export async function CategorySection() {
   const supabase = await createClient();
 
-  const { data: categories, error } = await supabase
+  const { data: rawCategories, error } = await supabase
     .from("product_categories")
     .select("id, category_name, slug")
     .eq("is_active", true)
@@ -15,6 +16,9 @@ export async function CategorySection() {
   if (error) {
     console.error("Error loading categories:", error.message);
   }
+
+  // Water pump first, then brake pad, timing belt kit, brake shoe
+  const categories = sortByTypeOrder(rawCategories ?? [], (c) => c.category_name);
 
   return (
     <section className="relative overflow-hidden bg-white py-20 md:py-24">
@@ -56,6 +60,7 @@ export async function CategorySection() {
                   <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
                 </span>
               </div>
+
 
               <div className="relative">
                 <p className="max-w-[16rem] text-xl font-black tracking-[-0.025em] text-white">

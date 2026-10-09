@@ -70,6 +70,7 @@ function BrandMark({ name }: { name: string }) {
 
   return (
     <div className="flex h-14 w-24 items-center justify-center rounded-2xl border border-black/5 bg-secondary/60 p-3 transition duration-300 group-hover:bg-brand-tint">
+      {/* eslint-disable-next-line @next/next/no-img-element -- small external SVG with an onError fallback */}
       <img
         src={`https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/${iconSlug}.svg`}
         alt={`${name} logo`}

@@ -1,12 +1,8 @@
 import Link from "next/link";
-import Header from "@/components/Header";
-import Navbar from "@/components/Navbar";
 
 export default function NotFound() {
   return (
     <>
-      <Header />
-      <Navbar />
       <main className="min-h-[70vh] bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_28%,#fafafa_100%)]">
         <div className="cm-container flex min-h-[70vh] items-center justify-center py-16">
           <div className="max-w-2xl text-center">

@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Header from "@/components/Header";
-import Navbar from "@/components/Navbar";
 
 export const metadata: Metadata = {
   title: "About Us",
@@ -13,8 +11,6 @@ export const metadata: Metadata = {
 export default function AboutPage() {
   return (
     <>
-      <Header />
-      <Navbar />
       <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
         <section className="bg-ink text-white">
           <div className="cm-container py-14 md:py-20">

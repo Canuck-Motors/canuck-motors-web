@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cacheLife, cacheTag } from "next/cache";
-import Header from "@/components/Header";
-import Navbar from "@/components/Navbar";
 import { createPublicClient } from "@/lib/supabase/public";
 
 type PageProps = { params: Promise<{ slug: string }> };
@@ -60,11 +58,10 @@ export default async function BrandPage({ params }: PageProps) {
 
   return (
     <>
-      <Header />
-      <Navbar />
-      <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
-        <section className="bg-ink text-white">
-          <div className="cm-container py-14 md:py-20">
+      <main className="min-h-screen bg-white">
+        <section className="relative overflow-hidden bg-ink text-white">
+          <div className="cm-neon" aria-hidden="true" data-brand={result.brand.manufacturer_name} />
+          <div className="cm-container relative z-10 py-14 md:py-20">
             <Link href="/brands" className="text-sm font-bold text-brand hover:underline">
               All vehicle brands
             </Link>
@@ -72,8 +69,8 @@ export default async function BrandPage({ params }: PageProps) {
               {result.brand.manufacturer_name}
             </h1>
             <p className="mt-5 max-w-2xl text-white/65">
-              Select your model, then use the vehicle finder to confirm year, engine,
-              trim, and compatible parts.
+              Select your model to see the parts that fit, then confirm your year and
+              engine before ordering.
             </p>
             <Link href="/#vehicle-finder" className="cm-button-primary mt-7">
               Open vehicle finder
@@ -94,12 +91,14 @@ export default async function BrandPage({ params }: PageProps) {
           ) : (
             <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {result.models.map((model) => (
-                <div
+                <Link
                   key={model.id}
-                  className="rounded-[22px] border border-black/5 bg-white p-5 font-bold text-ink shadow-[0_10px_30px_rgba(0,0,0,0.05)]"
+                  href={`/brands/${result.brand.slug}/${model.slug}`}
+                  className="group flex items-center justify-between rounded-[22px] border border-black/5 bg-white p-5 font-bold text-ink shadow-[0_10px_30px_rgba(0,0,0,0.05)] transition hover:-translate-y-1 hover:border-brand/40 hover:text-brand"
                 >
                   {model.model_name}
-                </div>
+                  <span aria-hidden="true" className="transition group-hover:translate-x-1">→</span>
+                </Link>
               ))}
             </div>
           )}

@@ -43,7 +43,7 @@ async function searchProducts(searchTerm: string): Promise<SearchProduct[]> {
     await Promise.all([
       supabase
         .from("products")
-        .select("id, product_name, price, sku, slug, title_tag")
+        .select("id, product_name, price, sku, slug, title_tag, product_images ( path, sort_order )")
         .eq("is_active", true)
         .eq("is_delete", false)
         .or(`sku.ilike.%${searchTerm}%,product_name.ilike.%${searchTerm}%`)
@@ -84,7 +84,7 @@ async function searchProducts(searchTerm: string): Promise<SearchProduct[]> {
 
   const { data: products, error } = await supabase
     .from("products")
-    .select("id, product_name, price, sku, slug, title_tag")
+    .select("id, product_name, price, sku, slug, title_tag, product_images ( path, sort_order )")
     .in("id", Array.from(matchedProductIds))
     .eq("is_active", true)
     .eq("is_delete", false)

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import RoadLoader from "@/components/RoadLoader";
 import { createClient } from "@/lib/supabase/client";
 // import { useRouter } from "next/router";
 import { useRouter } from "next/navigation";
@@ -51,6 +52,7 @@ export function Hero() {
   const [trim, setTrim] = useState("");
 
   const [oeNumber, setOeNumber] = useState("");
+  const [pending, startTransition] = useTransition();
 
   // ---------------------------------------------
   // DROPDOWN DATA
@@ -330,61 +332,36 @@ export function Hero() {
   // ---------------------------------------------
 
   const handleSearch = () => {
-  if (oeNumber.trim()) {
-    router.push(
-      `/products/search/${encodeURIComponent(oeNumber.trim())}`
-    );
+  const go = (url: string) => startTransition(() => router.push(url));
+  const query = oeNumber.trim();
+
+  if (query) {
+    go(`/products/search/${encodeURIComponent(query)}`);
     return;
   }
 
-  if (!year || !make || !model || !engine) {
-    alert("Please select Year, Make, Model and Engine.");
-    return;
+  const selectedYear = years.find((item) => item.id === Number(year));
+  const selectedMake = manufacturers.find((item) => item.id === Number(make));
+  const selectedModel = models.find((item) => item.id === Number(model));
+  const selectedEngine = engines.find((item) => item.id === Number(engine));
+  const selectedTrim = trims.find((item) => item.id === Number(trim));
+
+  const candidates = [
+    selectedYear?.year,
+    selectedMake?.slug,
+    selectedModel?.slug,
+    selectedEngine?.slug,
+    selectedTrim?.slug,
+  ];
+
+  const segments: string[] = [];
+  for (const segment of candidates) {
+    if (segment === undefined) break;
+    segments.push(String(segment));
   }
 
-  const selectedYear = years.find(
-    (item) => item.id === Number(year)
-  );
-
-  const selectedMake = manufacturers.find(
-    (item) => item.id === Number(make)
-  );
-
-  const selectedModel = models.find(
-    (item) => item.id === Number(model)
-  );
-
-  const selectedEngine = engines.find(
-    (item) => item.id === Number(engine)
-  );
-
-  const selectedTrim = trims.find(
-    (item) => item.id === Number(trim)
-  );
-
-  if (
-    !selectedYear ||
-    !selectedMake ||
-    !selectedModel ||
-    !selectedEngine
-  ) {
-    return;
-  }
-
-  let url =
-    `/products/` +
-    `${selectedYear.year}/` +
-    `${selectedMake.slug}/` +
-    `${selectedModel.slug}/` +
-    `${selectedEngine.slug}`;
-
-  if (selectedTrim) {
-    url += `/${selectedTrim.slug}`;
-  }
-
-  router.push(url);
-  };
-
+  go(segments.length ? `/products/${segments.join("/")}` : "/products");
+};
   // ---------------------------------------------
   // RESET
   // ---------------------------------------------
@@ -406,6 +383,11 @@ export function Hero() {
 
   return (
     <section id="vehicle-finder" className="relative isolate overflow-hidden bg-ink">
+      {pending && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white/90 backdrop-blur-sm">
+          <RoadLoader />
+        </div>
+      )}
       {/* Background video */}
       <video
         autoPlay
@@ -423,7 +405,7 @@ export function Hero() {
       <div className="absolute inset-x-0 bottom-0 -z-10 h-48 bg-gradient-to-t from-black/70 to-transparent" />
       <div className="absolute -right-24 top-10 -z-10 h-80 w-80 rounded-full bg-brand/20 blur-[100px]" />
 
-      <div className="cm-container pb-20 pt-16 md:pb-28 md:pt-24">
+      <div className="cm-container pb-16 pt-8 md:pb-24 md:pt-10">
         {/* Hero text */}
         <div className="max-w-3xl">
           <div className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-3.5 py-2 text-xs font-black uppercase tracking-[0.2em] text-brand backdrop-blur">
@@ -589,38 +571,21 @@ export function Hero() {
             </div>
           </div>
 
-          {/* Divider */}
-          <div className="my-7 flex items-center gap-4 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-            <span className="h-px flex-1 bg-border" />
-            or
-            <span className="h-px flex-1 bg-border" />
-          </div>
-
-          {/* OE search */}
-          <div className="rounded-[22px] border border-brand/15 bg-brand-tint/60 p-3 sm:p-4">
-          <div className="flex flex-col gap-3 lg:flex-row">
-            <input
-              type="text"
-              value={oeNumber}
-              onChange={(e) => setOeNumber(e.target.value)}
-              placeholder="Search by OE Number, CM Number or Interchange"
-              className={`${field} flex-1 border-brand/15`}
-            />
-
+          {/* Search / reset (the vehicle finder is the only search here) */}
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
             <button
               onClick={handleSearch}
-              className="cm-button-primary min-h-[48px] px-8"
+              className="cm-button-primary min-h-[48px] flex-1 px-8"
             >
-              Search Parts
+              {pending ? "Searching..." : "Search Parts"}
             </button>
 
             <button
               onClick={handleReset}
-              className="min-h-[48px] rounded-full px-6 py-3 text-sm font-bold text-ink/60 transition hover:bg-white hover:text-brand"
+              className="min-h-[48px] rounded-full px-6 py-3 text-sm font-bold text-ink/60 transition hover:bg-brand-tint hover:text-brand"
             >
               Reset
             </button>
-          </div>
           </div>
           </div>
         </div>

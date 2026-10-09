@@ -245,9 +245,17 @@ export default async function ReturnsAdminPage() {
                                 <select
                                   name="replacement_product_id"
                                   defaultValue={String(
-                                    Array.isArray(request.return_request_items?.[0]?.order_items)
-                                      ? request.return_request_items?.[0]?.order_items?.[0]?.product_id ?? ""
-                                      : request.return_request_items?.[0]?.order_items?.product_id ?? ""
+                                    (() => {
+                                      const orderItems = (
+                                        request.return_request_items?.[0] as
+                                          | { order_items?: unknown }
+                                          | undefined
+                                      )?.order_items;
+                                      const first = Array.isArray(orderItems)
+                                        ? orderItems[0]
+                                        : orderItems;
+                                      return (first as { product_id?: number } | undefined)?.product_id ?? "";
+                                    })()
                                   )}
                                   className="w-full rounded-xl border border-white/10 bg-white px-3 py-2.5 text-sm text-ink"
                                   required

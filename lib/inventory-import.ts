@@ -187,7 +187,7 @@ function normalizeRows(rows: string[][]): ImportRow[] {
       }
 
       if (!Number.isInteger(quantity)) {
-        throw new Error(\`Row \${index + 2}: quantity must be a whole number.\`);
+        throw new Error(`Row ${index + 2}: quantity must be a whole number.`);
       }
 
       return {

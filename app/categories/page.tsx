@@ -1,9 +1,8 @@
+import { sortByTypeOrder } from "@/lib/product-order";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { cacheLife, cacheTag } from "next/cache";
-import Header from "@/components/Header";
-import Navbar from "@/components/Navbar";
 import { createPublicClient } from "@/lib/supabase/public";
 
 export const metadata: Metadata = {
@@ -27,7 +26,7 @@ async function getCategories() {
     .order("category_name");
 
   if (error) throw new Error("Unable to load categories.");
-  return data ?? [];
+  return sortByTypeOrder(data ?? [], (c) => c.category_name);
 }
 
 export default async function CategoriesPage() {
@@ -35,9 +34,7 @@ export default async function CategoriesPage() {
 
   return (
     <>
-      <Header />
-      <Navbar />
-      <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
+      <main className="min-h-screen bg-white">
         <section className="bg-ink text-white">
           <div className="cm-container py-14 md:py-20">
             <p className="cm-eyebrow">Browse smarter</p>
@@ -57,13 +54,13 @@ export default async function CategoriesPage() {
               <Link
                 key={category.id}
                 href={`/categories/${category.slug}`}
-                className="group relative min-h-[210px] overflow-hidden rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_14px_38px_rgba(0,0,0,0.06)] transition hover:-translate-y-1 hover:border-brand/25 hover:shadow-[0_22px_52px_rgba(0,0,0,0.10)]"
+                className="group relative flex min-h-[210px] flex-col justify-between overflow-hidden rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_14px_38px_rgba(0,0,0,0.06)] transition hover:-translate-y-1 hover:border-brand/25 hover:shadow-[0_22px_52px_rgba(0,0,0,0.10)]"
               >
-                <span className="text-sm font-black tracking-[0.16em] text-brand">
+                <span className="relative text-sm font-black tracking-[0.16em] text-brand">
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 <div className="absolute -right-16 -top-16 h-44 w-44 rounded-full bg-brand/10 blur-3xl transition group-hover:bg-brand/20" />
-                <div className="absolute bottom-6 left-6 right-6 flex items-end justify-between gap-4">
+                <div className="relative flex items-end justify-between gap-4">
                   <div>
                     <h2 className="text-2xl font-black tracking-[-0.03em] text-ink">
                       {category.category_name}

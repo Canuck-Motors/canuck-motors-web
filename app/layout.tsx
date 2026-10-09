@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Header from "@/components/Header";
+import Navbar from "@/components/Navbar";
 import { Outfit } from "next/font/google";
 import ChatLauncher from "@/components/chat/ChatLauncher";
 import "./globals.css";
@@ -38,9 +40,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${outfit.variable} ${outfit.className} antialiased`}>
-        {children}
-        <ChatLauncher />
-      </body>
+  <Header />
+  <Navbar />
+  {children}
+  <ChatLauncher />
+</body>
     </html>
   );
 }

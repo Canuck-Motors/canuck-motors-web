@@ -4,6 +4,11 @@ import { cacheLife, cacheTag } from "next/cache";
 import { notFound } from "next/navigation";
 import { createPublicClient } from "@/lib/supabase/public";
 import { addToCart } from "@/app/cart/actions";
+import ProductTabs from "@/components/ProductTabs";
+import AddToCartButton from "@/components/AddToCartButton";
+import ProductGallery from "@/components/ProductGallery";
+import { getProductImages } from "@/lib/product-images";
+import { getFitments, getInterchanges, getOeNumbers, getSpecs } from "@/lib/product-details";
 
 type PageProps = {
   params: Promise<{
@@ -173,10 +178,16 @@ export default async function ProductDetailPage({
     notFound();
   }
 
-  const [categoryName, compatibilityCount] = await Promise.all([
-    getCategoryName(product.product_category_id),
-    getCompatibilityCount(product.id),
-  ]);
+  const [categoryName, compatibilityCount, specs, fitments, oe, interchanges, images] =
+    await Promise.all([
+      getCategoryName(product.product_category_id),
+      getCompatibilityCount(product.id),
+      getSpecs(product.id),
+      getFitments(product.id),
+      getOeNumbers(product.id),
+      getInterchanges(product.id),
+      getProductImages(product.id),
+    ]);
 
   const canonicalSlug = product.slug ?? String(product.id);
   const productUrl = `/product/${canonicalSlug}`;
@@ -196,6 +207,16 @@ export default async function ProductDetailPage({
       name: "Canuck Motors",
     },
     category: categoryName || undefined,
+    ...(images.length ? { image: images.map((i) => i.url) } : {}),
+    ...(specs.length
+      ? {
+          additionalProperty: specs.map((x) => ({
+            "@type": "PropertyValue",
+            name: x.name,
+            value: x.value,
+          })),
+        }
+      : {}),
     url: productUrl,
     ...(product.price !== null
       ? {
@@ -235,7 +256,7 @@ export default async function ProductDetailPage({
   };
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
+    <main className="min-h-screen bg-white">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -275,12 +296,7 @@ export default async function ProductDetailPage({
             aria-label={`${product.product_name} image`}
             className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-[30px] border border-black/5 bg-white p-8 shadow-[0_18px_55px_rgba(0,0,0,0.07)] before:absolute before:-right-24 before:-top-24 before:h-72 before:w-72 before:rounded-full before:bg-brand/10 before:blur-3xl"
           >
-            <div className="text-center">
-              <p className="text-base font-semibold text-ink">Product Image</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Images will be connected from the Tooling assets later.
-              </p>
-            </div>
+            <ProductGallery images={images} name={product.product_name} />
           </section>
 
           <section>
@@ -336,14 +352,7 @@ export default async function ProductDetailPage({
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              <form action={addToCart.bind(null, product.id)}>
-                <button
-                  type="submit"
-                  className="cm-button-primary"
-                >
-                  Add to Cart
-                </button>
-              </form>
+              <AddToCartButton action={addToCart.bind(null, product.id)} />
 
               {product.amazon_url && (
                 <a
@@ -359,46 +368,13 @@ export default async function ProductDetailPage({
           </section>
         </div>
 
-        <section className="mt-14 grid gap-8 lg:grid-cols-[1fr_320px]">
-          <article className="rounded-[28px] border border-black/5 bg-white p-7 shadow-[0_16px_46px_rgba(0,0,0,0.06)] md:p-9">
-            <h2 className="text-2xl font-bold text-ink">Product details</h2>
-            <div className="mt-5 whitespace-pre-line leading-7 text-muted-foreground">
-              {description}
-            </div>
-          </article>
-
-          <aside className="rounded-[28px] border border-black/5 bg-ink p-7 text-white shadow-[0_16px_46px_rgba(0,0,0,0.10)]">
-            <h2 className="text-lg font-bold text-white">Product information</h2>
-            <dl className="mt-5 space-y-4 text-sm">
-              {product.sku && (
-                <div>
-                  <dt className="text-white/45">Part number</dt>
-                  <dd className="mt-1 font-semibold text-white">{product.sku}</dd>
-                </div>
-              )}
-              {categoryName && (
-                <div>
-                  <dt className="text-white/45">Category</dt>
-                  <dd className="mt-1 font-semibold text-white">{categoryName}</dd>
-                </div>
-              )}
-              {product.position && (
-                <div>
-                  <dt className="text-white/45">Position</dt>
-                  <dd className="mt-1 font-semibold text-white">{product.position}</dd>
-                </div>
-              )}
-              {product.product_super_type && (
-                <div>
-                  <dt className="text-white/45">Product type</dt>
-                  <dd className="mt-1 font-semibold capitalize text-white">
-                    {product.product_super_type}
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </aside>
-        </section>
+        <ProductTabs
+          description={description}
+          specs={specs}
+          fitments={fitments}
+          oe={oe}
+          interchanges={interchanges}
+        />
       </div>
     </main>
   );

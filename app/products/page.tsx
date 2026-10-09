@@ -1,7 +1,7 @@
+import { sortByTypeOrder } from "@/lib/product-order";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { cacheLife, cacheTag } from "next/cache";
-import Header from "@/components/Header";
-import Navbar from "@/components/Navbar";
 import { ProductCard } from "@/components/ProductCard";
 import { createPublicClient } from "@/lib/supabase/public";
 
@@ -20,14 +20,15 @@ async function getProducts() {
   const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("products")
-    .select("id, product_name, price, slug, sku, title_tag")
+    .select("id, product_name, price, slug, sku, title_tag, product_images ( path, sort_order )")
     .eq("is_active", true)
     .eq("is_delete", false)
     .order("product_name")
-    .limit(48);
+    .limit(300);
 
   if (error) throw new Error("Unable to load products.");
-  return data ?? [];
+  // Water pumps first, then brake pads, timing belt kits, brake shoes
+  return sortByTypeOrder(data ?? []).slice(0, 48);
 }
 
 export default async function ProductsPage() {
@@ -46,8 +47,6 @@ export default async function ProductsPage() {
 
   return (
     <>
-      <Header />
-      <Navbar />
       <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_20%,#fafafa_100%)]">
         <section className="border-b border-black/5 bg-ink text-white">
           <div className="cm-container py-14 md:py-20">
@@ -68,9 +67,9 @@ export default async function ProductsPage() {
               <p className="cm-eyebrow">Catalog</p>
               <h2 className="cm-section-title mt-3">Auto Parts</h2>
             </div>
-            <a href="/#vehicle-finder" className="cm-button-dark">
+            <Link href="/#vehicle-finder" className="cm-button-dark">
               Find by vehicle
-            </a>
+            </Link>
           </div>
 
           {products.length === 0 ? (

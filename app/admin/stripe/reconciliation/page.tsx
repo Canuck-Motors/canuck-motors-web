@@ -54,7 +54,12 @@ export default async function StripeReconciliationPage() {
             </p>
           </div>
 
-          <form action={runManualStripeReconciliation}>
+          <form
+            action={async () => {
+              "use server";
+              await runManualStripeReconciliation();
+            }}
+          >
             <button type="submit" className="cm-button-primary gap-2">
               <RefreshCw className="h-4 w-4" aria-hidden="true" />
               Run reconciliation

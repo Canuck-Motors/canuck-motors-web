@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cacheLife, cacheTag } from "next/cache";
-import Header from "@/components/Header";
-import Navbar from "@/components/Navbar";
 import { ProductCard } from "@/components/ProductCard";
 import { createPublicClient } from "@/lib/supabase/public";
 
@@ -27,7 +25,7 @@ async function getCategory(slug: string) {
 
   const { data: products } = await supabase
     .from("products")
-    .select("id, product_name, price, slug, sku, title_tag")
+    .select("id, product_name, price, slug, sku, title_tag, product_images ( path, sort_order )")
     .eq("product_category_id", category.id)
     .eq("is_active", true)
     .eq("is_delete", false)
@@ -68,8 +66,6 @@ export default async function CategoryPage({ params }: PageProps) {
 
   return (
     <>
-      <Header />
-      <Navbar />
       <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
         <section className="bg-ink text-white">
           <div className="cm-container py-14 md:py-20">

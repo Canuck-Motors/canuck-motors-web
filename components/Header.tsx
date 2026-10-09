@@ -75,8 +75,8 @@ export default function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-black/5 bg-white/95 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-xl">
-      <div className="cm-container flex items-center gap-3 py-3 md:gap-6">
+    <header className="sticky top-0 z-50 w-full border-b border-black/5 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+      <div className="flex w-full items-center gap-3 px-3 py-3 sm:px-5 md:gap-6">
         <Link
           href="/"
           aria-label="Canuck Motors home"
@@ -88,7 +88,7 @@ export default function Header() {
             width={110}
             height={46}
             priority
-            className="h-10 w-auto md:h-11"
+            className="-ml-1 h-10 w-auto md:h-11"
           />
         </Link>
 
@@ -151,6 +151,7 @@ export default function Header() {
 
           <Link
             href="/cart"
+            data-cart-target
             className="relative inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-bold text-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-brand"
           >
             <ShoppingCart className="h-4 w-4" aria-hidden="true" />

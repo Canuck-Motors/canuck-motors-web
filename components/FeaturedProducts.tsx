@@ -4,6 +4,7 @@ import { cacheLife, cacheTag } from "next/cache";
 
 import { createPublicClient } from "@/lib/supabase/public";
 import { ProductCard } from "@/components/ProductCard";
+import { PRODUCT_TYPE_ORDER } from "@/lib/product-order";
 
 type FeaturedProduct = {
   id: number;
@@ -28,27 +29,44 @@ async function getFeaturedProducts(): Promise<FeaturedProduct[]> {
 
   const supabase = createPublicClient();
 
-  const { data: products, error } = await supabase
-    .from("products")
-    .select(`
-      id,
-      product_name,
-      price,
-      sku,
-      default_image,
-      slug,
-      title_tag
-    `)
-    .eq("is_active", true)
-    .eq("is_delete", false)
-    .limit(8);
+  // Two of each type, in the company's order (water pump first),
+  // preferring products that already have a photo
+  const picks = await Promise.all(
+    PRODUCT_TYPE_ORDER.map(async ({ match, exclude }) => {
+      let q = supabase
+        .from("products")
+        .select(`
+          id,
+          product_name,
+          price,
+          sku,
+          default_image,
+          slug,
+          title_tag,
+          product_images ( path, sort_order )
+        `)
+        .eq("is_active", true)
+        .eq("is_delete", false)
+        .ilike("product_name", `%${match}%`)
+        .order("product_name")
+        .limit(20);
 
-  if (error) {
-    console.error("Error loading products:", error.message);
-    return [];
-  }
+      if (exclude) q = q.not("product_name", "ilike", `%${exclude}%`);
 
-  return products ?? [];
+      const { data, error } = await q;
+      if (error) {
+        console.error("Error loading products:", error.message);
+        return [];
+      }
+
+      const rows = (data ?? []) as FeaturedProduct[];
+      const withPhoto = rows.filter((r) => (r as any).product_images?.length);
+      const withoutPhoto = rows.filter((r) => !(r as any).product_images?.length);
+      return [...withPhoto, ...withoutPhoto].slice(0, 2);
+    }),
+  );
+
+  return picks.flat();
 }
 
 export async function FeaturedProducts() {
@@ -59,7 +77,7 @@ export async function FeaturedProducts() {
       className="relative overflow-hidden bg-secondary py-20 md:py-24"
       aria-labelledby="featured-products-heading"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent,rgba(249,115,22,0.035),transparent)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent,rgba(214,40,40,0.035),transparent)]" />
 
       <div className="cm-container relative">
         <div className="flex items-end justify-between gap-4">

@@ -40,6 +40,7 @@ export async function addToCart(productId: number) {
     throw new Error("This product is unavailable.");
   }
 
+  // eslint-disable-next-line prefer-const -- cart is reassigned below
   let { data: cart, error: cartError } = await supabase
     .from("carts")
     .select("id")
@@ -102,8 +103,8 @@ export async function addToCart(productId: number) {
     }
   }
 
+  // Stay on the page: the cart animation shows the item was added
   revalidatePath("/cart");
-  redirect("/cart");
 }
 
 export async function updateCartQuantity(itemId: number, quantity: number) {
