@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { withMaterial } from "@/lib/material";
 import Image from "next/image";
 import Link from "next/link";
 import { imageUrl } from "@/lib/product-images";
@@ -182,7 +183,7 @@ export default async function CartPage({ searchParams }: PageProps) {
                         >
                           <Image
                             src={imageUrl(main.path)}
-                            alt={line.product.product_name}
+                            alt={withMaterial(line.product.product_name, line.product.sku)}
                             fill
                             sizes="120px"
                             className="object-contain p-2"
@@ -197,7 +198,7 @@ export default async function CartPage({ searchParams }: PageProps) {
 
                     <div>
                       <Link href={productHref} className="font-semibold text-ink hover:text-brand">
-                        {line.product.product_name}
+                        {withMaterial(line.product.product_name, line.product.sku)}
                       </Link>
                       {line.product.sku && (
                         <p className="mt-1 text-sm text-muted-foreground">

@@ -3,18 +3,34 @@
 import Image from "next/image";
 import Link from "next/link";
 import { Search, ShoppingCart, UserRound, LogOut } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function Header() {
   const [supabase] = useState(() => createClient());
   const router = useRouter();
+  const pathname = usePathname();
 
   const [searchText, setSearchText] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accountLabel, setAccountLabel] = useState("Account");
   const [authLoading, setAuthLoading] = useState(true);
+
+  // The header lives in the layout, so its text would otherwise stay on every
+  // page. On a search results page show what was searched; anywhere else clear it.
+  useEffect(() => {
+    const match = pathname.match(/^\/products\/search\/([^/]+)/);
+    if (match) {
+      try {
+        setSearchText(decodeURIComponent(match[1]));
+      } catch {
+        setSearchText(match[1]);
+      }
+    } else {
+      setSearchText("");
+    }
+  }, [pathname]);
 
   useEffect(() => {
     let mounted = true;

@@ -1,3 +1,4 @@
+import { findProductIds } from "@/lib/part-search";
 import type { Metadata } from "next";
 import { cacheLife, cacheTag } from "next/cache";
 import { ProductCard } from "@/components/ProductCard";
@@ -39,44 +40,7 @@ async function searchProducts(searchTerm: string): Promise<SearchProduct[]> {
 
   const supabase = createPublicClient();
 
-  const [{ data: directProducts, error: directError }, { data: interchangeRows }, { data: oeRows }] =
-    await Promise.all([
-      supabase
-        .from("products")
-        .select("id, product_name, price, sku, slug, title_tag, product_images ( path, sort_order )")
-        .eq("is_active", true)
-        .eq("is_delete", false)
-        .or(`sku.ilike.%${searchTerm}%,product_name.ilike.%${searchTerm}%`)
-        .limit(50),
-      supabase
-        .from("product_interchanges")
-        .select("product_id")
-        .ilike("interchange_number", `%${searchTerm}%`)
-        .limit(100),
-      supabase
-        .from("product_oe_numbers")
-        .select("product_id")
-        .ilike("oe_number", `%${searchTerm}%`)
-        .limit(100),
-    ]);
-
-  if (directError) {
-    console.error("Direct product search failed:", directError.message);
-  }
-
-  const matchedProductIds = new Set<number>();
-
-  for (const product of directProducts ?? []) {
-    matchedProductIds.add(product.id);
-  }
-
-  for (const row of interchangeRows ?? []) {
-    matchedProductIds.add(row.product_id);
-  }
-
-  for (const row of oeRows ?? []) {
-    matchedProductIds.add(row.product_id);
-  }
+  const matchedProductIds = await findProductIds(supabase, searchTerm);
 
   if (matchedProductIds.size === 0) {
     return [];

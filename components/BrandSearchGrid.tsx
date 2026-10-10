@@ -12,6 +12,8 @@ type Brand = {
 
 const simpleIconSlugs: Record<string, string> = {
   Acura: "acura",
+  "Alfa Romeo": "alfaromeo",
+  Lincoln: "lincoln",
   Audi: "audi",
   BMW: "bmw",
   Buick: "buick",
@@ -48,6 +50,25 @@ const simpleIconSlugs: Record<string, string> = {
   Volvo: "volvo",
 };
 
+// Official-style brand colours, used for the logo and the initials fallback.
+const brandColors: Record<string, string> = {
+  AC: "1D3E7A", "AM General": "4B5320", Acura: "1A1A1A", "Alfa Romeo": "981E32",
+  Audi: "BB0A30", BMW: "1C69D4", Buick: "1E3A8A", Cadillac: "8A6D3B",
+  Checker: "E0A800", Chevrolet: "D1A236", Chrysler: "1B3A6B", Dodge: "C8102E",
+  Eagle: "7A1F2B", Fiat: "9E1B32", Ford: "003478", Freightliner: "D71920",
+  GMC: "CC0000", Genesis: "7A5C3E", Honda: "CC0000", Hummer: "E0A800",
+  Hyundai: "002C5F", INFINITI: "1A1A1A", Isuzu: "D00000", Jaguar: "B08D3E",
+  Jeep: "3B5323", Kia: "BB162B", "Land Rover": "005A2B", Lexus: "1A1A1A",
+  Lincoln: "1F2A44", Mazda: "910A2A", "Mercedes-Benz": "00A0DC", Mercury: "8B1A1A",
+  Mini: "1A1A1A", Mitsubishi: "E60012", "Mobility Ventures": "1F4E79",
+  Nissan: "C3002F", Oldsmobile: "A6192E", Plymouth: "1F3F7A", Pontiac: "D52B1E",
+  Porsche: "B12B28", Ram: "C8102E", Saab: "00205B", Saturn: "0054A6",
+  Scion: "E51937", Shelby: "003DA5", Smart: "F5A800", Sterling: "3E5C76",
+  Subaru: "013C74", Suzuki: "E30613", Toyota: "EB0A1E", Volkswagen: "001E50",
+  Volvo: "003057", Workhorse: "2E8B57",
+};
+const colorFor = (name: string) => `#${brandColors[name] ?? "C8102E"}`;
+
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -59,11 +80,26 @@ function initials(name: string) {
 
 function BrandMark({ name }: { name: string }) {
   const iconSlug = simpleIconSlugs[name];
+  const color = colorFor(name);
+  const hex = color.slice(1);
+
+  const fallback = (extra: string) => (
+    <div
+      className={`items-center justify-center text-base font-black tracking-[0.08em] ${extra}`}
+      style={{ color }}
+      aria-hidden="true"
+    >
+      {initials(name)}
+    </div>
+  );
 
   if (!iconSlug) {
     return (
-      <div className="flex h-14 w-20 items-center justify-center rounded-2xl border border-black/5 bg-secondary/70 text-base font-black tracking-[0.08em] text-ink/45">
-        {initials(name)}
+      <div
+        className="flex h-14 w-24 items-center justify-center rounded-2xl border border-black/5 transition duration-300 group-hover:scale-105"
+        style={{ backgroundColor: `${color}14` }}
+      >
+        {fallback("flex")}
       </div>
     );
   }
@@ -72,23 +108,18 @@ function BrandMark({ name }: { name: string }) {
     <div className="flex h-14 w-24 items-center justify-center rounded-2xl border border-black/5 bg-secondary/60 p-3 transition duration-300 group-hover:bg-brand-tint">
       {/* eslint-disable-next-line @next/next/no-img-element -- small external SVG with an onError fallback */}
       <img
-        src={`https://cdn.jsdelivr.net/npm/simple-icons@v16/icons/${iconSlug}.svg`}
+        src={`https://cdn.simpleicons.org/${iconSlug}/${hex}`}
         alt={`${name} logo`}
         loading="lazy"
-        className="max-h-8 max-w-[68px] object-contain opacity-80 transition duration-300 group-hover:scale-105 group-hover:opacity-100"
+        className="max-h-8 max-w-[68px] object-contain transition duration-300 group-hover:scale-105"
         onError={(event) => {
           const image = event.currentTarget;
           image.style.display = "none";
-          const fallback = image.nextElementSibling as HTMLElement | null;
-          if (fallback) fallback.style.display = "flex";
+          const next = image.nextElementSibling as HTMLElement | null;
+          if (next) next.style.display = "flex";
         }}
       />
-      <div
-        className="hidden h-10 w-16 items-center justify-center text-sm font-black tracking-[0.08em] text-ink/45"
-        aria-hidden="true"
-      >
-        {initials(name)}
-      </div>
+      {fallback("hidden")}
     </div>
   );
 }

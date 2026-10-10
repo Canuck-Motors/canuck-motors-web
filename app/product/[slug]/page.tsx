@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { withMaterial } from "@/lib/material";
 import Link from "next/link";
 import { cacheLife, cacheTag } from "next/cache";
 import { notFound } from "next/navigation";
@@ -199,7 +200,7 @@ export default async function ProductDetailPage({
   const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
-    name: product.product_name,
+    name: withMaterial(product.product_name, product.sku),
     description,
     sku: product.sku || undefined,
     brand: {
@@ -249,7 +250,7 @@ export default async function ProductDetailPage({
       {
         "@type": "ListItem",
         position: 3,
-        name: product.product_name,
+        name: withMaterial(product.product_name, product.sku),
         item: productUrl,
       },
     ],
@@ -286,7 +287,7 @@ export default async function ProductDetailPage({
             </li>
             <li aria-hidden="true">/</li>
             <li className="text-ink" aria-current="page">
-              {product.product_name}
+              {withMaterial(product.product_name, product.sku)}
             </li>
           </ol>
         </nav>
@@ -296,7 +297,7 @@ export default async function ProductDetailPage({
             aria-label={`${product.product_name} image`}
             className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-[30px] border border-black/5 bg-white p-8 shadow-[0_18px_55px_rgba(0,0,0,0.07)] before:absolute before:-right-24 before:-top-24 before:h-72 before:w-72 before:rounded-full before:bg-brand/10 before:blur-3xl"
           >
-            <ProductGallery images={images} name={product.product_name} />
+            <ProductGallery images={images} name={withMaterial(product.product_name, product.sku)} />
           </section>
 
           <section>
@@ -305,7 +306,7 @@ export default async function ProductDetailPage({
             </p>
 
             <h1 className="mt-3 text-4xl font-black leading-[1.02] tracking-[-0.04em] text-ink md:text-6xl">
-              {product.product_name}
+              {withMaterial(product.product_name, product.sku)}
             </h1>
 
             {product.sku && (
@@ -340,15 +341,17 @@ export default async function ProductDetailPage({
                 {compatibilityCount === null
                   ? "Use the vehicle finder to confirm compatibility for your vehicle."
                   : compatibilityCount > 0
-                    ? `Mapped to ${compatibilityCount.toLocaleString()} vehicle configuration${compatibilityCount === 1 ? "" : "s"} in our catalog. Use the vehicle finder to confirm your exact year, make, model, engine, and trim.`
+                    ? `Mapped to ${compatibilityCount.toLocaleString()} vehicle configuration${compatibilityCount === 1 ? "" : "s"} in our catalog. See the Vehicle Compatibility list below to confirm your exact year, make, model, engine, and trim.`
                     : "Compatibility mappings are not currently available for this product."}
               </p>
-              <Link
-                href="/#vehicle-finder"
+              {/* ProductTabs opens the Vehicle Compatibility tab on click */}
+              <a
+                href="#compatibility"
+                data-open-tab="compatibility"
                 className="mt-4 inline-flex text-sm font-semibold text-brand hover:underline"
               >
                 Check vehicle fitment
-              </Link>
+              </a>
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3">

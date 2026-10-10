@@ -1,3 +1,4 @@
+import { decodeVin } from "@/lib/catalog";
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { listCategories } from "@/lib/parts";
@@ -8,6 +9,7 @@ import {
   type CatalogProduct,
 } from "@/lib/catalog";
 import {
+  addNoteSpecs,
   getSpecsForProducts,
   isSpecMessage,
   narrow,
@@ -46,12 +48,20 @@ Other rules:
 - Whenever the customer gives or changes the trim, engine, model, year, make or part, ALWAYS call find_parts_for_vehicle again with ALL the details known so far (year, make, model, engine, trim, part). Never answer from the earlier results and never say results are "the same" or that a part "will fit" without a new tool call.
 - Products, SKUs and prices come only from tool results. Never invent them.
 - Only say a part fits if find_parts_for_vehicle or find_parts_by_vin returned it.
-- search_catalog is for part numbers (CM, OE or interchange numbers) and product names. It does NOT confirm fitment: say so and ask for the vehicle or VIN to confirm.
+- Any time the customer types something that looks like a part number (for example CM-1252102, cm1252102, an OE number, or a number from another brand such as AC Delco or Gates), call search_catalog with exactly what they typed. It ignores case, dashes and spaces and checks our own catalog: our CM numbers, every OE number and every interchange / cross-reference number we have stored.
+- Each product it returns has match.exact. ONLY when match.exact is true may you say it is the Canuck Motors equivalent, and name match.via (for example "matches OE number ACDelco 252544"). If match.exact is false, say it is only a similar result and NOT a confirmed match. Never call a similar-looking number a match.
+- If search_catalog returns several products, check each one's match.via; if there are no results, try again once with the number in any other form the customer gave (for example the number without its brand name) before saying nothing was found. Only claim a web search if you really ran web_search.
+- When you present a matched part, give its name, price, availability (in_stock = in stock, low_stock = low stock, out_of_stock = out of stock, unknown = say you can't confirm stock) and link. Then ask for the vehicle or VIN and call find_parts_for_vehicle / the VIN tool to verify fitment; only say it fits if that result lists the part.
+- If search_catalog finds NOTHING for a part number from another brand (status no_results), you MUST call web_search before replying; never answer "nothing found" and ask for details until you have tried it. Use web_search (at most 3 searches) to find out what that number is: which part type it is and which vehicles (year, make, model, engine) it fits, and other numbers the web lists as equivalent. Then: (a) call search_catalog for each equivalent number you found and only treat exact matches as confirmed; (b) call find_parts_for_vehicle with the vehicle and part type from the web result, to see which Canuck Motors parts our own fitment data lists for that vehicle. Tell the customer plainly that the vehicle information came from web sources, and that only the fitment shown by our catalog counts. If the web result names one or more vehicles, do NOT ask the customer which vehicle it is: immediately call find_parts_for_vehicle for the most specific application the web lists (year, make, model, engine) and show what our catalog has. Only ask for the vehicle when the web gives none. Present our parts as "possible alternatives for that vehicle", never as an exact replacement for their number unless search_catalog matched it exactly. If the web result is unclear or conflicting, say so and ask for the vehicle or VIN instead of guessing.
+- If the customer asks for the trim, engine or model of a VIN (or wants to know what a VIN is), call decode_vin and answer from its result. If trim is missing, say the VIN data does not list a trim (the VIN identifies the vehicle but not always the trim level) and, if useful, share the series, drive and engine it did give. Do not send them to their registration or insurance card for that.
+- search_catalog does NOT confirm fitment: say so and ask for the vehicle or VIN to confirm.
 - Always pass the customer's part in the "part" field of the vehicle and VIN tools. Never say a part is "in stock" or "available".
 - If the customer asks for a category list, use list_categories.
 - Politely decline unrelated topics.`;
 
-const tools: Anthropic.Tool[] = [
+const tools: Anthropic.ToolUnion[] = [
+  // Lets Axel research an unknown OE / aftermarket number on the web
+  { type: "web_search_20250305", name: "web_search", max_uses: 3 } as any,
   {
     name: "find_parts_for_vehicle",
     description:
@@ -87,6 +97,16 @@ const tools: Anthropic.Tool[] = [
         },
       },
       required: ["vin", "part"],
+    },
+  },
+  {
+    name: "decode_vin",
+    description:
+      "Decode a VIN into year, make, model, trim, engine and body, with no part needed. Use it when the customer asks what their VIN is, or asks for the trim or engine of a VIN.",
+    input_schema: {
+      type: "object",
+      properties: { vin: { type: "string", description: "The 17-character VIN" } },
+      required: ["vin"],
     },
   },
   {
@@ -136,9 +156,25 @@ async function runTool(name: string, input: any) {
       );
     }
 
+    if (name === "decode_vin") return await decodeVin(String(input.vin ?? ""));
+
     if (name === "search_catalog") {
       const products = await searchCatalog(String(input.query ?? ""));
-      return { status: products.length ? "ok" : "no_results", products };
+      if (products.length) return { status: "ok", products };
+      const q = String(input.query ?? "");
+      const looksLikeNumber = /\d{4,}/.test(q.replace(/[\s-]/g, ""));
+      return {
+        status: "no_results",
+        products,
+        ...(looksLikeNumber
+          ? {
+              next_step:
+                "REQUIRED: this looks like another brand's part number. Do NOT reply yet. Call web_search now (for example '" +
+                q +
+                " OE part number fits vehicles') to learn the part type, the vehicles and equivalent numbers, then follow the web research rule.",
+            }
+          : {}),
+      };
     }
 
     if (name === "list_categories") return await listCategories();
@@ -192,6 +228,7 @@ type Ctx = { tool: "find_parts_for_vehicle" | "find_parts_by_vin"; input: any };
 async function present(out: any, filters: SpecFilter[]) {
   const all: CatalogProduct[] = out.products ?? [];
   const specs = await getSpecsForProducts(all.map((p) => p.id));
+  addNoteSpecs(specs, all); // Position + facts from the fitment notes
   let { candidates, question } = narrow(all, specs, filters);
   let note: string | null = null;
 
@@ -214,12 +251,18 @@ async function present(out: any, filters: SpecFilter[]) {
     base.heading = vehicle ? `Best match for your ${vehicle}:` : "Best match:";
     base.override = "This is the part that fits.";
   } else if (question) {
-    base.heading = `${candidates.length} possible matches${vehicle ? ` for your ${vehicle}` : ""}:`;
+    // A question is waiting: show only the question and its buttons,
+    // the parts appear once the customer has answered.
+    base.shown = [];
+    base.heading = null;
     base.override = questionText(question, candidates.length);
     base.choices = {
       level: "spec",
       spec: question.name,
-      options: [...question.options.slice(0, 10), "Not sure"],
+      options:
+        question.name === "Position"
+          ? [...question.options.slice(0, 10), "All"] // All = show every part
+          : [...question.options.slice(0, 10), "Not sure"],
     };
   }
   return base;
@@ -251,6 +294,9 @@ export async function POST(req: Request) {
       content: String(m.content ?? "").slice(0, 1000).trim(),
     }))
     .filter((m: any) => m.content.length > 0);
+
+  // Cutting to the last 12 can leave an assistant message first: drop it
+  while (messages.length > 0 && messages[0].role !== "user") messages.shift();
 
   if (messages.length === 0 || messages[0].role !== "user") {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
@@ -301,17 +347,28 @@ export async function POST(req: Request) {
     for (let i = 0; i < 5; i++) {
       const res = await client.messages.create({
         model: MODEL,
-        max_tokens: 700,
+        max_tokens: 1200,
         system: SYSTEM + pageNote,
         tools,
         messages,
       });
 
+      // A long web search can pause the turn; just let it continue
+      if (res.stop_reason === "pause_turn") {
+        messages.push({ role: "assistant", content: res.content });
+        continue;
+      }
+
       if (res.stop_reason !== "tool_use") {
         const text = res.content
           .filter((b): b is Anthropic.TextBlock => b.type === "text")
           .map((b) => b.text)
-          .join("\n");
+          // Web-search citations split a sentence into many blocks: glue them
+          .reduce(
+            (acc, t) =>
+              acc && /[.!?:]$/.test(acc) && /^[A-Za-z]/.test(t) ? `${acc} ${t}` : acc + t,
+            "",
+          );
 
         let replyText = text;
         let outShown = shown;
@@ -396,7 +453,9 @@ export async function POST(req: Request) {
             shown = out?.products ?? [];
             shownTotal = shown.length;
             heading = shown.length
-              ? "Matches for your search (fitment not confirmed):"
+              ? shown.some((p: any) => p.match?.exact)
+                ? "Confirmed number match (fitment not confirmed):"
+                : "Similar results, not a confirmed match:"
               : null;
             vehicleUrl = null;
             choices = null;

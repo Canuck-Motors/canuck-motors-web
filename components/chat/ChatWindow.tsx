@@ -10,7 +10,47 @@ type Msg = {
   content: string;
   choices?: Choices;
   local?: boolean; // handled in the browser, never sent to the AI
+  old?: boolean; // from an earlier visit: shown above, never sent to the AI
+  divider?: boolean; // "New conversation" separator
 };
+
+// Chat is kept in this browser (localStorage) for 24 hours.
+export const STORE_PREFIX = "cm-axel-chat-v2:";
+const MAX_AGE = 24 * 60 * 60 * 1000;
+
+type Saved = { t: number; messages: Msg[] };
+
+function loadChat(STORE_KEY: string): Saved | null {
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw) as Saved;
+    if (!data || Date.now() - data.t > MAX_AGE || !Array.isArray(data.messages) || data.messages.length === 0) {
+      localStorage.removeItem(STORE_KEY);
+      return null;
+    }
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function saveChat(STORE_KEY: string, messages: Msg[]) {
+  try {
+    // Only real conversation is kept (not the greeting or the divider)
+    const real = messages.filter((m) => !WELCOME.includes(m) && !m.divider);
+    if (!real.some((m) => m.role === "user")) {
+      localStorage.removeItem(STORE_KEY);
+      return;
+    }
+    localStorage.setItem(
+      STORE_KEY,
+      JSON.stringify({ t: Date.now(), messages: real.slice(-60) }),
+    );
+  } catch {
+    /* storage blocked or full: chat still works, just not saved */
+  }
+}
 
 // Step 1: greet. Step 2: ask what they are looking for.
 const WELCOME: Msg[] = [
@@ -121,8 +161,25 @@ function Avatar({ size, active = false }: { size: string; active?: boolean }) {
 const chip =
   "rounded-full border border-brand/30 bg-white px-3.5 py-2 text-xs font-bold text-brand shadow-sm transition hover:-translate-y-0.5 hover:bg-brand hover:text-white";
 
-export default function ChatWindow({ onClose }: { onClose: () => void }) {
-  const [messages, setMessages] = useState<Msg[]>(WELCOME);
+export default function ChatWindow({
+  onClose,
+  storeKey,
+}: {
+  onClose: () => void;
+  storeKey: string; // one saved chat per person (see ChatLauncher)
+}) {
+  // ChatWindow only renders in the browser, so localStorage is safe here
+  // Every visit starts a fresh chat; the earlier chat sits above it (scroll up)
+  const [messages, setMessages] = useState<Msg[]>(() => {
+    const saved = loadChat(storeKey);
+    if (!saved) return WELCOME;
+    const old = saved.messages.map((m) => ({ ...m, old: true, choices: undefined }));
+    return [
+      ...old,
+      { role: "assistant" as const, content: "New conversation", divider: true, local: true },
+      ...WELCOME,
+    ];
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [intro, setIntro] = useState(true);
@@ -130,6 +187,22 @@ export default function ChatWindow({ onClose }: { onClose: () => void }) {
   const pathname = usePathname();
   const endRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<unknown>(null); // last search, so spec answers narrow it
+
+  // Save the chat after every change
+  useEffect(() => {
+    if (loading) return;
+    saveChat(storeKey, messages);
+  }, [messages, loading, storeKey]);
+
+  const newChat = () => {
+    try {
+      localStorage.removeItem(storeKey);
+    } catch {}
+    ctxRef.current = null;
+    setMessages([...WELCOME]);
+    setStage("menu");
+    setInput("");
+  };
 
   // Axel "drives in" for a moment when the chat opens
   useEffect(() => {
@@ -209,7 +282,7 @@ export default function ChatWindow({ onClose }: { onClose: () => void }) {
     try {
       // Skip the welcome messages so history starts with a user message
       const history = next
-        .filter((m) => !WELCOME.includes(m) && !m.local)
+        .filter((m) => !WELCOME.includes(m) && !m.local && !m.old && !m.divider)
         .map((m) => ({ role: m.role, content: m.content }));
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -263,6 +336,15 @@ export default function ChatWindow({ onClose }: { onClose: () => void }) {
               Auto parts assistant
             </p>
           </div>
+          {messages.length > WELCOME.length && (
+            <button
+              type="button"
+              onClick={newChat}
+              className="rounded-full px-3 py-1.5 text-xs font-bold text-ink/60 transition hover:bg-brand-tint hover:text-brand"
+            >
+              Clear history
+            </button>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -278,19 +360,31 @@ export default function ChatWindow({ onClose }: { onClose: () => void }) {
 
       {/* Messages */}
       <div className="flex-1 space-y-3 overflow-y-auto bg-secondary p-4">
-        {messages.map((m, i) => (
+        {messages.map((m, i) =>
+          m.divider ? (
+            <div
+              key={i}
+              className="cm-pop flex items-center gap-3 py-1 text-[11px] font-bold uppercase tracking-widest text-ink/40"
+            >
+              <span className="h-px flex-1 bg-black/10" />
+              {m.content}
+              <span className="h-px flex-1 bg-black/10" />
+            </div>
+          ) : (
           <div
             key={i}
             className={`cm-pop flex items-end gap-2 ${
               m.role === "user" ? "justify-end" : "justify-start"
             }`}
             style={
-              WELCOME.includes(m) ? { animationDelay: `${i * 450}ms` } : undefined
+              WELCOME.includes(m)
+                ? { animationDelay: `${WELCOME.indexOf(m) * 450}ms` }
+                : undefined
             }
           >
             {m.role === "assistant" && <Avatar size="h-7 w-7" />}
             <div
-              className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-sm leading-6 ${
+              className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.old ? "opacity-60" : ""} ${
                 m.role === "user"
                   ? "rounded-br-md bg-brand text-white"
                   : "rounded-bl-md bg-white text-ink shadow-sm"
@@ -303,13 +397,14 @@ export default function ChatWindow({ onClose }: { onClose: () => void }) {
               )}
             </div>
           </div>
-        ))}
+          ),
+        )}
 
         {/* Step 2: what do you need? Step 3: which part? */}
         {stage === "menu" && (
           <div
             className="cm-pop flex flex-wrap gap-2 pl-9"
-            style={{ animationDelay: messages.length <= WELCOME.length ? "1100ms" : "0ms" }}
+            style={{ animationDelay: messages.every((m) => m.old || m.divider || WELCOME.includes(m)) ? "1100ms" : "0ms" }}
           >
             {MENU.map((o) => (
               <button
@@ -352,7 +447,9 @@ export default function ChatWindow({ onClose }: { onClose: () => void }) {
             <p className="mb-2 text-xs font-semibold text-muted-foreground">
               {choices.level === "confirm"
                 ? "Is this your vehicle?"
-                : `Choose your ${LEVEL_LABEL[choices.level] ?? "option"}`}
+                : choices.level === "spec"
+                  ? "Choose one"
+                  : `Choose your ${LEVEL_LABEL[choices.level] ?? "option"}`}
             </p>
             <div className="flex flex-wrap gap-2">
               {choices.options.map((option) => (
@@ -363,7 +460,9 @@ export default function ChatWindow({ onClose }: { onClose: () => void }) {
                     send(
                       choices.level === "confirm"
                         ? option
-                        : `${LEVEL_LABEL[choices.level] ?? "Option"}: ${option}`
+                        : choices.level === "spec"
+                          ? `Spec: ${choices.spec} = ${option}`
+                          : `${LEVEL_LABEL[choices.level] ?? "Option"}: ${option}`
                     )
                   }
                   className={chip}

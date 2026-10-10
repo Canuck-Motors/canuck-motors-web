@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { withMaterial } from "@/lib/material";
 import Link from "next/link";
 import { imageUrl } from "@/lib/product-images";
 import { ArrowUpRight } from "lucide-react";
@@ -30,7 +31,7 @@ export function ProductCard({ product }: ProductCardProps) {
       <Link
         href={productUrl}
         className="block"
-        aria-label={`View ${product.product_name}`}
+        aria-label={`View ${withMaterial(product.product_name, product.sku)}`}
       >
         <div className="relative aspect-[4/3] overflow-hidden bg-[linear-gradient(145deg,#fafafa,#f3f3f3)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_25%,rgba(214,40,40,0.10),transparent_28%)] opacity-0 transition duration-300 group-hover:opacity-100" />
@@ -40,7 +41,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {main ? (
             <Image
               src={imageUrl(main.path)}
-              alt={product.product_name}
+              alt={withMaterial(product.product_name, product.sku)}
               fill
               sizes="(min-width: 1024px) 25vw, (min-width: 640px) 50vw, 100vw"
               className="object-contain p-4 transition duration-300 group-hover:scale-105"
@@ -65,7 +66,7 @@ export function ProductCard({ product }: ProductCardProps) {
           </p>
 
           <h2 className="mt-2 line-clamp-2 min-h-[52px] text-lg font-bold leading-6 tracking-[-0.02em] text-ink">
-            {product.product_name}
+            {withMaterial(product.product_name, product.sku)}
           </h2>
 
           <div className="mt-6 flex items-end justify-between gap-4">

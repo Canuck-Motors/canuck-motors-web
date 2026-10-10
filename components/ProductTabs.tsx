@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 type Spec = { name: string; value: string };
 type PartNumber = { brand: string; number: string };
@@ -11,6 +11,8 @@ type Fitment = {
   engine: string;
   fuel: string;
   trim: string;
+  bodyType: string;
+  comment: string;
 };
 
 const PAGE = 25;
@@ -50,7 +52,7 @@ function Compatibility({ rows }: { rows: Fitment[] }) {
     const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
     if (!terms.length) return rows;
     return rows.filter((r) => {
-      const hay = `${r.year} ${r.make} ${r.model} ${r.engine} ${r.fuel} ${r.trim}`.toLowerCase();
+      const hay = `${r.year} ${r.make} ${r.model} ${r.engine} ${r.fuel} ${r.trim} ${r.bodyType} ${r.comment}`.toLowerCase();
       return terms.every((t) => hay.includes(t));
     });
   }, [rows, q]);
@@ -82,7 +84,7 @@ function Compatibility({ rows }: { rows: Fitment[] }) {
         <table className="w-full text-left text-sm">
           <thead className="bg-secondary text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              {["Year", "Brand", "Model", "Engine", "Fuel type", "Trim"].map((h) => (
+              {["Year", "Brand", "Model", "Engine", "Fuel type", "Trim", "Body type", "Comment"].map((h) => (
                 <th key={h} className="whitespace-nowrap px-4 py-3">
                   {h}
                 </th>
@@ -98,11 +100,13 @@ function Compatibility({ rows }: { rows: Fitment[] }) {
                 <td className="px-4 py-2.5">{r.engine}</td>
                 <td className="px-4 py-2.5">{r.fuel}</td>
                 <td className="px-4 py-2.5">{r.trim}</td>
+                <td className="px-4 py-2.5">{r.bodyType}</td>
+                <td className="px-4 py-2.5 text-muted-foreground">{r.comment}</td>
               </tr>
             ))}
             {!filtered.length && (
               <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-6 text-center text-muted-foreground">
                   No vehicles match your search.
                 </td>
               </tr>
@@ -151,10 +155,44 @@ export default function ProductTabs({
   const [active, setActive] = useState("description");
   const base = useId();
 
+  // Links like <a href="#compatibility"> open that tab and scroll to it
+  useEffect(() => {
+    const ids = tabs.map((t) => t.id);
+    const open = (id: string) => {
+      setActive(id);
+      requestAnimationFrame(() =>
+        document.getElementById("product-tabs")?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      );
+    };
+
+    const fromHash = () => {
+      const id = window.location.hash.replace("#", "");
+      if (ids.includes(id)) open(id);
+    };
+    fromHash();
+
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement | null)?.closest?.("a[data-open-tab]") as HTMLAnchorElement | null;
+      const id = a?.dataset.openTab;
+      if (a && id && ids.includes(id)) {
+        e.preventDefault();
+        history.replaceState(null, "", `#${id}`);
+        open(id);
+      }
+    };
+    document.addEventListener("click", onClick);
+    window.addEventListener("hashchange", fromHash);
+    return () => {
+      document.removeEventListener("click", onClick);
+      window.removeEventListener("hashchange", fromHash);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Every panel stays in the HTML (hidden attribute), so search engines
   // and AI crawlers still read all the content.
   return (
-    <section className="mt-14 rounded-[28px] border border-black/5 bg-white shadow-[0_16px_46px_rgba(0,0,0,0.06)]">
+    <section id="product-tabs" className="mt-14 scroll-mt-28 rounded-[28px] border border-black/5 bg-white shadow-[0_16px_46px_rgba(0,0,0,0.06)]">
       <div
         role="tablist"
         aria-label="Product information"

@@ -5,6 +5,7 @@ import RoadLoader from "@/components/RoadLoader";
 import { createClient } from "@/lib/supabase/client";
 // import { useRouter } from "next/router";
 import { useRouter } from "next/navigation";
+import { lookupVin } from "@/app/vin-actions";
 
 const field =
   "w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 text-sm font-medium text-ink shadow-sm outline-none transition duration-200 focus:border-brand/60 focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:bg-black/[0.035] disabled:text-muted-foreground";
@@ -52,6 +53,8 @@ export function Hero() {
   const [trim, setTrim] = useState("");
 
   const [oeNumber, setOeNumber] = useState("");
+  const [vin, setVin] = useState("");
+  const [vinMsg, setVinMsg] = useState("");
   const [pending, startTransition] = useTransition();
 
   // ---------------------------------------------
@@ -335,6 +338,16 @@ export function Hero() {
   const go = (url: string) => startTransition(() => router.push(url));
   const query = oeNumber.trim();
 
+  if (vin.trim()) {
+    setVinMsg("");
+    startTransition(async () => {
+      const res = await lookupVin(vin);
+      if (res.ok) router.push(res.url);
+      else setVinMsg(res.message);
+    });
+    return;
+  }
+
   if (query) {
     go(`/products/search/${encodeURIComponent(query)}`);
     return;
@@ -379,6 +392,8 @@ export function Hero() {
     setTrims([]);
 
     setOeNumber("");
+    setVin("");
+    setVinMsg("");
   };
 
   return (
@@ -572,7 +587,23 @@ export function Hero() {
           </div>
 
           {/* Search / reset (the vehicle finder is the only search here) */}
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="sm:w-80">
+              <input
+                value={vin}
+                onChange={(e) => {
+                  setVin(e.target.value.toUpperCase());
+                  setVinMsg("");
+                }}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                maxLength={17}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Or enter your 17-character VIN"
+                aria-label="Vehicle identification number (VIN)"
+                className={`${field} font-mono tracking-wider`}
+              />
+            </div>
             <button
               onClick={handleSearch}
               className="cm-button-primary min-h-[48px] flex-1 px-8"
@@ -587,6 +618,11 @@ export function Hero() {
               Reset
             </button>
           </div>
+          {vinMsg && (
+            <p className="mt-3 text-sm font-semibold text-brand" role="alert">
+              {vinMsg}
+            </p>
+          )}
           </div>
         </div>
       </div>

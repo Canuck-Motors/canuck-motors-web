@@ -10,18 +10,23 @@ export type FitmentRow = {
   engine: string;
   fuel: string;
   trim: string;
+  bodyType: string;
+  comment: string;
 };
 
 const FUELS = ["ALL", "GAS", "ELECTRIC", "DIESEL", "HYBRID"];
 
 // "4.2L | V6 | GAS" -> engine "4.2L V6", fuel "GAS"
+// "5.7L V8" -> "V8 5.7L" (same order as the old website)
+const oldStyle = (e: string) => e.replace(/^(\d+(?:\.\d+)?L)\s+(\S+)$/i, "$2 $1");
+
 function splitEngine(name: string) {
   const parts = name.split("|").map((s) => s.trim()).filter(Boolean);
   const last = parts[parts.length - 1]?.toUpperCase();
   if (parts.length > 1 && FUELS.includes(last)) {
-    return { engine: parts.slice(0, -1).join(" "), fuel: last };
+    return { engine: oldStyle(parts.slice(0, -1).join(" ")), fuel: last };
   }
-  return { engine: parts.join(" "), fuel: "" };
+  return { engine: oldStyle(parts.join(" ")), fuel: "" };
 }
 
 export async function getSpecs(productId: number): Promise<Spec[]> {
@@ -93,20 +98,26 @@ export async function getFitments(productId: number): Promise<FitmentRow[]> {
   const size = 1000;
 
   for (let from = 0; from < 20000; from += size) {
-    const { data, error } = await supabase
-      .from("product_fitments")
-      .select(
-        `id, vehicle_fitments (
+    const columns = (withComment: boolean) =>
+      `id, ${withComment ? "comment, body_type, " : ""}vehicle_fitments (
           year ( year ),
           manufacturer ( manufacturer_name ),
           models ( model_name ),
           engine_sizes ( engine_name ),
           trim ( trim_name )
-        )`,
-      )
-      .eq("product_id", productId)
-      .order("id")
-      .range(from, from + size - 1);
+        )`;
+
+    const query = (withComment: boolean) =>
+      supabase
+        .from("product_fitments")
+        .select(columns(withComment))
+        .eq("product_id", productId)
+        .order("id")
+        .range(from, from + size - 1);
+
+    let { data, error } = await query(true);
+    // "comment" column not created yet: show the table without it
+    if (error) ({ data, error } = await query(false));
 
     if (error) {
       console.error("Fitment lookup failed:", error.message);
@@ -124,6 +135,8 @@ export async function getFitments(productId: number): Promise<FitmentRow[]> {
         engine,
         fuel,
         trim: v.trim?.trim_name ?? "",
+        bodyType: r.body_type ?? "",
+        comment: r.comment ?? "",
       });
     }
 
