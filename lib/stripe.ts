@@ -28,7 +28,6 @@ export async function createStripeCheckoutSession(input: {
   const body = new URLSearchParams();
 
   body.set("mode", "payment");
-  body.set("payment_method_types[0]", "card");
   body.set("success_url", input.successUrl);
   body.set("cancel_url", input.cancelUrl);
   body.set("client_reference_id", input.orderId);
@@ -247,7 +246,6 @@ export async function createStripeAmountCheckoutSession(input: {
   const body = new URLSearchParams();
 
   body.set("mode", "payment");
-  body.set("payment_method_types[0]", "card");
   body.set("success_url", input.successUrl);
   body.set("cancel_url", input.cancelUrl);
   body.set("client_reference_id", input.orderId);
