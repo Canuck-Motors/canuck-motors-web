@@ -56,6 +56,7 @@ export async function beginCheckout() {
   }
 
   const admin = createAdminClient();
+  let checkoutUrl: string | null = null;
 
   try {
     const session = await createStripeCheckoutSession({
@@ -94,7 +95,7 @@ export async function beginCheckout() {
       throw new Error("Unable to record the pending payment.");
     }
 
-    redirect(session.url);
+    checkoutUrl = session.url;
   } catch (error) {
     await admin.rpc("release_checkout_order", {
       p_order_id: orderRow.id,
@@ -106,4 +107,10 @@ export async function beginCheckout() {
 
     redirect(`/cart?checkout_error=${encodeURIComponent(message)}`);
   }
+
+  if (!checkoutUrl) {
+    redirect("/cart?checkout_error=Stripe%20checkout%20URL%20was%20not%20available");
+  }
+
+  redirect(checkoutUrl);
 }
