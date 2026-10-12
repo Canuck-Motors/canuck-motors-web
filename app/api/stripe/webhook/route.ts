@@ -19,9 +19,61 @@ type StripeEvent = {
       payment_status?: string | null;
       metadata?: Record<string, string>;
       client_reference_id?: string | null;
+      customer_details?: {
+        name?: string | null;
+        email?: string | null;
+        address?: {
+          line1?: string | null;
+          line2?: string | null;
+          city?: string | null;
+          state?: string | null;
+          postal_code?: string | null;
+          country?: string | null;
+        } | null;
+      } | null;
+      shipping_details?: {
+        name?: string | null;
+        address?: {
+          line1?: string | null;
+          line2?: string | null;
+          city?: string | null;
+          state?: string | null;
+          postal_code?: string | null;
+          country?: string | null;
+        } | null;
+      } | null;
     };
   };
 };
+
+function normalizeStripeAddress(
+  name: string | null | undefined,
+  address:
+    | {
+        line1?: string | null;
+        line2?: string | null;
+        city?: string | null;
+        state?: string | null;
+        postal_code?: string | null;
+        country?: string | null;
+      }
+    | null
+    | undefined
+) {
+  if (!address) {
+    return {};
+  }
+
+  return {
+    name: name ?? null,
+    line1: address.line1 ?? null,
+    line2: address.line2 ?? null,
+    city: address.city ?? null,
+    province: address.state ?? null,
+    postal_code: address.postal_code ?? null,
+    country: address.country ?? null,
+  };
+}
 
 async function recordWebhookEvent(
   admin: ReturnType<typeof createAdminClient>,
@@ -159,6 +211,33 @@ export async function POST(request: Request) {
 
           if (error) {
             throw new Error(error.message);
+          }
+
+          const shippingAddress = normalizeStripeAddress(
+            object.shipping_details?.name,
+            object.shipping_details?.address
+          );
+
+          const billingAddress = normalizeStripeAddress(
+            object.customer_details?.name,
+            object.customer_details?.address
+          );
+
+          const { error: addressError } = await admin
+            .from("orders")
+            .update({
+              shipping_address: shippingAddress,
+              billing_address: billingAddress,
+              customer_name:
+                object.customer_details?.name ??
+                object.shipping_details?.name ??
+                undefined,
+              customer_email: object.customer_details?.email ?? undefined,
+            })
+            .eq("id", orderId);
+
+          if (addressError) {
+            throw new Error(addressError.message);
           }
         }
 
