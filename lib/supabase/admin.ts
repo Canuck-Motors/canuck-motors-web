@@ -1,15 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
 
 export function createAdminClient() {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
 
-  if (!serviceRoleKey) {
-    throw new Error("SUPABASE_SERVICE_ROLE_KEY is not configured.");
+  if (!secretKey) {
+    throw new Error("SUPABASE_SECRET_KEY is not configured.");
   }
 
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    serviceRoleKey,
+    secretKey,
     {
       auth: {
         persistSession: false,
