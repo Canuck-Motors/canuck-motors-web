@@ -38,8 +38,22 @@ export function LoginForm({
         password,
       });
       if (error) throw error;
-      // Update this route to redirect to an authenticated route. The user already has an active session.
-      router.push("/protected");
+
+      const { data: staffRole, error: roleError } = await supabase.rpc(
+        "current_user_staff_role"
+      );
+
+      if (roleError) {
+        throw roleError;
+      }
+
+      if (staffRole === "admin") {
+        router.replace("/admin");
+      } else {
+        router.replace("/account");
+      }
+
+      router.refresh();
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
