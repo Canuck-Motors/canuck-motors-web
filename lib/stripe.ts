@@ -28,6 +28,8 @@ export async function createStripeCheckoutSession(input: {
   const body = new URLSearchParams();
 
   body.set("mode", "payment");
+  body.set("billing_address_collection", "required");
+  body.set("shipping_address_collection[allowed_countries][0]", "CA");
   body.set("success_url", input.successUrl);
   body.set("cancel_url", input.cancelUrl);
   body.set("client_reference_id", input.orderId);
