@@ -4,6 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 
+const CART_EXPIRY_DAYS = 7;
+
+function cartExpiryCutoff() {
+  return new Date(Date.now() - CART_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+}
+
 async function getCurrentPublicUserId() {
   const supabase = await createClient();
   const { data: authData, error: authError } = await supabase.auth.getUser();
@@ -25,6 +31,16 @@ async function getCurrentPublicUserId() {
   return { supabase, userId: profile.id };
 }
 
+async function touchCart(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  cartId: string,
+) {
+  await supabase
+    .from("carts")
+    .update({ updated_on: new Date().toISOString() })
+    .eq("id", cartId);
+}
+
 export async function addToCart(productId: number) {
   const { supabase, userId } = await getCurrentPublicUserId();
 
@@ -40,10 +56,9 @@ export async function addToCart(productId: number) {
     throw new Error("This product is unavailable.");
   }
 
-  // eslint-disable-next-line prefer-const -- cart is reassigned below
   let { data: cart, error: cartError } = await supabase
     .from("carts")
-    .select("id")
+    .select("id, updated_on")
     .eq("user_id", userId)
     .eq("status", "active")
     .maybeSingle();
@@ -52,11 +67,27 @@ export async function addToCart(productId: number) {
     throw new Error("Unable to load your cart.");
   }
 
+  if (cart && new Date(cart.updated_on) < cartExpiryCutoff()) {
+    const { error: abandonError } = await supabase
+      .from("carts")
+      .update({
+        status: "abandoned",
+        updated_on: new Date().toISOString(),
+      })
+      .eq("id", cart.id);
+
+    if (abandonError) {
+      throw new Error("Unable to refresh your cart.");
+    }
+
+    cart = null;
+  }
+
   if (!cart) {
     const { data: createdCart, error: createCartError } = await supabase
       .from("carts")
       .insert({ user_id: userId, status: "active" })
-      .select("id")
+      .select("id, updated_on")
       .single();
 
     if (createCartError || !createdCart) {
@@ -103,7 +134,8 @@ export async function addToCart(productId: number) {
     }
   }
 
-  // Stay on the page: the cart animation shows the item was added
+  await touchCart(supabase, cart.id);
+
   revalidatePath("/cart");
 }
 
@@ -113,6 +145,16 @@ export async function updateCartQuantity(itemId: number, quantity: number) {
   }
 
   const { supabase } = await getCurrentPublicUserId();
+
+  const { data: item, error: itemError } = await supabase
+    .from("cart_items")
+    .select("cart_id")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  if (itemError || !item) {
+    throw new Error("Unable to load this cart item.");
+  }
 
   const { error } = await supabase
     .from("cart_items")
@@ -126,11 +168,23 @@ export async function updateCartQuantity(itemId: number, quantity: number) {
     throw new Error("Unable to update quantity.");
   }
 
+  await touchCart(supabase, item.cart_id);
+
   revalidatePath("/cart");
 }
 
 export async function removeCartItem(itemId: number) {
   const { supabase } = await getCurrentPublicUserId();
+
+  const { data: item, error: itemError } = await supabase
+    .from("cart_items")
+    .select("cart_id")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  if (itemError || !item) {
+    throw new Error("Unable to load this cart item.");
+  }
 
   const { error } = await supabase
     .from("cart_items")
@@ -140,6 +194,8 @@ export async function removeCartItem(itemId: number) {
   if (error) {
     throw new Error("Unable to remove this item.");
   }
+
+  await touchCart(supabase, item.cart_id);
 
   revalidatePath("/cart");
 }

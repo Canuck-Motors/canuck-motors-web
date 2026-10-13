@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
-import { withMaterial } from "@/lib/material";
-import Image from "next/image";
 import Link from "next/link";
-import { imageUrl } from "@/lib/product-images";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { removeCartItem, updateCartQuantity } from "./actions";
-import { beginCheckout } from "@/app/checkout/actions";
+import { imageUrl } from "@/lib/product-images";
+import { withMaterial } from "@/lib/material";
+import CartInteractive from "@/components/cart/cart-interactive";
 
 export const instant = false;
 
@@ -28,6 +26,7 @@ type PageProps = {
 export default async function CartPage({ searchParams }: PageProps) {
   const { checkout_error: checkoutError, checkout_cancelled: checkoutCancelled } =
     await searchParams;
+
   const supabase = await createClient();
   const { data: authData } = await supabase.auth.getUser();
 
@@ -97,10 +96,33 @@ export default async function CartPage({ searchParams }: PageProps) {
       : { data: [] };
 
   const productMap = new Map((products ?? []).map((product) => [product.id, product]));
-  const cartLines = (items ?? [])
+
+  const initialLines = (items ?? [])
     .map((item) => {
       const product = productMap.get(item.product_id);
-      return product ? { ...item, product } : null;
+
+      if (!product || product.price === null) {
+        return null;
+      }
+
+      const mainImage = [...(product.product_images ?? [])].sort(
+        (a, b) => a.sort_order - b.sort_order,
+      )[0];
+
+      return {
+        id: item.id,
+        product_id: item.product_id,
+        quantity: item.quantity,
+        product: {
+          id: product.id,
+          product_name: product.product_name,
+          display_name: withMaterial(product.product_name, product.sku),
+          sku: product.sku,
+          href: product.slug ? `/product/${product.slug}` : `/product/${product.id}`,
+          price: Number(product.price),
+          image_url: mainImage ? imageUrl(mainImage.path) : null,
+        },
+      };
     })
     .filter(Boolean) as Array<{
       id: number;
@@ -109,18 +131,13 @@ export default async function CartPage({ searchParams }: PageProps) {
       product: {
         id: number;
         product_name: string;
+        display_name: string;
         sku: string | null;
-        slug: string | null;
-        price: number | null;
-        product_images?: { path: string; sort_order: number }[] | null;
+        href: string;
+        price: number;
+        image_url: string | null;
       };
     }>;
-
-  const subtotal = cartLines.reduce(
-    (sum, line) =>
-      sum + (line.product.price === null ? 0 : Number(line.product.price) * line.quantity),
-    0
-  );
 
   return (
     <main className="min-h-screen bg-white">
@@ -130,7 +147,9 @@ export default async function CartPage({ searchParams }: PageProps) {
             <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand">
               Shopping Cart
             </p>
-            <h1 className="mt-2 text-4xl font-black tracking-[-0.04em] text-ink md:text-5xl">Your cart</h1>
+            <h1 className="mt-2 text-4xl font-black tracking-[-0.04em] text-ink md:text-5xl">
+              Your cart
+            </h1>
           </div>
           <Link href="/" className="text-sm font-semibold text-brand hover:underline">
             Continue shopping
@@ -155,150 +174,7 @@ export default async function CartPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        {cartLines.length === 0 ? (
-          <div className="mt-8 rounded-3xl border bg-white p-10 text-center">
-            <h2 className="text-xl font-semibold text-ink">Your cart is empty</h2>
-          </div>
-        ) : (
-          <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_340px]">
-            <section aria-label="Cart items" className="space-y-4">
-              {cartLines.map((line) => {
-                const productHref = line.product.slug
-                  ? `/product/${line.product.slug}`
-                  : `/product/${line.product.id}`;
-
-                return (
-                  <article
-                    key={line.id}
-                    className="grid gap-5 rounded-[24px] border border-black/5 bg-white p-5 shadow-[0_12px_34px_rgba(0,0,0,0.05)] transition hover:border-brand/20 hover:shadow-[0_18px_46px_rgba(0,0,0,0.08)] sm:grid-cols-[120px_1fr_auto]"
-                  >
-                    {(() => {
-                      const main = [...(line.product.product_images ?? [])].sort(
-                        (a, b) => a.sort_order - b.sort_order,
-                      )[0];
-                      return main ? (
-                        <Link
-                          href={productHref}
-                          className="relative block aspect-square overflow-hidden rounded-2xl border border-black/5 bg-white"
-                        >
-                          <Image
-                            src={imageUrl(main.path)}
-                            alt={withMaterial(line.product.product_name, line.product.sku)}
-                            fill
-                            sizes="120px"
-                            className="object-contain p-2"
-                          />
-                        </Link>
-                      ) : (
-                        <div className="flex aspect-square items-center justify-center rounded-2xl border border-brand/10 bg-brand-tint/50 text-center text-xs font-semibold text-brand">
-                          Photo coming soon
-                        </div>
-                      );
-                    })()}
-
-                    <div>
-                      <Link href={productHref} className="font-semibold text-ink hover:text-brand">
-                        {withMaterial(line.product.product_name, line.product.sku)}
-                      </Link>
-                      {line.product.sku && (
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          Part number: {line.product.sku}
-                        </p>
-                      )}
-                      <p className="mt-3 font-semibold text-ink">
-                        {line.product.price === null
-                          ? "Contact for price"
-                          : `$${Number(line.product.price).toFixed(2)}`}
-                      </p>
-
-                      <div className="mt-4 flex flex-wrap items-center gap-3">
-                        <form
-                          action={async (formData) => {
-                            "use server";
-                            const value = Number(formData.get("quantity"));
-                            await updateCartQuantity(line.id, value);
-                          }}
-                          className="flex items-center gap-2"
-                        >
-                          <label htmlFor={`quantity-${line.id}`} className="text-sm text-muted-foreground">
-                            Qty
-                          </label>
-                          <input
-                            id={`quantity-${line.id}`}
-                            name="quantity"
-                            type="number"
-                            min={1}
-                            max={99}
-                            defaultValue={line.quantity}
-                            className="w-20 rounded-lg border px-3 py-2 text-sm"
-                          />
-                          <button
-                            type="submit"
-                            className="text-sm font-semibold text-brand hover:underline"
-                          >
-                            Update
-                          </button>
-                        </form>
-
-                        <form action={removeCartItem.bind(null, line.id)}>
-                          <button
-                            type="submit"
-                            className="text-sm font-semibold text-red-600 hover:underline"
-                          >
-                            Remove
-                          </button>
-                        </form>
-                      </div>
-                    </div>
-
-                    <div className="font-bold text-ink">
-                      {line.product.price === null
-                        ? "—"
-                        : `$${(Number(line.product.price) * line.quantity).toFixed(2)}`}
-                    </div>
-                  </article>
-                );
-              })}
-            </section>
-
-            <aside className="h-fit rounded-[28px] border border-black/5 bg-ink p-6 text-white shadow-[0_20px_55px_rgba(0,0,0,0.12)]">
-              <h2 className="text-xl font-black tracking-[-0.02em] text-white">Order summary</h2>
-              <dl className="mt-6 space-y-4 text-sm">
-                <div className="flex justify-between gap-4">
-                  <dt className="text-white/50">Subtotal</dt>
-                  <dd className="font-semibold text-white">${subtotal.toFixed(2)}</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-white/50">Shipping</dt>
-                  <dd className="text-white/65">Calculated at checkout</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt className="text-white/50">Taxes</dt>
-                  <dd className="text-white/65">Calculated at checkout</dd>
-                </div>
-              </dl>
-
-              <div className="mt-6 border-t pt-5">
-                <div className="flex justify-between gap-4 text-lg font-black text-white">
-                  <span>Subtotal</span>
-                  <span>${subtotal.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <form action={beginCheckout}>
-                <button
-                  type="submit"
-                  className="cm-button-primary mt-6 w-full"
-                >
-                  Secure Checkout
-                </button>
-              </form>
-              <p className="mt-3 text-xs leading-5 text-white/45">
-                Pricing is revalidated on the server before payment. Checkout is blocked until inventory is configured for every item.
-              </p>
-            </aside>
-          </div>
-        )}
+        <CartInteractive initialLines={initialLines} />
       </div>
     </main>
   );
