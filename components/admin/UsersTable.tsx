@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { setUserRole } from "@/app/admin/users/actions";
-import { Download, Search } from "lucide-react";
+import { ChevronDown, Download, Search } from "lucide-react";
 
 export type UserRow = { id: string; name: string; email: string; phone: string; joined: string; roleId: number | null; role: string; isMe: boolean };
 export type RoleOpt = { id: number; name: string };
@@ -13,18 +13,24 @@ function RoleCell({ r, roles, onMsg }: { r: UserRow; roles: RoleOpt[]; onMsg: (m
   if (r.isMe) return <span className="font-semibold capitalize text-ink">{r.role || "—"} (you)</span>;
   return (
     <div className="flex items-center gap-2">
-      <select
-        value={val}
-        onChange={(e) => setVal(Number(e.target.value))}
-        className="rounded-xl border border-black/10 bg-white px-2 py-1.5 text-sm capitalize"
-      >
-        {r.roleId == null && <option value={0}>—</option>}
-        {roles.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.name}
-          </option>
-        ))}
-      </select>
+      <div className="relative">
+        <select
+          value={val}
+          onChange={(e) => setVal(Number(e.target.value))}
+          className="appearance-none rounded-xl border border-black/10 bg-white py-2 pl-3 pr-10 text-sm font-medium capitalize text-ink shadow-sm outline-none transition hover:border-black/20 focus:border-brand/60 focus:ring-4 focus:ring-brand/10"
+        >
+          {r.roleId == null && <option value={0}>—</option>}
+          {roles.map((o) => (
+            <option key={o.id} value={o.id}>
+              {o.name}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+          aria-hidden="true"
+        />
+      </div>
       {val !== (r.roleId ?? 0) && val !== 0 && (
         <button
           type="button"
