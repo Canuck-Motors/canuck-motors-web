@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Header from "@/components/Header";
 import Navbar from "@/components/Navbar";
 import { Outfit } from "next/font/google";
@@ -40,7 +41,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${outfit.variable} ${outfit.className} antialiased`}>
-  <Header />
+  {/* Header reads the current path (usePathname), so it must stream in */}
+  <Suspense fallback={<div className="h-20" aria-hidden="true" />}>
+    <Header />
+  </Suspense>
   <Navbar />
   {children}
   <ChatLauncher />

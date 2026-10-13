@@ -16,7 +16,10 @@ const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 // Engine names look like "4.2L | V6 | GAS". The last part is the fuel type.
 // The customer thinks of "4.2L V6" as ONE engine, so we group by that part.
-const FUELS = new Set(["all", "gas", "electric", "diesel", "hybrid"]);
+const FUELS = new Set([
+  "all", "gas", "electric", "diesel", "hybrid",
+  "flex", "flexfuel", "e85", "ffv", "cng", "lpg", "propane", "phev", "bev",
+]);
 
 function engineParts(name: string) {
   return name
