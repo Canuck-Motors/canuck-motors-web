@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
+import { ChevronDown } from "lucide-react";
 import RoadLoader from "@/components/RoadLoader";
 import { createClient } from "@/lib/supabase/client";
 // import { useRouter } from "next/router";
@@ -8,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { lookupVin } from "@/app/vin-actions";
 
 const field =
-  "w-full rounded-2xl border border-black/10 bg-white px-4 py-3.5 text-sm font-medium text-ink shadow-sm outline-none transition duration-200 focus:border-brand/60 focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:bg-black/[0.035] disabled:text-muted-foreground";
+  "w-full appearance-none rounded-2xl border border-black/10 bg-white py-3.5 pl-4 pr-12 text-sm font-medium text-ink shadow-sm outline-none transition duration-200 hover:border-black/20 focus:border-brand/60 focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:bg-black/[0.035] disabled:text-muted-foreground";
 
 type YearOption = {
   id: number;
@@ -472,6 +473,7 @@ export function Hero() {
                 Year
               </label>
 
+              <div className="relative">
               <select
                 value={year}
                 onChange={(e) => handleYearChange(e.target.value)}
@@ -487,6 +489,11 @@ export function Hero() {
                   </option>
                 ))}
               </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+                aria-hidden="true"
+              />
+            </div>
             </div>
 
             {/* MAKE */}
@@ -495,6 +502,7 @@ export function Hero() {
                 Make
               </label>
 
+              <div className="relative">
               <select
                 value={make}
                 onChange={(e) => handleMakeChange(e.target.value)}
@@ -511,6 +519,11 @@ export function Hero() {
                   </option>
                 ))}
               </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+                aria-hidden="true"
+              />
+            </div>
             </div>
 
             {/* MODEL */}
@@ -519,6 +532,7 @@ export function Hero() {
                 Model
               </label>
 
+              <div className="relative">
               <select
                 value={model}
                 onChange={(e) => handleModelChange(e.target.value)}
@@ -535,6 +549,11 @@ export function Hero() {
                   </option>
                 ))}
               </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+                aria-hidden="true"
+              />
+            </div>
             </div>
 
             {/* ENGINE */}
@@ -543,6 +562,7 @@ export function Hero() {
                 Engine
               </label>
 
+              <div className="relative">
               <select
                 value={engine}
                 onChange={(e) => handleEngineChange(e.target.value)}
@@ -559,6 +579,11 @@ export function Hero() {
                   </option>
                 ))}
               </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+                aria-hidden="true"
+              />
+            </div>
             </div>
 
             {/* TRIM */}
@@ -567,6 +592,7 @@ export function Hero() {
                 Trim
               </label>
 
+              <div className="relative">
               <select
                 value={trim}
                 onChange={(e) => setTrim(e.target.value)}
@@ -583,6 +609,11 @@ export function Hero() {
                   </option>
                 ))}
               </select>
+              <ChevronDown
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+                aria-hidden="true"
+              />
+            </div>
             </div>
           </div>
 
