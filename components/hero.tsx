@@ -447,7 +447,7 @@ export function Hero() {
         </div>
 
         {/* Finder card */}
-        <div className="mt-10 overflow-hidden rounded-[30px] border border-white/25 bg-white/[0.90] shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-md md:mt-12">
+        <div className="mt-10 overflow-hidden rounded-[30px] border border-white/30 bg-white/[0.84] shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-lg md:mt-12">
           <div className="border-b border-black/5 bg-[linear-gradient(90deg,#0d0d0d,#181818)] px-6 py-5 text-white md:px-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
