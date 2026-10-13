@@ -65,13 +65,82 @@ export async function requestCancellation(orderId: string, reason: string) {
           p_failure_reason:
             refundError instanceof Error ? refundError.message : "Refund failed",
         });
-        throw refundError;
+        // The cancellation itself is saved. The failed refund is recorded so staff
+        // can retry it (Admin > Payments), instead of showing the customer a crash.
+        console.error("Cancellation refund failed:", refundError);
       }
     }
   }
 
   revalidatePath(`/account/orders/${orderId}`);
   revalidatePath("/account/orders");
+}
+
+// Cancel ONE item of a paid order (before it ships). Refunds just that item.
+export async function cancelOrderItem(orderId: string, orderItemId: number, reason: string) {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) redirect("/login");
+
+  const { data: prepared, error } = await supabase.rpc("prepare_item_cancellation", {
+    p_order_item_id: orderItemId,
+    p_reason: reason,
+  });
+  if (error) {
+    const m = error.message;
+    throw new Error(
+      /prepare_item_cancellation|schema cache/.test(m)
+        ? "Item cancellation is not set up yet. Run database/item_cancellation.sql."
+        : /item_already_cancelled/.test(m)
+          ? "This item was already cancelled."
+          : /order_already_in_delivery_flow/.test(m)
+            ? "This order is already being delivered, so items can no longer be cancelled."
+            : /order_not_paid|order_not_cancellable/.test(m)
+              ? "This order cannot be changed right now."
+              : m
+    );
+  }
+
+  const row = prepared?.[0];
+  if (!row) throw new Error("Unable to cancel this item.");
+
+  // Only one item left: cancel the whole order instead.
+  if (row.action === "cancel_order") {
+    await requestCancellation(orderId, reason || "Customer cancelled the last item");
+    return;
+  }
+
+  const admin = createAdminClient();
+  try {
+    const stripeRefund = await createStripeRefund({
+      paymentIntentId: row.payment_intent_id,
+      amountCents: Math.round(Number(row.amount) * 100),
+      idempotencyKey: row.idempotency_key,
+      refundId: row.refund_id,
+      orderId,
+    });
+
+    const { error: finalizeError } = await admin.rpc("finalize_item_cancellation", {
+      p_refund_id: row.refund_id,
+      p_stripe_refund_id: stripeRefund.id,
+      p_succeeded: true,
+      p_failure_reason: null,
+    });
+    if (finalizeError) throw new Error(finalizeError.message);
+  } catch (refundError) {
+    await admin.rpc("finalize_item_cancellation", {
+      p_refund_id: row.refund_id,
+      p_stripe_refund_id: null,
+      p_succeeded: false,
+      p_failure_reason: refundError instanceof Error ? refundError.message : "Refund failed",
+    });
+    console.error("Item cancellation refund failed:", refundError);
+    throw new Error("The refund could not be completed, so the item was not cancelled. Please try again or contact support.");
+  }
+
+  revalidatePath(`/account/orders/${orderId}`);
+  revalidatePath("/account/orders");
+  revalidatePath("/admin/orders");
 }
 
 export async function requestReturnOrExchange(input: {

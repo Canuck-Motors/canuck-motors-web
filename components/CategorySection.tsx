@@ -1,4 +1,6 @@
-import { sortByTypeOrder } from "@/lib/product-order";
+import Image from "next/image";
+import { getVisibleCategories } from "@/lib/categories";
+import { imageUrl } from "@/lib/product-images";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
@@ -6,19 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 export async function CategorySection() {
   const supabase = await createClient();
 
-  const { data: rawCategories, error } = await supabase
-    .from("product_categories")
-    .select("id, category_name, slug")
-    .eq("is_active", true)
-    .eq("is_delete", false)
-    .order("category_name");
-
-  if (error) {
-    console.error("Error loading categories:", error.message);
-  }
-
-  // Water pump first, then brake pad, timing belt kit, brake shoe
-  const categories = sortByTypeOrder(rawCategories ?? [], (c) => c.category_name);
+  const categories = await getVisibleCategories(supabase);
 
   return (
     <section className="relative overflow-hidden bg-white py-20 md:py-24">
@@ -61,6 +51,16 @@ export async function CategorySection() {
                 </span>
               </div>
 
+
+              {category.image_path && (
+                <Image
+                  src={imageUrl(category.image_path)}
+                  alt=""
+                  width={120}
+                  height={120}
+                  className="pointer-events-none absolute bottom-3 right-3 h-24 w-24 rounded-xl object-contain opacity-90"
+                />
+              )}
 
               <div className="relative">
                 <p className="max-w-[16rem] text-xl font-black tracking-[-0.025em] text-white">

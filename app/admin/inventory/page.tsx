@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { setInventoryQuantity } from "@/app/admin/actions";
+import InventoryManager, { type InventoryRow } from "@/components/admin/InventoryManager";
 import { AdminNav } from "@/components/AdminNav";
 
 export const instant = false;
@@ -11,7 +11,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function InventoryAdminPage() {
+export default async function InventoryAdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ filter?: string }>;
+}) {
+  const { filter } = await searchParams;
   const supabase = await createClient();
   const { data: role } = await supabase.rpc("current_user_staff_role");
 
@@ -19,16 +24,50 @@ export default async function InventoryAdminPage() {
     redirect("/");
   }
 
-  const { data: products, error } = await supabase
-    .from("products")
-    .select("id, product_name, sku, price, inventory(quantity, reserved_quantity, low_stock_threshold, is_active)")
-    .eq("is_active", true)
+  const { data: cats } = await supabase
+    .from("product_categories")
+    .select("id, category_name")
     .eq("is_delete", false)
-    .order("product_name")
-    .limit(200);
+    .order("category_name");
 
-  if (error) {
-    throw new Error("Unable to load inventory.");
+  const rows: InventoryRow[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from("products")
+      .select(
+        "id, product_name, sku, description, price, is_active, product_category_id, product_images(id, path, sort_order), inventory(quantity, reserved_quantity, low_stock_threshold)"
+      )
+      .eq("is_delete", false)
+      .order("product_name")
+      .range(from, from + 999);
+
+    if (error) {
+      throw new Error("Unable to load inventory.");
+    }
+
+    for (const p of data ?? []) {
+      const inv = Array.isArray(p.inventory) ? p.inventory[0] : p.inventory;
+      const imgs = (Array.isArray(p.product_images) ? p.product_images : []) as {
+        path: string;
+        sort_order: number;
+      }[];
+      const main = [...imgs].sort((a, b) => a.sort_order - b.sort_order)[0];
+      rows.push({
+        categoryId: p.product_category_id ?? null,
+        thumb: main?.path ?? null,
+        id: p.id,
+        name: p.product_name ?? "",
+        sku: p.sku ?? "",
+        description: p.description ?? "",
+        price: Number(p.price ?? 0),
+        isActive: Boolean(p.is_active),
+        imageCount: imgs.length,
+        quantity: inv?.quantity ?? 0,
+        reserved: inv?.reserved_quantity ?? 0,
+        lowStock: inv?.low_stock_threshold ?? 5,
+      });
+    }
+    if (!data || data.length < 1000) break;
   }
 
   return (
@@ -48,88 +87,13 @@ export default async function InventoryAdminPage() {
           </p>
         </div>
 
-        <div className="mt-8 overflow-hidden rounded-[26px] border border-black/5 bg-white shadow-[0_16px_46px_rgba(0,0,0,0.06)]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[850px] text-left text-sm">
-              <thead className="bg-secondary">
-                <tr>
-                  <th className="px-5 py-4 font-semibold text-ink">Part</th>
-                  <th className="px-5 py-4 font-semibold text-ink">SKU</th>
-                  <th className="px-5 py-4 font-semibold text-ink">On hand</th>
-                  <th className="px-5 py-4 font-semibold text-ink">Reserved</th>
-                  <th className="px-5 py-4 font-semibold text-ink">Available</th>
-                  <th className="px-5 py-4 font-semibold text-ink">Update</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {(products ?? []).map((product) => {
-                  const inventory = Array.isArray(product.inventory)
-                    ? product.inventory[0]
-                    : product.inventory;
-                  const quantity = inventory?.quantity ?? 0;
-                  const reserved = inventory?.reserved_quantity ?? 0;
-                  const available = quantity - reserved;
-
-                  return (
-                    <tr key={product.id}>
-                      <td className="px-5 py-4">
-                        <div className="font-medium text-ink">{product.product_name}</div>
-                      </td>
-                      <td className="px-5 py-4 text-muted-foreground">{product.sku}</td>
-                      <td className="px-5 py-4 font-medium text-ink">{quantity}</td>
-                      <td className="px-5 py-4 text-muted-foreground">{reserved}</td>
-                      <td className="px-5 py-4">
-                        <span
-                          className={
-                            available <= (inventory?.low_stock_threshold ?? 5)
-                              ? "font-semibold text-amber-700"
-                              : "font-semibold text-ink"
-                          }
-                        >
-                          {available}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <form
-                          action={async (formData) => {
-                            "use server";
-                            const nextQuantity = Number(formData.get("quantity"));
-                            const reason =
-                              String(formData.get("reason") || "Admin inventory adjustment");
-                            await setInventoryQuantity(product.id, nextQuantity, reason);
-                          }}
-                          className="flex flex-wrap items-center gap-2"
-                        >
-                          <input
-                            name="quantity"
-                            type="number"
-                            min={0}
-                            defaultValue={quantity}
-                            className="w-24 rounded-lg border px-3 py-2"
-                            aria-label={`Inventory quantity for ${product.product_name}`}
-                          />
-                          <input
-                            name="reason"
-                            type="text"
-                            defaultValue="Admin inventory adjustment"
-                            className="min-w-56 rounded-lg border px-3 py-2"
-                            aria-label={`Reason for adjusting ${product.product_name}`}
-                          />
-                          <button
-                            type="submit"
-                            className="rounded-full bg-ink px-4 py-2 font-semibold text-white transition hover:bg-brand"
-                          >
-                            Save
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <InventoryManager
+          initial={rows}
+          categories={(cats ?? []).map((c) => ({ id: c.id, name: c.category_name }))}
+          initialFilter={
+            ["visible", "hidden", "noimage", "low", "out"].includes(String(filter)) ? (filter as "visible") : "all"
+          }
+        />
       </div>
     </main>
   );

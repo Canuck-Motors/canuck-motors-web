@@ -13,6 +13,7 @@ import {
   getSpecsForProducts,
   isSpecMessage,
   narrow,
+  notSureAboutEverything,
   questionText,
   readFilters,
   type SpecFilter,
@@ -265,6 +266,11 @@ async function present(out: any, filters: SpecFilter[]) {
           : [...question.options.slice(0, 10), "Not sure"],
     };
   }
+  // Several parts left, and "Not sure" to every question: do not guess.
+  if (candidates.length > 1 && !question && notSureAboutEverything(filters)) {
+    base.override =
+      "I could not narrow it down because you are not sure about the details. To get the exact part, please check your brake code with your vehicle's dealership (or paste your VIN here) and I will pick the right one. These are the parts that could fit:";
+  }
   return base;
 }
 
@@ -439,7 +445,18 @@ export async function POST(req: Request) {
             const clicked = String(messages[messages.length - 1]?.content ?? "").match(
               /^(Make|Model|Engine|Trim):\s*(.+)$/i,
             );
-            if (clicked) toolInput[clicked[1].toLowerCase()] = clicked[2].trim();
+            if (clicked) {
+              const level = clicked[1].toLowerCase();
+              const value = clicked[2].trim();
+              // "Trim: WRX" typed before the model is known: the customer is answering
+              // "which model?", so use it as the model instead of a trim.
+              if (level === "trim" && !String(toolInput.model ?? "").trim()) {
+                toolInput.model = value;
+                delete toolInput.trim;
+              } else {
+                toolInput[level] = value;
+              }
+            }
           }
 
           const out: any = await runTool(block.name, toolInput);

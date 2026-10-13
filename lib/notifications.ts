@@ -24,6 +24,41 @@ function messageFor(row: OutboxRow) {
     };
   }
 
+  if (row.event_type === "return_update" || row.event_type === "return_instructions") {
+    const p = row.payload ?? {};
+    const order = String(p.order_number || "");
+    const lines: string[] = [];
+
+    if (row.event_type === "return_instructions") {
+      lines.push(`Here is how to send back your item for order ${order}.`);
+      const address = String(p.return_address || "");
+      lines.push(address ? `Return address:\n${address}` : "Reply to this email and we will send you the return address.");
+      lines.push("Please pack the item securely, include your order number, and keep your tracking number.");
+    } else {
+      const status = String(p.status || "");
+      const headline: Record<string, string> = {
+        approved: "Your request was approved.",
+        rejected: "We are sorry, we could not approve your request.",
+        label_issued: "Your return instructions are ready.",
+        in_transit: "Your return is on its way to us.",
+        received: "We received your returned item.",
+        inspection_failed: "We inspected your returned item and there is an issue.",
+        exchange_processing: "We are preparing your exchange.",
+        completed: "Your return or exchange is complete.",
+      };
+      lines.push(`Update on your request for order ${order}: ${headline[status] || `status is now ${status.replaceAll("_", " ")}.`}`);
+    }
+
+    if (p.message) lines.push(String(p.message));
+    if (p.tracking) lines.push(`Return tracking: ${String(p.carrier || "")} ${String(p.tracking)}`.trim());
+    lines.push("Thank you, Canuck Motors");
+
+    return {
+      subject: `Canuck Motors return update (${order})`,
+      text: lines.join("\n\n"),
+    };
+  }
+
   const status = String(row.payload?.status || "updated").replaceAll("_", " ");
 
   return {

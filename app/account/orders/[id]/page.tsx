@@ -2,7 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import Image from "next/image";
+import { imageUrl } from "@/lib/product-images";
+import ReturnPhotos from "@/components/account/ReturnPhotos";
 import {
+  cancelOrderItem,
   requestCancellation,
   requestReturnOrExchange,
 } from "@/app/account/orders/actions";
@@ -61,7 +65,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
     await Promise.all([
       supabase
         .from("order_items")
-        .select("id, product_id, sku, product_name, unit_price, quantity, line_total")
+        .select("id, product_id, sku, product_name, unit_price, quantity, line_total, cancelled_on")
         .eq("order_id", order.id)
         .order("id"),
       supabase
@@ -79,7 +83,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
       supabase
         .from("return_requests")
         .select(
-          "id, request_type, status, reason_code, reason_text, requested_on, return_tracking_number, return_carrier, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due"
+          "id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_tracking_number, return_carrier, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due"
         )
         .eq("order_id", order.id)
         .order("requested_on", { ascending: false }),
@@ -95,6 +99,29 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
           .in("shipment_id", shipmentIds)
           .order("event_time", { ascending: false })
       : { data: [] };
+
+  // First photo + page link for each product in the order.
+  const productIds = Array.from(
+    new Set((items ?? []).map((i) => i.product_id).filter((v): v is number => v != null))
+  );
+  const thumbByProduct = new Map<number, string>();
+  const slugByProduct = new Map<number, string>();
+  if (productIds.length) {
+    const [{ data: imgRows }, { data: prodRows }] = await Promise.all([
+      supabase
+        .from("product_images")
+        .select("product_id, path, sort_order")
+        .in("product_id", productIds)
+        .order("sort_order"),
+      supabase.from("products").select("id, slug").in("id", productIds),
+    ]);
+    for (const r of imgRows ?? []) {
+      if (!thumbByProduct.has(r.product_id)) thumbByProduct.set(r.product_id, imageUrl(r.path));
+    }
+    for (const r of prodRows ?? []) slugByProduct.set(r.id, String(r.slug ?? r.id));
+  }
+
+  const activeItemCount = (items ?? []).filter((i) => !i.cancelled_on).length;
 
   const canCancel =
     cancellationStatuses.has(order.status) &&
@@ -218,8 +245,34 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                     className="rounded-[24px] border border-black/5 bg-white p-5 shadow-[0_12px_34px_rgba(0,0,0,0.05)]"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="flex items-start gap-4">
+                        {item.product_id != null && thumbByProduct.get(item.product_id) ? (
+                          <Link
+                            href={`/product/${slugByProduct.get(item.product_id) ?? item.product_id}`}
+                            className="shrink-0"
+                          >
+                            <Image
+                              src={thumbByProduct.get(item.product_id)!}
+                              alt={item.product_name}
+                              width={88}
+                              height={88}
+                              className="h-[88px] w-[88px] rounded-2xl border border-black/5 bg-white object-contain p-1"
+                            />
+                          </Link>
+                        ) : (
+                          <div className="flex h-[88px] w-[88px] shrink-0 items-center justify-center rounded-2xl border border-dashed text-[10px] font-bold text-muted-foreground">
+                            No photo
+                          </div>
+                        )}
                       <div>
-                        <p className="font-black text-ink">{item.product_name}</p>
+                        <p className={`font-black ${item.cancelled_on ? "text-muted-foreground line-through" : "text-ink"}`}>
+                          {item.product_name}
+                        </p>
+                        {item.cancelled_on && (
+                          <p className="mt-1 inline-block rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-700">
+                            Cancelled and refunded
+                          </p>
+                        )}
                         <p className="mt-1 text-sm text-muted-foreground">
                           Part number: {item.sku}
                         </p>
@@ -227,15 +280,48 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                           Quantity: {item.quantity}
                         </p>
                       </div>
-                      <p className="font-black text-ink">
+                      </div>
+                      <p className={`font-black ${item.cancelled_on ? "text-muted-foreground line-through" : "text-ink"}`}>
                         ${Number(item.line_total).toFixed(2)}
                       </p>
                     </div>
 
-                    {canRequestReturn && (
+                    {canCancel &&
+                      order.status !== "cancellation_requested" &&
+                      order.payment_status === "paid" &&
+                      !item.cancelled_on &&
+                      activeItemCount > 1 && (
+                        <form
+                          action={async (formData) => {
+                            "use server";
+                            await cancelOrderItem(
+                              order.id,
+                              item.id,
+                              String(formData.get("reason") || "Customer cancelled this item")
+                            );
+                          }}
+                          className="mt-4 flex flex-col gap-2 border-t pt-4 sm:flex-row"
+                        >
+                          <input
+                            name="reason"
+                            type="text"
+                            required
+                            placeholder="Why do you want to cancel this item?"
+                            className="flex-1 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm"
+                          />
+                          <button
+                            type="submit"
+                            className="rounded-full border border-red-300 px-4 py-2 text-sm font-bold text-red-700 hover:bg-red-50"
+                          >
+                            Cancel this item (refund ${Number(item.line_total).toFixed(2)})
+                          </button>
+                        </form>
+                      )}
+
+                    {canRequestReturn && !item.cancelled_on && (
                       <div className="mt-5 border-t pt-5">
                         <p className="text-sm font-bold text-ink">
-                          Return or exchange this item
+                          Return this item
                         </p>
                         <form
                           action={async (formData) => {
@@ -266,23 +352,23 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                           }}
                           className="mt-3 grid gap-3 md:grid-cols-2"
                         >
-                          <select
-                            name="request_type"
-                            className="rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm"
-                            required
-                          >
-                            <option value="return">Return</option>
-                            <option value="exchange">Exchange</option>
-                          </select>
-                          <input
-                            name="quantity"
-                            type="number"
-                            min={1}
-                            max={item.quantity}
-                            defaultValue={1}
-                            className="rounded-xl border border-black/10 px-3 py-2.5 text-sm"
-                            required
-                          />
+                          <input type="hidden" name="request_type" value="return" />
+                          {item.quantity > 1 ? (
+                            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                              Quantity to return
+                              <input
+                                name="quantity"
+                                type="number"
+                                min={1}
+                                max={item.quantity}
+                                defaultValue={1}
+                                className="w-20 rounded-xl border border-black/10 px-3 py-2.5 text-sm text-ink"
+                                required
+                              />
+                            </label>
+                          ) : (
+                            <input type="hidden" name="quantity" value="1" />
+                          )}
                           <select
                             name="reason_code"
                             className="rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm"
@@ -302,6 +388,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                             placeholder="Additional details"
                             className="rounded-xl border border-black/10 px-3 py-2.5 text-sm"
                           />
+                          <ReturnPhotos orderId={order.id} />
                           <button
                             type="submit"
                             className="cm-button-dark md:col-span-2"
@@ -318,7 +405,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
 
             {(returnRequests ?? []).length > 0 && (
               <section className="mt-8 rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_40px_rgba(0,0,0,0.06)]">
-                <p className="cm-eyebrow">Returns & exchanges</p>
+                <p className="cm-eyebrow">Returns</p>
                 <h2 className="mt-2 text-2xl font-black text-ink">
                   Requests
                 </h2>
@@ -331,13 +418,40 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                             {request.request_type}
                           </p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            {request.reason_code.replaceAll("_", " ")}
+                            {request.reason_code.replaceAll("_", " ")} · Requested{" "}
+                            {new Date(request.requested_on).toLocaleDateString("en-CA")}
                           </p>
                         </div>
-                        <span className="text-sm font-bold capitalize text-brand">
+                        <span className="h-fit rounded-full bg-brand-tint px-3 py-1 text-sm font-bold capitalize text-brand">
                           {request.status.replaceAll("_", " ")}
                         </span>
                       </div>
+
+                      {request.reason_text && (
+                        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                          Your note: {request.reason_text}
+                        </p>
+                      )}
+
+                      {(request.return_tracking_number || request.return_carrier) && (
+                        <div className="mt-3 rounded-2xl bg-secondary/60 p-4 text-sm">
+                          <p className="font-bold text-ink">Return shipping</p>
+                          <p className="mt-1 text-muted-foreground">
+                            {[request.return_carrier, request.return_tracking_number]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </p>
+                        </div>
+                      )}
+
+                      {request.resolution_notes && (
+                        <div className="mt-3 rounded-2xl bg-secondary/60 p-4 text-sm">
+                          <p className="font-bold text-ink">Message from Canuck Motors</p>
+                          <p className="mt-1 whitespace-pre-line leading-6 text-muted-foreground">
+                            {request.resolution_notes}
+                          </p>
+                        </div>
+                      )}
 
                       {request.request_type === "exchange" &&
                         request.replacement_order_id && (

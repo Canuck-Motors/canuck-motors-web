@@ -121,7 +121,7 @@ function Compatibility({ rows }: { rows: Fitment[] }) {
         {shown < filtered.length && (
           <button
             type="button"
-            onClick={() => setShown((s) => s + PAGE * 4)}
+            onClick={() => setShown(filtered.length)}
             className="rounded-full border border-brand/30 px-4 py-1.5 font-bold text-brand transition hover:bg-brand hover:text-white"
           >
             Show more

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AdminNav } from "@/components/AdminNav";
+import ImagesManager, { type ImageProductRow } from "@/components/admin/ImagesManager";
 
 export const instant = false;
 
@@ -11,76 +11,44 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default async function ImagesAdminPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
-  const { q = "" } = await searchParams;
+export default async function ImagesAdminPage() {
   const supabase = await createClient();
   const { data: role } = await supabase.rpc("current_user_staff_role");
   if (!role) redirect("/");
 
-  const term = q.replace(/[%,()]/g, " ").trim().slice(0, 60);
+  const rows: ImageProductRow[] = [];
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await supabase
+      .from("products")
+      .select("id, product_name, sku, is_active, product_images(path, sort_order)")
+      .eq("is_delete", false)
+      .order("sku")
+      .range(from, from + 999);
+    if (error) throw new Error("Unable to load products.");
 
-  let query = supabase
-    .from("products")
-    .select("id, product_name, sku, product_images(id)")
-    .eq("is_active", true)
-    .eq("is_delete", false)
-    .order("sku")
-    .limit(100);
-  if (term) query = query.or(`product_name.ilike.%${term}%,sku.ilike.%${term}%`);
-
-  const { data: products } = await query;
+    for (const p of data ?? []) {
+      const imgs = (Array.isArray(p.product_images) ? p.product_images : []) as {
+        path: string;
+        sort_order: number;
+      }[];
+      const main = [...imgs].sort((a, b) => a.sort_order - b.sort_order)[0];
+      rows.push({
+        id: p.id,
+        name: p.product_name ?? "",
+        sku: p.sku ?? "",
+        isActive: Boolean(p.is_active),
+        imageCount: imgs.length,
+        thumb: main?.path ?? null,
+      });
+    }
+    if (!data || data.length < 1000) break;
+  }
 
   return (
     <main className="cm-container space-y-6 py-10">
       <AdminNav />
       <h1 className="text-3xl font-black tracking-tight text-ink">Product images</h1>
-
-      <form className="flex max-w-md gap-2">
-        <input
-          name="q"
-          defaultValue={term}
-          placeholder="Search part number or name"
-          className="flex-1 rounded-full border border-input bg-secondary px-4 py-2.5 text-sm outline-none focus:border-brand"
-        />
-        <button className="cm-button-primary">Search</button>
-      </form>
-
-      <div className="overflow-x-auto rounded-2xl border border-border bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-secondary text-xs uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-4 py-3">Part number</th>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Photos</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {(products ?? []).map((p: any) => (
-              <tr key={p.id} className="border-t border-border">
-                <td className="px-4 py-2.5 font-medium text-ink">{p.sku}</td>
-                <td className="px-4 py-2.5">{p.product_name}</td>
-                <td className="px-4 py-2.5">
-                  {p.product_images?.length ? (
-                    p.product_images.length
-                  ) : (
-                    <span className="font-semibold text-brand">None</span>
-                  )}
-                </td>
-                <td className="px-4 py-2.5 text-right">
-                  <Link href={`/admin/images/${p.id}`} className="font-bold text-brand hover:underline">
-                    Manage
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ImagesManager initial={rows} />
     </main>
   );
 }

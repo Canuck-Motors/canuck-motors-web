@@ -23,12 +23,62 @@ async function requireAuthenticatedStaff() {
   return supabase;
 }
 
+
+async function logActivity(requestId: string, action: string, detail: string) {
+  try {
+    const supabase = await createClient();
+    await supabase.rpc("admin_log_return_activity", {
+      p_request_id: requestId,
+      p_action: action,
+      p_detail: detail,
+    });
+  } catch {
+    // history is optional (database/admin_returns_extras.sql)
+  }
+}
+
+// Queue an email to the customer (sent by the notification worker; needs RESEND_API_KEY).
+async function queueReturnEmail(
+  requestId: string,
+  eventType: "return_update" | "return_instructions",
+  payload: Record<string, unknown>
+): Promise<boolean> {
+  try {
+    const admin = createAdminClient();
+    const { data: row } = await admin
+      .from("return_requests")
+      .select("user_id, order_id, orders!order_id(customer_email, order_number)")
+      .eq("id", requestId)
+      .maybeSingle();
+    const order = Array.isArray(row?.orders) ? row?.orders[0] : row?.orders;
+    const email = (order as { customer_email?: string } | undefined)?.customer_email;
+    if (!row || !email) return false;
+
+    const { error } = await admin.from("notification_outbox").insert({
+      order_id: row.order_id,
+      user_id: row.user_id ?? null,
+      channel: "email",
+      event_type: eventType,
+      recipient: email,
+      template_key: eventType,
+      payload: {
+        ...payload,
+        order_number: (order as { order_number?: string } | undefined)?.order_number ?? "",
+      },
+    });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 export async function updateReturnRequest(
   requestId: string,
   status: string,
   notes: string,
   returnCarrier?: string,
-  returnTrackingNumber?: string
+  returnTrackingNumber?: string,
+  email?: { notify: boolean; message: string }
 ) {
   const supabase = await requireAuthenticatedStaff();
 
@@ -44,6 +94,21 @@ export async function updateReturnRequest(
     throw new Error(error.message);
   }
 
+  let emailed = false;
+  if (email?.notify && status !== "under_review") {
+    emailed = await queueReturnEmail(requestId, "return_update", {
+      status,
+      message: email.message,
+      carrier: returnCarrier || "",
+      tracking: returnTrackingNumber || "",
+    });
+  }
+
+  await logActivity(
+    requestId,
+    "status",
+    `Status set to ${status.replaceAll("_", " ")}${returnTrackingNumber ? `, tracking ${returnTrackingNumber}` : ""}${notes ? ", note saved" : ""}${emailed ? ", customer emailed" : ""}`
+  );
   revalidatePath("/admin/returns");
 }
 
@@ -125,6 +190,7 @@ export async function issueReturnRefund(
     throw error;
   }
 
+  await logActivity(requestId, "refund", `Refund of $${amount.toFixed(2)} issued`);
   revalidatePath("/admin/returns");
   revalidatePath(`/account/orders/${orderId}`);
 }
@@ -361,6 +427,113 @@ export async function createExchangeReplacement(input: {
     throw error;
   }
 
+  await logActivity(input.requestId, "exchange", "Replacement order created");
   revalidatePath("/admin/returns");
   revalidatePath(`/account/orders/${preparedRow.original_order_id}`);
+}
+
+
+// Put received items back into stock (or record that they are damaged and not restocked).
+export async function handleReturnStock(requestId: string, restock: boolean) {
+  const supabase = await requireAuthenticatedStaff();
+
+  if (restock) {
+    const { data: reqRow, error } = await supabase
+      .from("return_requests")
+      .select("id, return_request_items(quantity, received_quantity, order_items!inner(product_id))")
+      .eq("id", requestId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    const items = (reqRow?.return_request_items ?? []) as {
+      quantity: number;
+      received_quantity: number;
+      order_items: { product_id?: number } | { product_id?: number }[] | null;
+    }[];
+
+    // Block double handling before touching stock
+    const { error: markError } = await supabase.rpc("admin_mark_return_restocked", {
+      p_request_id: requestId,
+      p_restocked: true,
+    });
+    if (markError) {
+      throw new Error(
+        /admin_mark_return_restocked|schema cache/.test(markError.message)
+          ? "Run database/admin_returns_extras.sql in the Supabase SQL editor first."
+          : markError.message
+      );
+    }
+
+    const lines: string[] = [];
+    for (const it of items) {
+      const oi = Array.isArray(it.order_items) ? it.order_items[0] : it.order_items;
+      const productId = (oi as { product_id?: number } | undefined)?.product_id;
+      const qty = Number(it.received_quantity) > 0 ? Number(it.received_quantity) : Number(it.quantity);
+      if (!productId || !qty) continue;
+
+      const { data: inv } = await supabase
+        .from("inventory")
+        .select("quantity")
+        .eq("product_id", productId)
+        .maybeSingle();
+      const next = Number(inv?.quantity ?? 0) + qty;
+
+      const first = await supabase.rpc("admin_adjust_stock", {
+        p_product_id: productId,
+        p_new_quantity: next,
+        p_reason: "Returned item restocked",
+      });
+      if (first.error) {
+        const { error: e2 } = await supabase.rpc("adjust_inventory", {
+          p_product_id: productId,
+          p_new_quantity: next,
+          p_reason: "Returned item restocked",
+        });
+        if (e2) throw new Error(e2.message);
+      }
+      lines.push(`+${qty}`);
+    }
+    await logActivity(requestId, "restock", `Returned items added back to stock (${lines.join(", ") || "none"})`);
+  } else {
+    const { error } = await supabase.rpc("admin_mark_return_restocked", {
+      p_request_id: requestId,
+      p_restocked: false,
+    });
+    if (error) throw new Error(error.message);
+    await logActivity(requestId, "restock", "Marked damaged - not restocked");
+  }
+
+  revalidatePath("/admin/returns");
+  revalidatePath("/admin/inventory");
+}
+
+
+export async function sendReturnInstructions(requestId: string, message: string) {
+  await requireAuthenticatedStaff();
+  const ok = await queueReturnEmail(requestId, "return_instructions", {
+    message,
+    return_address: process.env.RETURN_ADDRESS || "",
+  });
+  if (!ok) throw new Error("Could not queue the email (no customer email found).");
+  await logActivity(requestId, "email", "Return instructions emailed to the customer");
+  revalidatePath("/admin/returns");
+}
+
+// Photos the customer attached (private bucket, signed links valid for one hour).
+export async function getReturnPhotos(requestId: string): Promise<string[]> {
+  const supabase = await requireAuthenticatedStaff();
+  const { data: row } = await supabase
+    .from("return_requests")
+    .select("user_id, order_id")
+    .eq("id", requestId)
+    .maybeSingle();
+  if (!row?.user_id || !row.order_id) return [];
+
+  const admin = createAdminClient();
+  const folder = `${row.user_id}/${row.order_id}`;
+  const { data: files } = await admin.storage.from("return-photos").list(folder, { limit: 20 });
+  const paths = (files ?? []).filter((f) => f.name && f.id).map((f) => `${folder}/${f.name}`);
+  if (!paths.length) return [];
+
+  const { data: signed } = await admin.storage.from("return-photos").createSignedUrls(paths, 3600);
+  return (signed ?? []).map((s) => s.signedUrl).filter(Boolean) as string[];
 }

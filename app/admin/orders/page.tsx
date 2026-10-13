@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import {
-  createShipment,
-  updateOrderStatus,
-} from "@/app/admin/actions";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { retrieveStripeCheckoutSession } from "@/lib/stripe";
 import { AdminNav } from "@/components/AdminNav";
+import OrdersManager, { type OrderRow } from "@/components/admin/OrdersManager";
 
 export const instant = false;
 
@@ -14,27 +13,8 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-function nextStatus(status: string) {
-  switch (status) {
-    case "paid":
-      return "processing";
-    case "processing":
-      return "packed";
-    case "packed":
-      return "ready_to_ship";
-    case "ready_to_ship":
-      return "shipped";
-    case "shipped":
-      return "out_for_delivery";
-    case "out_for_delivery":
-      return "delivered";
-    case "pending":
-    case "payment_pending":
-      return "cancelled";
-    default:
-      return null;
-  }
-}
+const BASE =
+  "id, order_number, status, fulfillment_status, payment_status, total_amount, currency, customer_email, customer_name, created_on, shipping_address, cancellation_reason, order_items(product_name, sku, quantity, unit_price, cancelled_on, cancel_reason), shipments(id, carrier, tracking_number, tracking_url, status, estimated_delivery)";
 
 export default async function OrdersAdminPage() {
   const supabase = await createClient();
@@ -44,17 +24,99 @@ export default async function OrdersAdminPage() {
     redirect("/");
   }
 
-  const { data: orders, error } = await supabase
-    .from("orders")
-    .select(
-      "id, order_number, status, fulfillment_status, payment_status, total_amount, currency, customer_email, customer_name, created_on, shipments(id, carrier, tracking_number, tracking_url, status, estimated_delivery)"
-    )
-    .order("created_on", { ascending: false })
-    .limit(200);
+  const load = (select: string) =>
+    supabase.from("orders").select(select).order("created_on", { ascending: false }).limit(1000);
 
-  if (error) {
+  // admin_note exists only after database/admin_order_notes.sql has been run
+  let res = await load(`${BASE}, admin_note`);
+  if (res.error) res = await load(BASE);
+  if (res.error) {
     throw new Error("Unable to load orders.");
   }
+
+  // Older paid orders may have no address saved. Fetch it from Stripe (max 10 per page load).
+  try {
+    const rows = (res.data ?? []) as unknown as Record<string, unknown>[];
+    const missing = rows
+      .filter((o) => o.payment_status === "paid" && (!o.shipping_address || Object.keys(o.shipping_address as object).length === 0))
+      .slice(0, 10);
+    if (missing.length) {
+      const admin = createAdminClient();
+      for (const o of missing) {
+        const { data: pay } = await admin
+          .from("payments")
+          .select("provider_checkout_session_id")
+          .eq("order_id", o.id as string)
+          .not("provider_checkout_session_id", "is", null)
+          .order("created_on", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (!pay?.provider_checkout_session_id) continue;
+        const session = await retrieveStripeCheckoutSession(pay.provider_checkout_session_id);
+        const shipTo = session.collected_information?.shipping_details ?? session.shipping_details;
+        const a = shipTo?.address;
+        if (!a) continue;
+        const address = {
+          name: shipTo?.name ?? null,
+          line1: a.line1 ?? null,
+          line2: a.line2 ?? null,
+          city: a.city ?? null,
+          province: a.state ?? null,
+          postal_code: a.postal_code ?? null,
+          country: a.country ?? null,
+        };
+        await admin.from("orders").update({ shipping_address: address }).eq("id", o.id as string);
+        o.shipping_address = address;
+      }
+    }
+  } catch (error) {
+    console.error("Address backfill failed:", error);
+  }
+
+  const orders: OrderRow[] = ((res.data ?? []) as unknown as Record<string, unknown>[]).map((o) => {
+    const ship = Array.isArray(o.shipments) ? o.shipments[0] : o.shipments;
+    return {
+      id: String(o.id),
+      number: String(o.order_number ?? ""),
+      status: String(o.status ?? ""),
+      fulfillment: String(o.fulfillment_status ?? ""),
+      payment: String(o.payment_status ?? ""),
+      total: Number(o.total_amount ?? 0),
+      currency: String(o.currency ?? "CAD"),
+      email: (o.customer_email as string) ?? "",
+      name: (o.customer_name as string) ?? "",
+      createdOn: String(o.created_on),
+      address: (o.shipping_address as OrderRow["address"]) ?? null,
+      note: (o.admin_note as string) ?? "",
+      cancelReason: (o.cancellation_reason as string) ?? "",
+      cancelledItems: (
+        (o.order_items as { product_name: string; sku: string; quantity: number; cancelled_on?: string | null; cancel_reason?: string | null }[]) ?? []
+      )
+        .filter((i) => i.cancelled_on)
+        .map((i) => ({
+          product_name: i.product_name,
+          sku: i.sku,
+          quantity: Number(i.quantity ?? 0),
+          reason: i.cancel_reason ?? "",
+        })),
+      items: ((o.order_items as (OrderRow["items"][number] & { cancelled_on?: string | null })[]) ?? [])
+        .filter((i) => !i.cancelled_on)
+        .map((i) => ({
+        product_name: i.product_name,
+        sku: i.sku,
+        quantity: Number(i.quantity ?? 0),
+        unit_price: Number(i.unit_price ?? 0),
+      })),
+      shipment: ship
+        ? {
+            carrier: (ship as Record<string, string>).carrier ?? "",
+            tracking: (ship as Record<string, string>).tracking_number ?? "",
+            url: (ship as Record<string, string>).tracking_url ?? "",
+            status: (ship as Record<string, string>).status ?? "",
+          }
+        : null,
+    };
+  });
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_24%,#fafafa_100%)]">
@@ -66,157 +128,13 @@ export default async function OrdersAdminPage() {
             <p className="cm-eyebrow">Operations</p>
             <h1 className="cm-section-title mt-3">Orders</h1>
             <p className="mt-3 text-sm text-muted-foreground">
-              Manage fulfillment, create shipments, and monitor payment state.
+              Search, fulfil and ship orders. Click a row to see the items and address.
             </p>
           </div>
           <p className="text-sm text-muted-foreground">Signed in as {role}</p>
         </div>
 
-        <div className="mt-8 space-y-5">
-          {(orders ?? []).map((order) => {
-            const next = nextStatus(order.status);
-            const latestShipment = Array.isArray(order.shipments)
-              ? order.shipments[0]
-              : order.shipments;
-
-            return (
-              <article
-                key={order.id}
-                className="rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_16px_46px_rgba(0,0,0,0.06)]"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-5">
-                  <div>
-                    <p className="text-lg font-black text-ink">
-                      {order.order_number}
-                    </p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {order.customer_name || "Customer"} ·{" "}
-                      {order.customer_email || "No email"}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {new Date(order.created_on).toLocaleString()}
-                    </p>
-                  </div>
-
-                  <div className="text-right">
-                    <p className="text-lg font-black text-ink">
-                      $\{Number(order.total_amount).toFixed(2)} {order.currency}
-                    </p>
-                    <div className="mt-2 flex flex-wrap justify-end gap-2">
-                      <span className="rounded-full bg-brand-tint px-3 py-1 text-xs font-bold capitalize text-brand">
-                        {order.status.replaceAll("_", " ")}
-                      </span>
-                      <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold capitalize text-ink/70">
-                        {order.payment_status.replaceAll("_", " ")}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
-                  <div>
-                    <div className="rounded-2xl bg-secondary/60 p-4">
-                      <p className="text-sm font-bold text-ink">
-                        Fulfillment:{" "}
-                        <span className="capitalize">
-                          {order.fulfillment_status.replaceAll("_", " ")}
-                        </span>
-                      </p>
-
-                      {latestShipment ? (
-                        <div className="mt-3 text-sm text-muted-foreground">
-                          <p>
-                            {latestShipment.carrier} ·{" "}
-                            {latestShipment.tracking_number || "Tracking pending"}
-                          </p>
-                          <p className="mt-1 capitalize">
-                            {latestShipment.status.replaceAll("_", " ")}
-                          </p>
-                          {latestShipment.tracking_url && (
-                            <a
-                              href={latestShipment.tracking_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-2 inline-flex font-bold text-brand hover:underline"
-                            >
-                              Open carrier tracking
-                            </a>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-sm text-muted-foreground">
-                          No shipment has been created yet.
-                        </p>
-                      )}
-                    </div>
-
-                    {next && (
-                      <form
-                        action={updateOrderStatus.bind(null, order.id, next)}
-                        className="mt-4"
-                      >
-                        <button type="submit" className="cm-button-dark">
-                          Mark {next.replaceAll("_", " ")}
-                        </button>
-                      </form>
-                    )}
-                  </div>
-
-                  <form
-                    action={async (formData) => {
-                      "use server";
-                      await createShipment(
-                        order.id,
-                        String(formData.get("carrier") || ""),
-                        String(formData.get("tracking_number") || ""),
-                        String(formData.get("tracking_url") || ""),
-                        String(formData.get("service_level") || ""),
-                        String(formData.get("estimated_delivery") || "")
-                      );
-                    }}
-                    className="rounded-2xl border border-black/5 p-4"
-                  >
-                    <p className="font-bold text-ink">Create / update shipment</p>
-
-                    <input
-                      name="carrier"
-                      defaultValue={latestShipment?.carrier || ""}
-                      placeholder="Carrier"
-                      className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
-                      required
-                    />
-                    <input
-                      name="tracking_number"
-                      defaultValue={latestShipment?.tracking_number || ""}
-                      placeholder="Tracking number"
-                      className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
-                      required
-                    />
-                    <input
-                      name="tracking_url"
-                      defaultValue={latestShipment?.tracking_url || ""}
-                      placeholder="Carrier tracking URL"
-                      className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
-                    />
-                    <input
-                      name="service_level"
-                      placeholder="Service level, e.g. Ground"
-                      className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
-                    />
-                    <input
-                      name="estimated_delivery"
-                      type="datetime-local"
-                      className="mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
-                    />
-                    <button type="submit" className="cm-button-primary mt-3 w-full">
-                      Save shipment
-                    </button>
-                  </form>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+        <OrdersManager initial={orders} />
       </div>
     </main>
   );

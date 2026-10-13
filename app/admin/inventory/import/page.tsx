@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { UploadCloud, FileSpreadsheet, CircleCheck, CircleAlert } from "lucide-react";
+import { CircleCheck, CircleAlert } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AdminNav } from "@/components/AdminNav";
-import { importInventory } from "./actions";
+import ProductImport from "@/components/admin/ProductImport";
+import AddProductForm from "@/components/admin/AddProductForm";
 
 export const instant = false;
 
@@ -25,6 +26,24 @@ export default async function InventoryImportPage({ searchParams }: PageProps) {
   if (!role) {
     redirect("/");
   }
+
+  const { data: cats } = await supabase
+    .from("product_categories")
+    .select("category_name")
+    .eq("is_delete", false)
+    .order("category_name");
+
+  const { data: productJobs } = await supabase
+    .from("product_import_jobs")
+    .select("id, file_name, created_count, updated_count, error_count, created_on")
+    .order("created_on", { ascending: false })
+    .limit(10);
+
+  const { data: stockJobs } = await supabase
+    .from("inventory_import_jobs")
+    .select("id, file_name, status, success_rows, failed_rows, created_on")
+    .order("created_on", { ascending: false })
+    .limit(10);
 
   let importJob:
     | {
@@ -88,8 +107,7 @@ export default async function InventoryImportPage({ searchParams }: PageProps) {
             <p className="cm-eyebrow">Inventory</p>
             <h1 className="cm-section-title mt-3">Bulk inventory import</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Upload Excel or CSV stock counts. Every accepted row is audited and
-              inventory cannot be reduced below quantities already reserved for orders.
+              Upload an Excel or CSV file with SKU and Quantity to update stock, or add new products.
             </p>
           </div>
           <Link
@@ -100,48 +118,10 @@ export default async function InventoryImportPage({ searchParams }: PageProps) {
           </Link>
         </div>
 
-        <section className="mt-8 rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_16px_46px_rgba(0,0,0,0.06)] md:p-8">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-tint text-brand">
-              <FileSpreadsheet className="h-5 w-5" aria-hidden="true" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black text-ink">Upload stock file</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Required columns: SKU and Quantity. Formats: .xlsx or .csv.
-              </p>
-            </div>
-          </div>
-
-          <form action={importInventory} className="mt-6 grid gap-4 lg:grid-cols-[1fr_240px_auto]">
-            <input
-              name="file"
-              type="file"
-              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-              required
-              className="rounded-2xl border border-black/10 bg-secondary/50 px-4 py-3 text-sm"
-            />
-            <select
-              name="mode"
-              defaultValue="replace"
-              className="rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold"
-            >
-              <option value="replace">Replace quantity</option>
-              <option value="delta">Add/subtract quantity</option>
-            </select>
-            <button type="submit" className="cm-button-primary gap-2">
-              <UploadCloud className="h-4 w-4" aria-hidden="true" />
-              Import
-            </button>
-          </form>
-
-          <div className="mt-5 rounded-2xl bg-secondary/60 p-4 text-sm leading-6 text-muted-foreground">
-            <strong className="text-ink">Example:</strong> SKU = CM1012H, Quantity = 25.
-            In Replace mode, warehouse stock becomes 25. In Delta mode, 25 is added
-            to the current stock. Negative deltas are allowed only when the resulting
-            stock remains non-negative and above reserved stock.
-          </div>
-        </section>
+        <div className="mt-8 space-y-8">
+          <ProductImport />
+          <AddProductForm categories={(cats ?? []).map((c) => c.category_name)} />
+        </div>
 
         {importJob && (
           <section className="mt-8 rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_16px_46px_rgba(0,0,0,0.06)] md:p-8">
@@ -217,6 +197,54 @@ export default async function InventoryImportPage({ searchParams }: PageProps) {
             )}
           </section>
         )}
+
+        <section className="mt-8 rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_16px_46px_rgba(0,0,0,0.06)] md:p-8">
+          <h2 className="text-xl font-black text-ink">Import history</h2>
+          <div className="mt-4 grid gap-6 lg:grid-cols-2">
+            <div>
+              <p className="text-sm font-bold text-ink">Product imports</p>
+              {(productJobs ?? []).length === 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">None yet.</p>
+              ) : (
+                <ul className="mt-2 divide-y text-sm">
+                  {(productJobs ?? []).map((j) => (
+                    <li key={j.id} className="py-2">
+                      <span className="font-semibold text-ink">{j.file_name || "File"}</span>
+                      <span className="ml-2 text-muted-foreground">
+                        {j.created_count} new · {j.updated_count} updated · {j.error_count} errors
+                      </span>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(j.created_on).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-ink">Stock updates</p>
+              {(stockJobs ?? []).length === 0 ? (
+                <p className="mt-2 text-sm text-muted-foreground">None yet.</p>
+              ) : (
+                <ul className="mt-2 divide-y text-sm">
+                  {(stockJobs ?? []).map((j) => (
+                    <li key={j.id} className="py-2">
+                      <Link href={`/admin/inventory/import?job=${j.id}`} className="font-semibold text-brand hover:underline">
+                        {j.file_name || "File"}
+                      </Link>
+                      <span className="ml-2 text-muted-foreground">
+                        {j.success_rows} updated · {j.failed_rows} failed
+                      </span>
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(j.created_on).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   );

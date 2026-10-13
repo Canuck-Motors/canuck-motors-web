@@ -324,3 +324,80 @@ input[type="search"]::-webkit-search-decoration {
   appearance: none;
   display: none;
 }
+
+/* Order-confirmed badge: the tick draws itself, then glows softly. */
+@keyframes cm-badge-in {
+  0%   { transform: scale(0.6); opacity: 0; }
+  70%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes cm-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes cm-glow {
+  0%, 100% { box-shadow: 0 0 14px 2px rgba(16, 185, 129, 0.35); }
+  50%      { box-shadow: 0 0 34px 10px rgba(16, 185, 129, 0.6); }
+}
+@keyframes cm-glow-tick {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.7)); }
+  50%      { filter: drop-shadow(0 0 10px rgba(16, 185, 129, 1)); }
+}
+.cm-badge-glow { animation: cm-glow 2.2s ease-in-out infinite; }
+.cm-badge-pop  { animation: cm-badge-in 0.45s ease-out forwards, cm-glow-tick 2.2s 0.5s ease-in-out infinite; }
+.cm-badge-tick { stroke-dasharray: 40; stroke-dashoffset: 40; animation: cm-draw 0.5s 0.25s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .cm-badge-glow, .cm-badge-pop { animation: none; }
+  .cm-badge-tick { animation: none; stroke-dashoffset: 0; }
+}
+
+/* Admin menu: the page you are on pops in and softly pulses once. */
+@keyframes cm-nav-pop {
+  0%   { transform: scale(0.92); box-shadow: 0 0 0 0 rgba(214, 40, 40, 0.6); }
+  60%  { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(214, 40, 40, 0); }
+  100% { transform: scale(1); }
+}
+.cm-nav-active { animation: cm-nav-pop 0.5s ease-out; }
+@media (prefers-reduced-motion: reduce) { .cm-nav-active { animation: none; } }
+
+/* Categories page cards: slide in one by one, a red light runs around the border and a shine sweeps across on hover. */
+@property --cm-a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes cm-cat-in {
+  from { opacity: 0; transform: translateY(26px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes cm-cat-orbit { to { --cm-a: 360deg; } }
+@keyframes cm-cat-shine {
+  from { transform: translateX(-130%) skewX(-20deg); }
+  to   { transform: translateX(330%) skewX(-20deg); }
+}
+.cm-cat-card { opacity: 0; animation: cm-cat-in 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) forwards; }
+.cm-cat-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(from var(--cm-a), transparent 0 62%, rgba(214, 40, 40, 0.15) 72%, #d62828 88%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.cm-cat-card:hover::before { opacity: 1; animation: cm-cat-orbit 2.2s linear infinite; }
+.cm-cat-shine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.10), transparent);
+  transform: translateX(-130%) skewX(-20deg);
+  pointer-events: none;
+}
+.cm-cat-card:hover .cm-cat-shine { animation: cm-cat-shine 0.9s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .cm-cat-card { opacity: 1; animation: none; }
+  .cm-cat-card:hover::before, .cm-cat-card:hover .cm-cat-shine { animation: none; }
+}

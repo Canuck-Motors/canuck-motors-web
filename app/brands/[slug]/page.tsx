@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cacheLife, cacheTag } from "next/cache";
+import { getCoverage } from "@/lib/brand-coverage";
 import { createPublicClient } from "@/lib/supabase/public";
 
 type PageProps = { params: Promise<{ slug: string }> };
@@ -28,7 +29,12 @@ async function getBrand(slug: string) {
     .order("model_name")
     .limit(200);
 
-  return { brand, models: models ?? [] };
+  const coverage = await getCoverage();
+  const all = models ?? [];
+  return {
+    brand,
+    models: coverage ? all.filter((m) => coverage.models.has(Number(m.id))) : all,
+  };
 }
 
 export async function generateStaticParams() {

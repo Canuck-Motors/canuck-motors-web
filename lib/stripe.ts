@@ -12,6 +12,92 @@ function getStripeSecretKey() {
   return key;
 }
 
+
+// Canuck Motors look for Stripe Checkout. If the account's Stripe API version does not
+// know "branding_settings", the request is retried without it so checkout never breaks.
+let brandFiles: Promise<{ icon: string; logo: string } | null> | null = null;
+
+// Uploads the logo files to Stripe once (so this also works from localhost,
+// where Stripe cannot download images by URL). Returns null if anything fails.
+function getBrandFiles() {
+  if (!brandFiles) {
+    brandFiles = (async () => {
+      try {
+        const [{ readFile }, path] = await Promise.all([
+          import("node:fs/promises"),
+          import("node:path"),
+        ]);
+        const upload = async (file: string, purpose: string) => {
+          const data = await readFile(path.join(process.cwd(), "public", "logo", file));
+          const form = new FormData();
+          form.set("purpose", purpose);
+          form.set("file", new Blob([new Uint8Array(data)], { type: "image/png" }), file);
+          const res = await fetch("https://files.stripe.com/v1/files", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${getStripeSecretKey()}` },
+            body: form,
+          });
+          const json = await res.json();
+          if (!res.ok || !json?.id) {
+            throw new Error(json?.error?.message || "Stripe file upload failed.");
+          }
+          return json.id as string;
+        };
+        return {
+          icon: await upload("stripe-icon-square.png", "business_icon"),
+          logo: await upload("Canuck-Motors.png", "business_logo"),
+        };
+      } catch (error) {
+        console.warn("[stripe] Could not upload brand images:", error);
+        brandFiles = null; // try again next time
+        return null;
+      }
+    })();
+  }
+  return brandFiles;
+}
+
+async function addBranding(body: URLSearchParams) {
+  body.set("branding_settings[display_name]", "Canuck Motors");
+  body.set("branding_settings[button_color]", "#D62828");
+  body.set("branding_settings[background_color]", "#FFFFFF");
+  body.set("branding_settings[border_style]", "rounded");
+  body.set("branding_settings[font_family]", "inter");
+
+  const files = await getBrandFiles();
+  if (files) {
+    body.set("branding_settings[icon][type]", "file");
+    body.set("branding_settings[icon][file]", files.icon);
+    body.set("branding_settings[logo][type]", "file");
+    body.set("branding_settings[logo][file]", files.logo);
+  }
+}
+
+async function postCheckoutSession(body: URLSearchParams) {
+  const send = (b: URLSearchParams) =>
+    fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${getStripeSecretKey()}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: b,
+      cache: "no-store",
+    });
+
+  const branded = new URLSearchParams(body);
+  await addBranding(branded);
+  const first = await send(branded);
+  if (first.ok) return first;
+
+  const text = await first.clone().text();
+  if (/branding/i.test(text)) {
+    console.warn("[stripe] Branding was rejected, retrying without it:", text.slice(0, 400));
+    return send(body);
+  }
+  return first;
+}
+
 export async function createStripeCheckoutSession(input: {
   orderId: string;
   orderNumber: string;
@@ -23,11 +109,13 @@ export async function createStripeCheckoutSession(input: {
     sku: string;
     unitAmountCents: number;
     quantity: number;
+    imageUrl?: string | null;
   }>;
 }) {
   const body = new URLSearchParams();
 
   body.set("mode", "payment");
+  body.set("custom_text[submit][message]", "Genuine auto parts from Canuck Motors. Questions about your order? Contact our support team.");
   body.set("billing_address_collection", "required");
   body.set("shipping_address_collection[allowed_countries][0]", "CA");
   body.set("success_url", input.successUrl);
@@ -51,21 +139,16 @@ export async function createStripeCheckoutSession(input: {
       `line_items[${index}][price_data][product_data][name]`,
       item.name
     );
+    if (item.imageUrl) {
+      body.set(`line_items[${index}][price_data][product_data][images][0]`, item.imageUrl);
+    }
     body.set(
       `line_items[${index}][price_data][product_data][metadata][sku]`,
       item.sku
     );
   });
 
-  const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${getStripeSecretKey()}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-    cache: "no-store",
-  });
+  const response = await postCheckoutSession(body);
 
   const payload = await response.json();
 
@@ -208,6 +291,32 @@ export function retrieveStripePaymentIntent(id: string) {
   }>(`/payment_intents/${encodeURIComponent(id)}`);
 }
 
+export function retrieveStripeCheckoutSession(id: string) {
+  return stripeGet<{
+    id: string;
+    payment_status: string;
+    status: string;
+    payment_intent: string | null;
+    client_reference_id?: string | null;
+    metadata?: Record<string, string>;
+    customer_details?: {
+      name?: string | null;
+      email?: string | null;
+      address?: Record<string, string | null> | null;
+    } | null;
+    shipping_details?: {
+      name?: string | null;
+      address?: Record<string, string | null> | null;
+    } | null;
+    collected_information?: {
+      shipping_details?: {
+        name?: string | null;
+        address?: Record<string, string | null> | null;
+      } | null;
+    } | null;
+  }>(`/checkout/sessions/${encodeURIComponent(id)}`);
+}
+
 export function retrieveStripeRefund(id: string) {
   return stripeGet<{
     id: string;
@@ -274,15 +383,7 @@ export async function createStripeAmountCheckoutSession(input: {
     input.label
   );
 
-  const response = await fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${getStripeSecretKey()}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body,
-    cache: "no-store",
-  });
+  const response = await postCheckoutSession(body);
 
   const payload = await response.json();
 

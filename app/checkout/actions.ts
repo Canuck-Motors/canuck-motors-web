@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeCheckoutSession } from "@/lib/stripe";
+import { imageUrl } from "@/lib/product-images";
 
 function getSiteUrl() {
   return (
@@ -55,6 +56,21 @@ export async function beginCheckout() {
     redirect("/cart?checkout_error=Order%20items%20could%20not%20be%20loaded");
   }
 
+  // First photo of each product, so Stripe can show it next to the item.
+  const photoBySku = new Map<string, string>();
+  const { data: photoRows } = await supabase
+    .from("products")
+    .select("sku, product_images(path, sort_order)")
+    .in("sku", items.map((i) => i.sku));
+  for (const p of photoRows ?? []) {
+    const imgs = (Array.isArray(p.product_images) ? p.product_images : []) as {
+      path: string;
+      sort_order: number | null;
+    }[];
+    imgs.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+    if (imgs[0]) photoBySku.set(String(p.sku), imageUrl(imgs[0].path));
+  }
+
   const admin = createAdminClient();
   let checkoutUrl: string | null = null;
 
@@ -70,6 +86,7 @@ export async function beginCheckout() {
         sku: item.sku,
         unitAmountCents: Math.round(Number(item.unit_price) * 100),
         quantity: item.quantity,
+        imageUrl: photoBySku.get(item.sku) ?? null,
       })),
     });
 

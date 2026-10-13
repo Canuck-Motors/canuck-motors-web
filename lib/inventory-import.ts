@@ -219,3 +219,79 @@ export function parseInventoryFile(fileName: string, bytes: ArrayBuffer) {
 
   throw new Error("Please upload a .xlsx or .csv inventory file.");
 }
+
+export type ProductImportRow = {
+  row_number: number;
+  sku: string;
+  name: string;
+  price: string;
+  description: string;
+  category: string;
+  quantity: string;
+  low_stock: string;
+};
+
+const HEADER_ALIASES: Record<keyof Omit<ProductImportRow, "row_number">, string[]> = {
+  sku: ["sku", "part_number", "part number", "partnumber", "cm number", "cm_number"],
+  name: ["name", "product name", "product_name", "title"],
+  price: ["price", "unit price", "unit_price", "price (cad)"],
+  description: ["description", "details"],
+  category: ["category", "category name", "product category"],
+  quantity: ["quantity", "qty", "stock", "on hand", "on_hand"],
+  low_stock: ["low stock", "low_stock", "low stock level", "low-stock level", "low_stock_threshold"],
+};
+
+// Product file: SKU is required; every other column is optional.
+export function parseProductFile(fileName: string, bytes: ArrayBuffer): ProductImportRow[] {
+  const lower = fileName.toLowerCase();
+  let rows: string[][];
+
+  if (lower.endsWith(".csv")) {
+    const text = Buffer.from(bytes).toString("utf8").replace(/^﻿/, "");
+    rows = text
+      .split(/\r?\n/)
+      .filter((line) => line.trim().length > 0)
+      .map(parseCsvLine);
+  } else if (lower.endsWith(".xlsx")) {
+    rows = parseSheetXml(unzipEntries(Buffer.from(bytes)));
+  } else {
+    throw new Error("Please upload a .xlsx or .csv file.");
+  }
+
+  if (rows.length < 2) {
+    throw new Error("The file needs a header row and at least one product row.");
+  }
+
+  const headers = rows[0].map((h) => String(h ?? "").trim().toLowerCase());
+  const col = (key: keyof typeof HEADER_ALIASES) =>
+    headers.findIndex((h) => HEADER_ALIASES[key].includes(h));
+  const idx = {
+    sku: col("sku"),
+    name: col("name"),
+    price: col("price"),
+    description: col("description"),
+    category: col("category"),
+    quantity: col("quantity"),
+    low_stock: col("low_stock"),
+  };
+
+  if (idx.sku < 0) {
+    throw new Error('The file must have a "SKU" (or "Part number") column.');
+  }
+
+  const get = (row: string[], i: number) => (i >= 0 ? String(row[i] ?? "").trim() : "");
+
+  return rows
+    .slice(1)
+    .map((row, n) => ({
+      row_number: n + 2,
+      sku: get(row, idx.sku),
+      name: get(row, idx.name),
+      price: get(row, idx.price).replace(/[$,]/g, ""),
+      description: get(row, idx.description),
+      category: get(row, idx.category),
+      quantity: get(row, idx.quantity),
+      low_stock: get(row, idx.low_stock),
+    }))
+    .filter((r) => Object.entries(r).some(([k, v]) => k !== "row_number" && v));
+}

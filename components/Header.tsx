@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Search, ShoppingCart, UserRound, LogOut } from "lucide-react";
+import { Search, ShoppingCart, UserRound, LogOut, LayoutDashboard, Package, ChevronDown } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -16,6 +16,23 @@ export default function Header() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accountLabel, setAccountLabel] = useState("Account");
   const [authLoading, setAuthLoading] = useState(true);
+  const [isStaff, setIsStaff] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (!isAuthenticated) {
+      setIsStaff(false);
+      setMenuOpen(false);
+      return;
+    }
+    supabase.rpc("current_user_staff_role").then(({ data }) => {
+      if (active) setIsStaff(Boolean(data));
+    });
+    return () => {
+      active = false;
+    };
+  }, [supabase, isAuthenticated]);
 
   // The header lives in the layout, so its text would otherwise stay on every
   // page. On a search results page show what was searched; anywhere else clear it.
@@ -85,9 +102,12 @@ export default function Header() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    router.replace("/");
-    router.refresh();
+    // Never wait forever for sign-out, then do a full page load to clear the old session.
+    await Promise.race([
+      supabase.auth.signOut(),
+      new Promise((resolve) => setTimeout(resolve, 2500)),
+    ]).catch(() => undefined);
+    window.location.assign("/");
   };
 
   return (
@@ -139,13 +159,73 @@ export default function Header() {
           {!authLoading &&
             (isAuthenticated ? (
               <>
-                <Link
-                  href="/account"
-                  className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold text-ink transition hover:bg-brand-tint hover:text-brand"
+                <div
+                  className="group relative"
+                  onMouseEnter={() => setMenuOpen(true)}
+                  onMouseLeave={() => setMenuOpen(false)}
+                  onBlur={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget)) setMenuOpen(false);
+                  }}
                 >
-                  <UserRound className="h-4 w-4" aria-hidden="true" />
-                  <span className="hidden sm:inline">{accountLabel}</span>
-                </Link>
+                  <button
+                    type="button"
+                    aria-haspopup="menu"
+                    aria-expanded={menuOpen}
+                    onClick={() => setMenuOpen((o) => !o)}
+                    className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold text-ink transition hover:bg-brand-tint hover:text-brand"
+                  >
+                    <UserRound className="h-4 w-4" aria-hidden="true" />
+                    <span className="hidden sm:inline">{accountLabel}</span>
+                    <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                  {menuOpen && (
+                    <div
+                      role="menu"
+                      className="absolute right-0 top-full z-50 w-52 pt-2"
+                    >
+                      <div className="overflow-hidden rounded-xl border border-black/10 bg-white py-1 shadow-xl">
+                        {isStaff && (
+                          <Link
+                            role="menuitem"
+                            href="/admin"
+                            onClick={() => setMenuOpen(false)}
+                            className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-ink hover:bg-brand-tint hover:text-brand"
+                          >
+                            <LayoutDashboard className="h-4 w-4" aria-hidden="true" />
+                            Admin dashboard
+                          </Link>
+                        )}
+                        <Link
+                          role="menuitem"
+                          href="/account"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-ink hover:bg-brand-tint hover:text-brand"
+                        >
+                          <UserRound className="h-4 w-4" aria-hidden="true" />
+                          Profile
+                        </Link>
+                        <Link
+                          role="menuitem"
+                          href="/account/orders"
+                          onClick={() => setMenuOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-ink hover:bg-brand-tint hover:text-brand"
+                        >
+                          <Package className="h-4 w-4" aria-hidden="true" />
+                          My orders
+                        </Link>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={handleLogout}
+                          className="flex w-full items-center gap-2 border-t border-black/5 px-4 py-2.5 text-left text-sm font-semibold text-ink hover:bg-brand-tint hover:text-brand"
+                        >
+                          <LogOut className="h-4 w-4" aria-hidden="true" />
+                          Log out
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={handleLogout}

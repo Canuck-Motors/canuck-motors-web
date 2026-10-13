@@ -31,6 +31,12 @@ type StripeEvent = {
           country?: string | null;
         } | null;
       } | null;
+      collected_information?: {
+        shipping_details?: {
+          name?: string | null;
+          address?: Record<string, string | null> | null;
+        } | null;
+      } | null;
       shipping_details?: {
         name?: string | null;
         address?: {
@@ -213,10 +219,9 @@ export async function POST(request: Request) {
             throw new Error(error.message);
           }
 
-          const shippingAddress = normalizeStripeAddress(
-            object.shipping_details?.name,
-            object.shipping_details?.address
-          );
+          // Newer Stripe API versions put the shipping address in collected_information.
+          const shipTo = object.collected_information?.shipping_details ?? object.shipping_details;
+          const shippingAddress = normalizeStripeAddress(shipTo?.name, shipTo?.address);
 
           const billingAddress = normalizeStripeAddress(
             object.customer_details?.name,
@@ -230,7 +235,7 @@ export async function POST(request: Request) {
               billing_address: billingAddress,
               customer_name:
                 object.customer_details?.name ??
-                object.shipping_details?.name ??
+                shipTo?.name ??
                 undefined,
               customer_email: object.customer_details?.email ?? undefined,
             })

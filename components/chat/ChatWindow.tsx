@@ -467,7 +467,9 @@ export default function ChatWindow({
                   }
                   className={chip}
                 >
-                  {option}
+                  {choices.level === "spec" && choices.spec === "Position" && option.toLowerCase() === "all"
+                    ? "Front & rear kit"
+                    : option}
                 </button>
               ))}
               {choices.level === "engine" && (

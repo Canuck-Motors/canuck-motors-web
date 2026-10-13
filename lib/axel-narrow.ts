@@ -125,21 +125,27 @@ function orderOptions(name: string, options: string[]) {
   return [...options].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
 }
 
-// "All" on the front/rear question means: stop asking, show everything
+// "All" on the front/rear question means: keep both front and rear parts,
+// but still ask the other questions (heavy duty, brake code, ...).
 export const wantsAll = (filters: SpecFilter[]) =>
   filters.some((f) => f.name === "Position" && f.value !== null && low(f.value) === "all");
+
+// Customer said "Not sure" to every question after front/rear: they should check with the dealership.
+export const notSureAboutEverything = (filters: SpecFilter[]) => {
+  const rest = filters.filter((f) => f.name !== "Position");
+  return rest.length > 0 && rest.every((f) => f.value === null);
+};
 
 export function narrow(
   products: CatalogProduct[],
   specs: SpecMap,
   filters: SpecFilter[],
 ): { candidates: CatalogProduct[]; question: SpecQuestion | null } {
-  if (wantsAll(filters)) return { candidates: products, question: null };
-
   // Keep a product unless a known spec clearly differs from the answer
   const candidates = products.filter((p) =>
     filters.every((f) => {
       if (f.value === null) return true;
+      if (f.name === "Position" && low(f.value) === "all") return true;
       const v = specs.get(p.id)?.get(f.name);
       return v === undefined || low(v) === low(f.value);
     }),

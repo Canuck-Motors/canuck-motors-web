@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AlertTriangle, CheckCircle2, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowLeft, CheckCircle2, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AdminNav } from "@/components/AdminNav";
 import { runManualStripeReconciliation } from "./actions";
@@ -44,7 +45,14 @@ export default async function StripeReconciliationPage() {
       <div className="cm-container py-12">
         <AdminNav />
 
-        <div className="mt-10 flex flex-wrap items-end justify-between gap-5">
+        <Link
+          href="/admin/stripe"
+          className="mt-8 inline-flex items-center gap-2 text-sm font-bold text-brand hover:underline"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> Back to Payments
+        </Link>
+
+        <div className="mt-4 flex flex-wrap items-end justify-between gap-5">
           <div>
             <p className="cm-eyebrow">Payments</p>
             <h1 className="cm-section-title mt-3">Stripe reconciliation</h1>

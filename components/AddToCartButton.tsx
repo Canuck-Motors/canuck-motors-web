@@ -96,6 +96,9 @@ export default function AddToCartButton({
         setTimeout(() => {
           ready.current = true;
           formRef.current?.requestSubmit();
+          ready.current = false;
+          // Put the button back so it can be used again (the page does not reload).
+          setTimeout(() => setBusy(false), 600);
         }, wait);
       }}
     >

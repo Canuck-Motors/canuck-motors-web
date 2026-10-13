@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cacheLife, cacheTag } from "next/cache";
 import { createPublicClient } from "@/lib/supabase/public";
+import { getCoverage } from "@/lib/brand-coverage";
 import { BrandSearchGrid } from "@/components/BrandSearchGrid";
 
 export const metadata: Metadata = {
@@ -22,7 +23,9 @@ async function getBrands() {
     .order("manufacturer_name");
 
   if (error) throw new Error("Unable to load vehicle brands.");
-  return data ?? [];
+  const coverage = await getCoverage();
+  const all = data ?? [];
+  return coverage ? all.filter((b) => coverage.brands.has(Number(b.id))) : all;
 }
 
 export default async function BrandsPage() {

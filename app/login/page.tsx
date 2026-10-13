@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
@@ -11,7 +10,6 @@ const field =
 
 export default function LoginPage() {
   const [supabase] = useState(() => createClient());
-  const router = useRouter();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,8 +34,9 @@ export default function LoginPage() {
       return;
     }
 
-    router.replace("/");
-    router.refresh();
+    // Full page load: starts clean with the new account, so switching between
+    // admin and customer can never show stale data or hang on the old session.
+    window.location.assign("/");
   };
 
   return (
