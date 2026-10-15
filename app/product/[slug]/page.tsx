@@ -10,6 +10,7 @@ import AddToCartButton from "@/components/AddToCartButton";
 import ProductGallery from "@/components/ProductGallery";
 import { getProductImages } from "@/lib/product-images";
 import { getFitments, getInterchanges, getOeNumbers, getSpecs } from "@/lib/product-details";
+import { safeJsonLd } from "@/lib/json-ld";
 
 type PageProps = {
   params: Promise<{
@@ -261,13 +262,13 @@ export default async function ProductDetailPage({
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(productJsonLd),
+          __html: safeJsonLd(productJsonLd),
         }}
       />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify(breadcrumbJsonLd),
+          __html: safeJsonLd(breadcrumbJsonLd),
         }}
       />
 
