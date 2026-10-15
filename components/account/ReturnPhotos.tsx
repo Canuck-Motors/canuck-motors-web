@@ -20,11 +20,19 @@ export default function ReturnPhotos({ orderId }: { orderId: string }) {
       const { data } = await supabase.auth.getUser();
       if (!data.user) throw new Error("Please sign in again.");
 
+      const remaining = Math.max(0, 4 - count);
+      if (remaining === 0) {
+        throw new Error("You can attach up to 4 photos.");
+      }
+
       let done = 0;
-      for (const [i, original] of files.slice(0, 4).entries()) {
+      for (const [i, original] of files.slice(0, remaining).entries()) {
         const file = EXT[original.type] ? await shrink(original) : original;
         const ext = EXT[file.type];
         if (!ext) throw new Error(`${original.name}: only JPG, PNG or WebP photos.`);
+        if (file.size > 5 * 1024 * 1024) {
+          throw new Error(`${original.name}: photo must be under 5 MB after compression.`);
+        }
         const path = `${data.user.id}/${orderId}/${Date.now()}-${i}.${ext}`;
         const { error: err } = await supabase.storage
           .from("return-photos")
