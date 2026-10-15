@@ -529,7 +529,16 @@ export async function getReturnPhotos(requestId: string): Promise<string[]> {
   if (!row?.user_id || !row.order_id) return [];
 
   const admin = createAdminClient();
-  const folder = `${row.user_id}/${row.order_id}`;
+  const { data: customer } = await admin
+    .from("users")
+    .select("auth_user_id")
+    .eq("id", row.user_id)
+    .maybeSingle();
+  if (!customer?.auth_user_id) return [];
+
+  // Customer uploads are stored under their Supabase Auth UID, not the
+  // application-level public.users numeric id.
+  const folder = `${customer.auth_user_id}/${row.order_id}`;
   const { data: files } = await admin.storage.from("return-photos").list(folder, { limit: 20 });
   const paths = (files ?? []).filter((f) => f.name && f.id).map((f) => `${folder}/${f.name}`);
   if (!paths.length) return [];
