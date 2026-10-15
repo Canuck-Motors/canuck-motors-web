@@ -73,13 +73,14 @@ async function addBranding(body: URLSearchParams) {
   }
 }
 
-async function postCheckoutSession(body: URLSearchParams) {
+async function postCheckoutSession(body: URLSearchParams, idempotencyKey: string) {
   const send = (b: URLSearchParams) =>
     fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${getStripeSecretKey()}`,
         "Content-Type": "application/x-www-form-urlencoded",
+        "Idempotency-Key": idempotencyKey,
       },
       body: b,
       cache: "no-store",
@@ -148,7 +149,7 @@ export async function createStripeCheckoutSession(input: {
     );
   });
 
-  const response = await postCheckoutSession(body);
+  const response = await postCheckoutSession(body, `checkout:${input.orderId}`);
 
   const payload = await response.json();
 
@@ -383,7 +384,7 @@ export async function createStripeAmountCheckoutSession(input: {
     input.label
   );
 
-  const response = await postCheckoutSession(body);
+  const response = await postCheckoutSession(body, `exchange-checkout:${input.orderId}`);
 
   const payload = await response.json();
 
