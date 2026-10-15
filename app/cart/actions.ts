@@ -46,7 +46,7 @@ export async function addToCart(productId: number) {
 
   const { data: product, error: productError } = await supabase
     .from("products")
-    .select("id")
+    .select("id, inventory(quantity, reserved_quantity, is_active)")
     .eq("id", productId)
     .eq("is_active", true)
     .eq("is_delete", false)
@@ -54,6 +54,17 @@ export async function addToCart(productId: number) {
 
   if (productError || !product) {
     throw new Error("This product is unavailable.");
+  }
+
+  const inventory = Array.isArray(product.inventory)
+    ? product.inventory[0]
+    : product.inventory;
+  const available = inventory?.is_active
+    ? Math.max(0, Number(inventory.quantity ?? 0) - Number(inventory.reserved_quantity ?? 0))
+    : 0;
+
+  if (available < 1) {
+    throw new Error("This product is currently out of stock.");
   }
 
   let { data: cart, error: cartError } = await supabase
@@ -109,7 +120,11 @@ export async function addToCart(productId: number) {
   }
 
   if (existingItem) {
-    const nextQuantity = Math.min(existingItem.quantity + 1, 99);
+    if (existingItem.quantity >= available) {
+      throw new Error(`Only ${available} unit${available === 1 ? "" : "s"} are currently available.`);
+    }
+
+    const nextQuantity = Math.min(existingItem.quantity + 1, 99, available);
 
     const { error } = await supabase
       .from("cart_items")
@@ -148,12 +163,30 @@ export async function updateCartQuantity(itemId: number, quantity: number) {
 
   const { data: item, error: itemError } = await supabase
     .from("cart_items")
-    .select("cart_id")
+    .select("cart_id, product_id")
     .eq("id", itemId)
     .maybeSingle();
 
   if (itemError || !item) {
     throw new Error("Unable to load this cart item.");
+  }
+
+  const { data: inventory } = await supabase
+    .from("inventory")
+    .select("quantity, reserved_quantity, is_active")
+    .eq("product_id", item.product_id)
+    .maybeSingle();
+
+  const available = inventory?.is_active
+    ? Math.max(0, Number(inventory.quantity ?? 0) - Number(inventory.reserved_quantity ?? 0))
+    : 0;
+
+  if (quantity > available) {
+    throw new Error(
+      available > 0
+        ? `Only ${available} unit${available === 1 ? "" : "s"} are currently available.`
+        : "This product is currently out of stock."
+    );
   }
 
   const { error } = await supabase
