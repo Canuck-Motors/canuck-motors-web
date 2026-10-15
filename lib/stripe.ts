@@ -74,13 +74,13 @@ async function addBranding(body: URLSearchParams) {
 }
 
 async function postCheckoutSession(body: URLSearchParams, idempotencyKey: string) {
-  const send = (b: URLSearchParams) =>
+  const send = (b: URLSearchParams, key = idempotencyKey) =>
     fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${getStripeSecretKey()}`,
         "Content-Type": "application/x-www-form-urlencoded",
-        "Idempotency-Key": idempotencyKey,
+        "Idempotency-Key": key,
       },
       body: b,
       cache: "no-store",
@@ -94,7 +94,7 @@ async function postCheckoutSession(body: URLSearchParams, idempotencyKey: string
   const text = await first.clone().text();
   if (/branding/i.test(text)) {
     console.warn("[stripe] Branding was rejected, retrying without it:", text.slice(0, 400));
-    return send(body);
+    return send(body, `${idempotencyKey}:unbranded`);
   }
   return first;
 }
