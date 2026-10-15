@@ -67,7 +67,7 @@ export async function addToCart(productId: number) {
     throw new Error("This product is currently out of stock.");
   }
 
-  let { data: cart, error: cartError } = await supabase
+  const { data: loadedCart, error: cartError } = await supabase
     .from("carts")
     .select("id, updated_on")
     .eq("user_id", userId)
@@ -77,6 +77,8 @@ export async function addToCart(productId: number) {
   if (cartError) {
     throw new Error("Unable to load your cart.");
   }
+
+  let cart = loadedCart;
 
   if (cart && new Date(cart.updated_on) < cartExpiryCutoff()) {
     const { error: abandonError } = await supabase
