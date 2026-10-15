@@ -4,6 +4,7 @@ import Link from "next/link";
 import { cacheLife, cacheTag } from "next/cache";
 import { ProductCard } from "@/components/ProductCard";
 import { createPublicClient } from "@/lib/supabase/public";
+import { safeJsonLd } from "@/lib/json-ld";
 
 export const metadata: Metadata = {
   title: "Auto Parts",
@@ -87,7 +88,7 @@ export default async function ProductsPage() {
 
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(itemList) }}
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(itemList) }}
         />
       </main>
     </>
