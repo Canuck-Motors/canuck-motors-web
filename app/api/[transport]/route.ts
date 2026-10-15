@@ -6,31 +6,36 @@ const asText = (data: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(data) }],
 });
 
-const handler = createMcpHandler(
-  (server) => {
-    server.tool(
-      "search_parts",
-      "Search Canuck Motors auto parts by name or SKU",
-      { query: z.string().min(2).max(60) },
-      async ({ query }) => asText(await searchParts(query))
-    );
+const handler = createMcpHandler((server) => {
+  server.registerTool(
+    "search_parts",
+    {
+      title: "Search parts",
+      description: "Search Canuck Motors auto parts by name or SKU",
+      inputSchema: z.object({ query: z.string().min(2).max(60) }),
+    },
+    async ({ query }) => asText(await searchParts(query))
+  );
 
-    server.tool(
-      "get_part",
-      "Get details for one auto part by its id",
-      { id: z.string() },
-      async ({ id }) => asText(await getPart(id))
-    );
+  server.registerTool(
+    "get_part",
+    {
+      title: "Get part",
+      description: "Get details for one auto part by its id",
+      inputSchema: z.object({ id: z.string().min(1).max(60) }),
+    },
+    async ({ id }) => asText(await getPart(id))
+  );
 
-    server.tool(
-      "list_categories",
-      "List all active auto part categories",
-      {},
-      async () => asText(await listCategories())
-    );
-  },
-  {},
-  { basePath: "/api" }
-);
+  server.registerTool(
+    "list_categories",
+    {
+      title: "List categories",
+      description: "List all active auto part categories",
+      inputSchema: z.object({}),
+    },
+    async () => asText(await listCategories())
+  );
+});
 
-export { handler as GET, handler as POST, handler as DELETE };
+export { handler as GET, handler as POST };
