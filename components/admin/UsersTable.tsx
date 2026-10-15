@@ -65,7 +65,10 @@ export default function UsersTable({ rows, roles }: { rows: UserRow[]; roles: Ro
   }, [rows, q]);
 
   const downloadCsv = () => {
-    const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v);
+    const esc = (v: string) => {
+      const safe = /^[=+\-@]/.test(v) ? `'${v}` : v;
+      return /[",\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
+    };
     const lines = shown.map((r) =>
       [r.name, r.email, r.phone, r.role, r.joined ? r.joined.slice(0, 10) : ""].map(esc).join(",")
     );
