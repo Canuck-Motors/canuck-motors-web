@@ -34,9 +34,19 @@ export default function LoginPage() {
       return;
     }
 
-    // Full page load: starts clean with the new account, so switching between
-    // admin and customer can never show stale data or hang on the old session.
-    window.location.assign("/");
+    const { data: staffRole, error: roleError } = await supabase.rpc(
+      "current_user_staff_role"
+    );
+
+    if (roleError) {
+      setMessage("Signed in, but we could not determine your account access. Please try again.");
+      setLoading(false);
+      return;
+    }
+
+    // Full page load starts with a clean server session. Admins go straight to
+    // operations; customers use their account dashboard.
+    window.location.assign(staffRole === "admin" ? "/admin" : "/account");
   };
 
   return (
