@@ -31,3 +31,7 @@ jobs:
 
       - name: Type check
         run: npx tsc --noEmit
+
+      - name: Dependency audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
