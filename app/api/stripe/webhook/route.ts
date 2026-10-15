@@ -11,6 +11,7 @@ type StripeEvent = {
       status?: string | null;
       charge?: string | null;
       amount?: number | null;
+      amount_total?: number | null;
       currency?: string | null;
       reason?: string | null;
       is_charge_refundable?: boolean | null;
@@ -186,7 +187,7 @@ export async function POST(request: Request) {
       if (orderId) {
         const { data: order, error: orderError } = await admin
           .from("orders")
-          .select("id, order_type")
+          .select("id, order_type, total_amount, currency")
           .eq("id", orderId)
           .maybeSingle();
 
@@ -204,6 +205,25 @@ export async function POST(request: Request) {
           event.type === "checkout.session.async_payment_failed";
 
         if (paid) {
+          if (!order) {
+            throw new Error("Stripe checkout referenced an order that does not exist.");
+          }
+
+          const expectedCents = Math.round(Number(order.total_amount) * 100);
+          const eventAmount = Number(object.amount_total);
+          const eventCurrency = String(object.currency || "").toLowerCase();
+          const expectedCurrency = String(order.currency || "CAD").toLowerCase();
+
+          if (
+            !Number.isFinite(eventAmount) ||
+            eventAmount !== expectedCents ||
+            eventCurrency !== expectedCurrency
+          ) {
+            throw new Error(
+              `Stripe checkout amount/currency mismatch for order ${orderId}.`
+            );
+          }
+
           const rpcName =
             order?.order_type === "exchange_replacement"
               ? "finalize_exchange_replacement_payment"
