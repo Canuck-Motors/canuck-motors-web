@@ -20,6 +20,7 @@ export function UpdatePasswordForm({
   ...props
 }: React.ComponentPropsWithoutRef<"div">) {
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -27,14 +28,27 @@ export function UpdatePasswordForm({
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     const supabase = createClient();
-    setIsLoading(true);
     setError(null);
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    setIsLoading(true);
 
     try {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
-      // Update this route to redirect to an authenticated route. The user already has an active session.
-      router.push("/protected");
+
+      const { data: staffRole } = await supabase.rpc("current_user_staff_role");
+      router.replace(staffRole === "admin" ? "/admin" : "/account");
+      router.refresh();
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred");
     } finally {
@@ -59,10 +73,25 @@ export function UpdatePasswordForm({
                 <Input
                   id="password"
                   type="password"
-                  placeholder="New password"
+                  placeholder="At least 8 characters"
+                  autoComplete="new-password"
+                  minLength={8}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="confirm-password">Confirm new password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  placeholder="Re-enter new password"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
                 />
               </div>
               {error && <p className="text-sm text-red-500">{error}</p>}
