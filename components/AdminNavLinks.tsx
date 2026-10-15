@@ -7,6 +7,7 @@ import {
   ClipboardList,
   CreditCard,
   Gauge,
+  Route,
   Home,
   ImageIcon,
   RotateCcw,
@@ -31,6 +32,7 @@ export function AdminNavLinks({ showStripe }: { showStripe: boolean }) {
     ? [
         ...baseLinks,
         { href: "/admin/users", label: "Users", icon: Users },
+        { href: "/admin/fulfillment", label: "Fulfillment", icon: Route },
         { href: "/admin/stripe", label: "Stripe", icon: CreditCard },
       ]
     : baseLinks;
