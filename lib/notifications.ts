@@ -81,6 +81,7 @@ async function sendEmail(row: OutboxRow) {
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
+      "Idempotency-Key": `notification-${row.id}`,
     },
     body: JSON.stringify({
       from,
