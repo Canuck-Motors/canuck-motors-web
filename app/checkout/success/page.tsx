@@ -63,7 +63,7 @@ export default async function CheckoutSuccessPage({
       const admin = createAdminClient();
       const { data: current } = await supabase
         .from("orders")
-        .select("id, payment_status")
+        .select("id, payment_status, total_amount, currency")
         .eq("id", payment.order_id)
         .eq("user_id", profile.id)
         .maybeSingle();
@@ -73,7 +73,18 @@ export default async function CheckoutSuccessPage({
         const sameOrder =
           (session.metadata?.order_id || session.client_reference_id) === current.id;
 
-        if (sameOrder && session.payment_status === "paid") {
+        const amountMatches =
+          Number(session.amount_total) === Math.round(Number(current.total_amount) * 100);
+        const currencyMatches =
+          String(session.currency || "").toLowerCase() ===
+          String(current.currency || "CAD").toLowerCase();
+
+        if (
+          sameOrder &&
+          session.payment_status === "paid" &&
+          amountMatches &&
+          currencyMatches
+        ) {
           const { data: orderMeta } = await admin
             .from("orders")
             .select("order_type")
