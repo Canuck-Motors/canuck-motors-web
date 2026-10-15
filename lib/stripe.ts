@@ -298,6 +298,8 @@ export function retrieveStripeCheckoutSession(id: string) {
     payment_status: string;
     status: string;
     payment_intent: string | null;
+    amount_total: number | null;
+    currency: string | null;
     client_reference_id?: string | null;
     metadata?: Record<string, string>;
     customer_details?: {
