@@ -154,6 +154,53 @@ export async function requestReturnOrExchange(input: {
     replacement_product_id?: number | null;
   }>;
 }) {
+  const allowedReasons = new Set([
+    "damaged",
+    "wrong_item",
+    "not_compatible",
+    "defective",
+    "changed_mind",
+    "other",
+  ]);
+
+  if (!["return", "exchange"].includes(input.requestType)) {
+    throw new Error("Invalid return request type.");
+  }
+
+  if (!allowedReasons.has(input.reasonCode)) {
+    throw new Error("Please select a valid return reason.");
+  }
+
+  if (input.reasonText.length > 2000) {
+    throw new Error("Additional details must be 2,000 characters or fewer.");
+  }
+
+  if (!input.items.length || input.items.length > 20) {
+    throw new Error("Choose between 1 and 20 items.");
+  }
+
+  const seen = new Set<number>();
+  for (const item of input.items) {
+    if (
+      !Number.isInteger(item.order_item_id) ||
+      item.order_item_id <= 0 ||
+      !Number.isInteger(item.quantity) ||
+      item.quantity <= 0 ||
+      seen.has(item.order_item_id)
+    ) {
+      throw new Error("Return items contain an invalid or duplicate quantity.");
+    }
+    seen.add(item.order_item_id);
+
+    if (
+      item.replacement_product_id != null &&
+      (!Number.isInteger(item.replacement_product_id) ||
+        item.replacement_product_id <= 0)
+    ) {
+      throw new Error("Invalid replacement product.");
+    }
+  }
+
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
 
