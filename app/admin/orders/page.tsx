@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 const BASE =
-  "id, order_number, status, fulfillment_status, payment_status, total_amount, currency, customer_email, customer_name, created_on, shipping_address, cancellation_reason, order_items(product_name, sku, quantity, unit_price, cancelled_on, cancel_reason), shipments(id, carrier, tracking_number, tracking_url, status, estimated_delivery)";
+  "id, order_number, status, fulfillment_status, payment_status, fulfillment_provider, fulfillment_routing_status, fulfillment_error, total_amount, currency, customer_email, customer_name, created_on, shipping_address, cancellation_reason, order_items(product_name, sku, quantity, unit_price, cancelled_on, cancel_reason), shipments(id, carrier, tracking_number, tracking_url, status, estimated_delivery)";
 
 export default async function OrdersAdminPage() {
   const supabase = await createClient();
@@ -81,6 +81,9 @@ export default async function OrdersAdminPage() {
       status: String(o.status ?? ""),
       fulfillment: String(o.fulfillment_status ?? ""),
       payment: String(o.payment_status ?? ""),
+      provider: (o.fulfillment_provider as string) ?? "",
+      routingStatus: String(o.fulfillment_routing_status ?? "unrouted"),
+      fulfillmentError: (o.fulfillment_error as string) ?? "",
       total: Number(o.total_amount ?? 0),
       currency: String(o.currency ?? "CAD"),
       email: (o.customer_email as string) ?? "",
