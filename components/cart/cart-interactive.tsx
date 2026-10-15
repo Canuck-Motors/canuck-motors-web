@@ -35,11 +35,15 @@ export default function CartInteractive({
   const timersRef = useRef(new Map<number, ReturnType<typeof setTimeout>>());
   const versionsRef = useRef(new Map<number, number>());
   const chainsRef = useRef(new Map<number, Promise<void>>());
+  const savedQuantitiesRef = useRef(
+    new Map(initialLines.map((line) => [line.id, line.quantity]))
+  );
 
   useEffect(() => {
+    const timers = timersRef.current;
     return () => {
-      timersRef.current.forEach((timer) => clearTimeout(timer));
-      timersRef.current.clear();
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
     };
   }, []);
 
@@ -81,11 +85,22 @@ export default function CartInteractive({
       task
         .then(() => {
           if (versionsRef.current.get(itemId) === nextVersion) {
+            savedQuantitiesRef.current.set(itemId, quantity);
             setSaveStates((current) => ({ ...current, [itemId]: "saved" }));
           }
         })
         .catch(() => {
           if (versionsRef.current.get(itemId) === nextVersion) {
+            const savedQuantity = savedQuantitiesRef.current.get(itemId);
+            if (savedQuantity != null) {
+              setLines((current) =>
+                current.map((line) =>
+                  line.id === itemId
+                    ? { ...line, quantity: savedQuantity }
+                    : line
+                )
+              );
+            }
             setSaveStates((current) => ({ ...current, [itemId]: "error" }));
           }
         });
@@ -120,6 +135,7 @@ export default function CartInteractive({
     try {
       await removeCartItem(itemId);
       setLines((current) => current.filter((line) => line.id !== itemId));
+      savedQuantitiesRef.current.delete(itemId);
       setSaveStates((current) => {
         const next = { ...current };
         delete next[itemId];
