@@ -437,70 +437,28 @@ export async function createExchangeReplacement(input: {
 export async function handleReturnStock(requestId: string, restock: boolean) {
   const supabase = await requireAuthenticatedStaff();
 
-  if (restock) {
-    const { data: reqRow, error } = await supabase
-      .from("return_requests")
-      .select("id, return_request_items(quantity, received_quantity, order_items!inner(product_id))")
-      .eq("id", requestId)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    const items = (reqRow?.return_request_items ?? []) as {
-      quantity: number;
-      received_quantity: number;
-      order_items: { product_id?: number } | { product_id?: number }[] | null;
-    }[];
+  const { data: itemCount, error } = await supabase.rpc("admin_handle_return_stock", {
+    p_request_id: requestId,
+    p_restock: restock,
+  });
 
-    // Block double handling before touching stock
-    const { error: markError } = await supabase.rpc("admin_mark_return_restocked", {
-      p_request_id: requestId,
-      p_restocked: true,
-    });
-    if (markError) {
-      throw new Error(
-        /admin_mark_return_restocked|schema cache/.test(markError.message)
-          ? "Run database/admin_returns_extras.sql in the Supabase SQL editor first."
-          : markError.message
-      );
-    }
-
-    const lines: string[] = [];
-    for (const it of items) {
-      const oi = Array.isArray(it.order_items) ? it.order_items[0] : it.order_items;
-      const productId = (oi as { product_id?: number } | undefined)?.product_id;
-      const qty = Number(it.received_quantity) > 0 ? Number(it.received_quantity) : Number(it.quantity);
-      if (!productId || !qty) continue;
-
-      const { data: inv } = await supabase
-        .from("inventory")
-        .select("quantity")
-        .eq("product_id", productId)
-        .maybeSingle();
-      const next = Number(inv?.quantity ?? 0) + qty;
-
-      const first = await supabase.rpc("admin_adjust_stock", {
-        p_product_id: productId,
-        p_new_quantity: next,
-        p_reason: "Returned item restocked",
-      });
-      if (first.error) {
-        const { error: e2 } = await supabase.rpc("adjust_inventory", {
-          p_product_id: productId,
-          p_new_quantity: next,
-          p_reason: "Returned item restocked",
-        });
-        if (e2) throw new Error(e2.message);
-      }
-      lines.push(`+${qty}`);
-    }
-    await logActivity(requestId, "restock", `Returned items added back to stock (${lines.join(", ") || "none"})`);
-  } else {
-    const { error } = await supabase.rpc("admin_mark_return_restocked", {
-      p_request_id: requestId,
-      p_restocked: false,
-    });
-    if (error) throw new Error(error.message);
-    await logActivity(requestId, "restock", "Marked damaged - not restocked");
+  if (error) {
+    throw new Error(
+      /admin_handle_return_stock|schema cache/.test(error.message)
+        ? "The return stock handler is not installed in the database."
+        : /return_stock_already_handled/.test(error.message)
+          ? "Stock for this return was already handled."
+          : error.message
+    );
   }
+
+  await logActivity(
+    requestId,
+    "restock",
+    restock
+      ? `Returned items added back to stock (${Number(itemCount ?? 0)} line item${Number(itemCount ?? 0) === 1 ? "" : "s"})`
+      : "Marked damaged - not restocked"
+  );
 
   revalidatePath("/admin/returns");
   revalidatePath("/admin/inventory");
