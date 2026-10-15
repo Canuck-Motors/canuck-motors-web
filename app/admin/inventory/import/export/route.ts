@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 
 const esc = (v: unknown) => {
-  const s = String(v ?? "").replace(/\r?\n/g, " ");
+  const raw = String(v ?? "").replace(/\r?\n/g, " ");
+  const s = /^[=+\-@]/.test(raw) ? `'${raw}` : raw;
   return /[",]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 };
 
