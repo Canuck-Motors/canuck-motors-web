@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import {
+  processAmazonMcfQueueNow,
   saveFulfillmentSettings,
   saveProductFulfillment,
 } from "@/app/admin/fulfillment/actions";
@@ -97,14 +98,35 @@ export default function FulfillmentSettings({
           </select>
         </label>
 
-        <button
-          type="button"
-          disabled={pending}
-          onClick={saveSettings}
-          className="cm-button-primary mt-5 disabled:opacity-60"
-        >
-          Save settings
-        </button>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            disabled={pending}
+            onClick={saveSettings}
+            className="cm-button-primary disabled:opacity-60"
+          >
+            Save settings
+          </button>
+          <button
+            type="button"
+            disabled={pending || !amazonConfigured}
+            onClick={() =>
+              start(async () => {
+                try {
+                  const result = await processAmazonMcfQueueNow();
+                  setMessage(
+                    `MCF queue processed: ${result.succeeded} succeeded, ${result.failed} failed or retried.`
+                  );
+                } catch (e) {
+                  setMessage(e instanceof Error ? e.message : "Unable to process MCF queue.");
+                }
+              })
+            }
+            className="rounded-full bg-ink px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
+          >
+            Process MCF queue now
+          </button>
+        </div>
         {message && <p className="mt-3 text-sm">{message}</p>}
       </section>
 
