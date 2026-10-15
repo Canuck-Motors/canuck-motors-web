@@ -277,8 +277,24 @@ async function present(out: any, filters: SpecFilter[]) {
 type Choices = { level: string; options: string[]; spec?: string } | null;
 
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  if (!body || !Array.isArray(body.messages)) {
+  const declaredLength = Number(req.headers.get("content-length") || 0);
+  if (Number.isFinite(declaredLength) && declaredLength > 64 * 1024) {
+    return NextResponse.json({ error: "Request too large" }, { status: 413 });
+  }
+
+  const rawBody = await req.text();
+  if (rawBody.length > 64 * 1024) {
+    return NextResponse.json({ error: "Request too large" }, { status: 413 });
+  }
+
+  let body: any = null;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  if (!body || !Array.isArray(body.messages) || body.messages.length > 100) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
