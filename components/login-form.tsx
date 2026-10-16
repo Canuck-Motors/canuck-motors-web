@@ -39,19 +39,7 @@ export function LoginForm({
       });
       if (error) throw error;
 
-      const { data: staffRole, error: roleError } = await supabase.rpc(
-        "current_user_staff_role"
-      );
-
-      if (roleError) {
-        throw roleError;
-      }
-
-      if (staffRole === "admin") {
-        router.replace("/admin");
-      } else {
-        router.replace("/account");
-      }
+      router.replace("/");
 
       router.refresh();
     } catch (error: unknown) {

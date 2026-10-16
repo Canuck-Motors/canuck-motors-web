@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { Hero } from "@/components/hero";
-import { CategorySection } from "@/components/CategorySection";
 import { FeaturedProducts } from "@/components/FeaturedProducts";
+import { AmazonReviews } from "@/components/AmazonReviews";
 
 // Fixed-height placeholder so the page does not jump when data arrives
 // (keeps Cumulative Layout Shift low, which helps SEO).
@@ -27,13 +27,7 @@ export default function Home() {
       <main id="main-content">
         <Hero />
 
-        <Suspense
-          fallback={
-            <SectionSkeleton label="Loading categories" heightClass="h-56" />
-          }
-        >
-          <CategorySection />
-        </Suspense>
+        <AmazonReviews />
 
         <Suspense
           fallback={

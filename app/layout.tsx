@@ -6,9 +6,39 @@ import { Outfit } from "next/font/google";
 import ChatLauncher from "@/components/chat/ChatLauncher";
 import "./globals.css";
 
-const defaultUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+const defaultUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+// Tells Google and AI tools who we are, and how the site search works.
+const siteJsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${defaultUrl}/#organization`,
+      name: "Canuck Motors",
+      url: defaultUrl,
+      logo: `${defaultUrl}/logo/Canuck-Motors.png`,
+      email: "contactus@canuckmotors.ca",
+      description:
+        "Canadian aftermarket auto parts brand: ceramic brake pads, water pumps and timing belt kits made to OE fit.",
+      areaServed: "CA",
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${defaultUrl}/#website`,
+      url: defaultUrl,
+      name: "Canuck Motors",
+      publisher: { "@id": `${defaultUrl}/#organization` },
+      potentialAction: {
+        "@type": "SearchAction",
+        target: { "@type": "EntryPoint", urlTemplate: `${defaultUrl}/products/search/{search_term_string}` },
+        "query-input": "required name=search_term_string",
+      },
+    },
+  ],
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
@@ -48,6 +78,7 @@ export default function RootLayout({
   <Navbar />
   {children}
   <ChatLauncher />
+  <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }} />
 </body>
     </html>
   );

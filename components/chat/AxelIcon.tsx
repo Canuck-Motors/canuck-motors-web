@@ -3,9 +3,11 @@
 export default function AxelIcon({
   className = "",
   active = false,
+  inverted = false,
 }: {
   className?: string;
   active?: boolean;
+  inverted?: boolean; // red gear, white "A" (for a white background)
 }) {
   return (
     <svg
@@ -22,15 +24,15 @@ export default function AxelIcon({
             width="3.4"
             height="5"
             rx="1"
-            className="fill-white"
+            className={inverted ? "fill-brand" : "fill-white"}
             transform={`rotate(${i * 45} 12 12)`}
           />
         ))}
-        <circle cx="12" cy="12" r="8" className="fill-white" />
+        <circle cx="12" cy="12" r="8" className={inverted ? "fill-brand" : "fill-white"} />
       </g>
       <path
         d="M12 7.2 16 16.4h-2.2l-.7-1.7h-2.2l-.7 1.7H8L12 7.2Zm0 3.6-.8 2.1h1.6L12 10.8Z"
-        className="fill-brand"
+        className={inverted ? "fill-white" : "fill-brand"}
       />
     </svg>
   );

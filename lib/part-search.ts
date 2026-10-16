@@ -13,11 +13,17 @@ const alnum = (s: string) => s.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
 
 // "ACDelco 252544" -> ["252544"]; "CM-1252102" -> ["CM1252102"]
 function numberTokens(text: string) {
+  const words = text.split(/\s+/).filter(Boolean);
+  // "2013 audi a3" is a vehicle, not a part number: a year inside a sentence must
+  // not be matched against part numbers (that returned unrelated parts).
+  const isYear = (w: string) => /^(19[5-9]\d|20[0-4]\d)$/.test(w);
+  const vehicleLike = words.length > 1 && words.some(isYear);
+  if (vehicleLike) return [];
+
   const whole = alnum(text);
-  const tokens = text
-    .split(/\s+/)
+  const tokens = words
     .map(alnum)
-    .filter((t) => t.length >= 4 && /\d/.test(t));
+    .filter((t) => t.length >= 4 && /\d/.test(t) && !isYear(t));
   return Array.from(new Set([whole, ...tokens].filter((t) => t.length >= 3)));
 }
 

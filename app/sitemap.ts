@@ -1,5 +1,7 @@
+import { getAllPosts } from "@/lib/blog-store";
 import type { MetadataRoute } from "next";
 import { createPublicClient } from "@/lib/supabase/public";
+import { getHiddenNavKeys } from "@/lib/site-nav";
 
 const baseUrl =
   process.env.NEXT_PUBLIC_SITE_URL ||
@@ -7,6 +9,8 @@ const baseUrl =
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const supabase = createPublicClient();
+  const hiddenNav = await getHiddenNavKeys();
+  const isShown = (key: string) => !hiddenNav.includes(key);
 
   const [{ data: products }, { data: categories }, { data: brands }] = await Promise.all([
     supabase
@@ -34,7 +38,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     "/brands",
     "/deals",
     "/about",
-  ].map((path) => ({
+    "/about/product",
+    "/about/manufacturer",
+    "/blog",
+  ]
+    .filter((path) => {
+      const key = { "/products": "products", "/categories": "categories", "/brands": "brands", "/deals": "deals", "/about": "about" }[path];
+      return !key || isShown(key);
+    })
+    .map((path) => ({
     url: `${baseUrl}${path}`,
     lastModified: new Date(),
     changeFrequency: "weekly" as const,
@@ -62,5 +74,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
-  return [...staticPages, ...productPages, ...categoryPages, ...brandPages];
+  const blogPages = (await getAllPosts()).map((post) => ({
+    url: `${baseUrl}/blog/${post.slug}`,
+    lastModified: post.updatedAt ? new Date(post.updatedAt) : new Date(),
+    changeFrequency: "monthly" as const,
+    priority: 0.6,
+  }));
+
+  return [...staticPages, ...blogPages, ...productPages, ...categoryPages, ...brandPages];
 }

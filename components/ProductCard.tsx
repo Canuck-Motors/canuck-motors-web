@@ -35,7 +35,7 @@ export function ProductCard({ product }: ProductCardProps) {
       >
         <div className="relative aspect-[4/3] overflow-hidden bg-[linear-gradient(145deg,#fafafa,#f3f3f3)]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_25%,rgba(214,40,40,0.10),transparent_28%)] opacity-0 transition duration-300 group-hover:opacity-100" />
-          <div className="absolute left-4 top-4 rounded-full border border-black/5 bg-white/90 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-ink shadow-sm backdrop-blur">
+          <div className="absolute left-4 top-4 z-10 rounded-full border border-black/5 bg-white/90 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.16em] text-ink shadow-sm backdrop-blur">
             Canuck Motors
           </div>
           {main ? (

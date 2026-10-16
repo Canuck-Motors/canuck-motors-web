@@ -25,7 +25,7 @@ const MODEL = process.env.CHAT_MODEL ?? "claude-haiku-4-5-20251001";
 const SYSTEM = `You are Axel, the Canuck Motors parts assistant. Your goal is that the customer ends up with the exact, correct part, so nothing gets returned. Write like a quick text message: ONE or TWO short sentences (under 25 words), one question at a time. No long explanations, no lists, no bold headings.
 
 How to work:
-1. Find out which part they need (water pump, brake pads, brake shoes, timing belt kit with water pump, front and rear brake kit, and so on).
+1. Find out which part they need (call list_categories if unsure which parts we sell today, and never offer or promise a part that is not in that list).
 2. Once you know the part, ask for the vehicle in ONE short line, exactly like: "Which vehicle is it for? Year, make and model, or paste your VIN." Do not explain the VIN yet. Identify the vehicle in one of two ways:
    a. VIN (most accurate). If the customer's message contains a 17-character VIN, call find_parts_by_vin right away, with the part they asked for earlier.
    b. Year, make and model. As soon as you know all three, call find_parts_for_vehicle immediately, even if you don't know the engine yet.
@@ -34,9 +34,10 @@ How to work:
 
 Reading tool results (find_parts_for_vehicle and find_parts_by_vin):
 - status "choose": ask ONE short question for that level (for example "Which engine does your 2004 Ford F-150 have?"). The options appear as buttons, so do not list them.
-- status "not_found": say what we couldn't find, ask them to double-check it, or offer to use their VIN instead.
-- status "ok": write one or two short sentences. Confirm the vehicle using the "vehicle" text. For a VIN search, say what the VIN decoded to using vin_vehicle. Do NOT list, count or describe products (never say how many were found): they appear automatically below your message. If "positions" has more than one value (for example Front and Rear) and the customer didn't say which one they need, add one line asking which. If available_trims is not empty, add one short line saying they can tell you their trim to double-check. Do not name trims yourself.
+- status "not_found": for a VIN search, first say what the VIN decoded to using vin_summary (include the trim). Then say what we couldn't find, ask them to double-check it, or offer to use their VIN instead.
+- status "ok": write one or two short sentences. Confirm the vehicle using the "vehicle" text. For a VIN search, say what the VIN decoded to using vin_summary, and ALWAYS include the trim from it when it has one (never drop the trim). Do NOT list, count or describe products (never say how many were found): they appear automatically below your message. If "positions" has more than one value (for example Front and Rear) and the customer didn't say which one they need, add one line asking which. If available_trims is not empty, add one short line saying they can tell you their trim to double-check. Do not name trims yourself.
 - status "need_part": ask which part they need, in one short line.
+- If the result has engine_note, say it in one short sentence. NEVER ask for the engine again after the customer said they are not sure.
 - If the result has trim_note, say it in one short sentence (the parts fit every trim in our catalog).
 - status "not_found" for trim: say we couldn't match that trim and show nothing as fitting. NEVER say parts "should still fit" or guess.
 - status "no_products": say we couldn't find a matching part for that vehicle and suggest contacting the team.
@@ -75,6 +76,10 @@ const tools: Anthropic.ToolUnion[] = [
         model: { type: "string" },
         engine: { type: "string", description: "Engine the customer chose, e.g. 5.4L" },
         trim: { type: "string", description: "Trim the customer chose" },
+        any_engine: {
+          type: "boolean",
+          description: "true when the customer says they do not know their engine. Never ask for the engine twice.",
+        },
         part: {
           type: "string",
           description:
@@ -147,6 +152,7 @@ async function runTool(name: string, input: any) {
         engine: input.engine ? String(input.engine) : undefined,
         trim: input.trim ? String(input.trim) : undefined,
         part: input.part ? String(input.part) : undefined,
+        anyEngine: input.any_engine === true,
       });
     }
 
@@ -229,7 +235,7 @@ type Ctx = { tool: "find_parts_for_vehicle" | "find_parts_by_vin"; input: any };
 async function present(out: any, filters: SpecFilter[]) {
   const all: CatalogProduct[] = out.products ?? [];
   const specs = await getSpecsForProducts(all.map((p) => p.id));
-  addNoteSpecs(specs, all); // Position + facts from the fitment notes
+  addNoteSpecs(specs, all, { includeEngine: Boolean(out.engine_note) }); // Position, vehicle details + facts from the fitment notes
   let { candidates, question } = narrow(all, specs, filters);
   let note: string | null = null;
 
@@ -262,7 +268,9 @@ async function present(out: any, filters: SpecFilter[]) {
       spec: question.name,
       options:
         question.name === "Position"
-          ? [...question.options.slice(0, 10), "All"] // All = show every part
+          ? question.options.some((o) => /front\s*(and|&)\s*rear/i.test(o))
+            ? question.options.slice(0, 10) // the kit option already covers front + rear
+            : [...question.options.slice(0, 10), "All"] // All = show every part
           : [...question.options.slice(0, 10), "Not sure"],
     };
   }
@@ -270,6 +278,11 @@ async function present(out: any, filters: SpecFilter[]) {
   if (candidates.length > 1 && !question && notSureAboutEverything(filters)) {
     base.override =
       "I could not narrow it down because you are not sure about the details. To get the exact part, please check your brake code with your vehicle's dealership (or paste your VIN here) and I will pick the right one. These are the parts that could fit:";
+  }
+  // Several parts are still possible and nothing more can be asked: say so plainly
+  if (candidates.length > 1 && !question && filters.length > 0 && !notSureAboutEverything(filters)) {
+    base.override =
+      "I can't confirm which of these fits with the details available, so I won't pick one for you. Please check the fitment table on each part's page, or paste your VIN or call us and we'll verify it. These parts could fit:";
   }
   return base;
 }
@@ -458,7 +471,7 @@ export async function POST(req: Request) {
           // A button the customer just clicked ("Engine: 3.6L V6 3604cc") is
           // the exact answer: use it as is, even if the model shortened it.
           if (isVehicleTool) {
-            const clicked = String(messages[messages.length - 1]?.content ?? "").match(
+            const clicked = lastText.trim().match(
               /^(Make|Model|Engine|Trim):\s*(.+)$/i,
             );
             if (clicked) {
@@ -473,6 +486,17 @@ export async function POST(req: Request) {
                 toolInput[level] = value;
               }
             }
+          }
+
+          // "not sure / don't know / no idea" to the engine question: never ask again
+          if (
+            isVehicleTool &&
+            !String(toolInput.engine ?? "").trim() &&
+            /^(i\s*)?(am\s*)?(not\s*sure|dont\s*know|don'?t\s*know|do\s*not\s*know|no\s*idea|idk|unsure|not\s*certain|i\s*have\s*no\s*idea)\b/i.test(
+              lastText.trim().replace(/[’']/g, "'")
+            )
+          ) {
+            toolInput.any_engine = true;
           }
 
           const out: any = await runTool(block.name, toolInput);

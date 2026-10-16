@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { emailShipmentToCustomer } from "@/lib/shipment-email";
 
 async function requireStaff() {
   const supabase = await createClient();
@@ -207,6 +208,15 @@ export async function createShipment(
 
   revalidatePath("/admin/orders");
   revalidatePath(`/account/orders/${orderId}`);
+
+  return emailShipmentToCustomer({
+    orderId,
+    carrier,
+    trackingNumber,
+    trackingUrl,
+    serviceLevel,
+    estimatedDelivery,
+  });
 }
 
 export async function updateProduct(

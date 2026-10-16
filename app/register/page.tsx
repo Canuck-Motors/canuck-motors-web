@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
 const field =
@@ -21,6 +21,33 @@ export default function RegisterPage() {
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [emailTaken, setEmailTaken] = useState(false);
+
+  // live check: is there already an account with this email?
+  useEffect(() => {
+    const value = email.trim().toLowerCase();
+    setEmailTaken(false);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return;
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch("/api/auth/email-exists", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email: value }),
+          signal: controller.signal,
+        });
+        const json = (await res.json()) as { exists?: boolean };
+        setEmailTaken(Boolean(json.exists));
+      } catch {
+        /* ignore: the real check also happens on submit */
+      }
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [email]);
 
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -30,6 +57,11 @@ export default function RegisterPage() {
     const normalizedEmail = email.trim().toLowerCase();
     const normalizedFirstName = firstName.trim();
     const normalizedLastName = lastName.trim();
+
+    if (emailTaken) {
+      setMessage("This email is already registered. Please log in instead.");
+      return;
+    }
 
     if (!normalizedFirstName || !normalizedLastName) {
       setMessage("Please enter your first and last name.");
@@ -63,6 +95,13 @@ export default function RegisterPage() {
 
     if (error) {
       setMessage(error.message);
+      return;
+    }
+
+    // Supabase answers "success" for an email that already exists but returns no identities
+    if (data.user && (data.user.identities ?? []).length === 0) {
+      setEmailTaken(true);
+      setMessage("This email is already registered. Please log in instead.");
       return;
     }
 
@@ -190,8 +229,22 @@ export default function RegisterPage() {
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className={field}
+                aria-invalid={emailTaken}
+                className={`${field} ${emailTaken ? "border-red-400 focus:border-red-500 focus:ring-red-100" : ""}`}
               />
+              {emailTaken && (
+                <p role="alert" className="mt-1.5 text-sm font-medium text-red-600">
+                  This email is already registered.{" "}
+                  <Link href="/login" className="font-bold underline">
+                    Log in
+                  </Link>{" "}
+                  or{" "}
+                  <Link href="/auth/forgot-password" className="font-bold underline">
+                    reset your password
+                  </Link>
+                  .
+                </p>
+              )}
             </div>
 
             <div>
@@ -238,7 +291,7 @@ export default function RegisterPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || emailTaken}
               className="cm-button-primary mt-2 w-full py-3.5 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Creating account..." : "Register"}

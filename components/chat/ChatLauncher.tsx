@@ -23,8 +23,28 @@ function wipe(only?: string) {
 
 export default function ChatLauncher() {
   const [open, setOpen] = useState(false);
+  // A saved conversation exists: the button turns white with red text so the
+  // customer can see their chat is still there.
+  const [hasChat, setHasChat] = useState(false);
+  // Once opened, the window stays mounted (just hidden) so a reply that is still
+  // being written arrives even if the customer minimizes the chat.
+  const [started, setStarted] = useState(false);
   // undefined = still checking who is signed in
   const [who, setWho] = useState<string | undefined>(undefined);
+
+  const checkChat = (id: string | undefined) => {
+    try {
+      const raw = id ? localStorage.getItem(`${PREFIX}${id}`) : null;
+      const data = raw ? (JSON.parse(raw) as { t?: number; messages?: unknown[] }) : null;
+      setHasChat(Boolean(data && Array.isArray(data.messages) && data.messages.length > 0 && Date.now() - Number(data.t ?? 0) < 24 * 60 * 60 * 1000));
+    } catch {
+      setHasChat(false);
+    }
+  };
+
+  useEffect(() => {
+    checkChat(who);
+  }, [who, open]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -36,6 +56,7 @@ export default function ChatLauncher() {
       if (event === "SIGNED_OUT") {
         wipe(); // nothing stays behind for the next person
         setOpen(false);
+        setStarted(false);
         setWho("guest");
       } else if (session?.user) {
         // Signed in: the guest chat does not carry over to the account
@@ -50,17 +71,26 @@ export default function ChatLauncher() {
 
   return (
     <>
-      {open && who && (
-        <ChatWindow key={who} storeKey={`${PREFIX}${who}`} onClose={() => setOpen(false)} />
+      {(open || started) && who && (
+        <div className={open ? "" : "hidden"}>
+          <ChatWindow key={who} storeKey={`${PREFIX}${who}`} onClose={() => setOpen(false)} />
+        </div>
       )}
       {!open && (
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => {
+            setStarted(true);
+            setOpen(true);
+          }}
           aria-label="Chat with Axel, our parts assistant"
-          className="cm-pulse group fixed bottom-5 right-5 z-50 flex h-14 items-center gap-2 rounded-full bg-brand pl-3.5 pr-5 text-white shadow-xl transition hover:scale-105 hover:bg-brand-dark"
+          className={`cm-pulse group fixed bottom-5 right-5 z-50 flex h-14 items-center gap-2 rounded-full pl-3.5 pr-5 shadow-xl transition hover:scale-105 ${
+            hasChat
+              ? "border-2 border-brand bg-white text-brand hover:bg-brand-tint"
+              : "bg-brand text-white hover:bg-brand-dark"
+          }`}
         >
-          <AxelIcon className="h-8 w-8" />
+          <AxelIcon className="h-8 w-8" inverted={hasChat} />
           <span className="text-sm font-black tracking-tight">Ask Axel</span>
         </button>
       )}

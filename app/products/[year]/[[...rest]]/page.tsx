@@ -1,7 +1,19 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createPublicClient } from "@/lib/supabase/public";
+import Link from "next/link";
 import { ProductCard } from "@/components/ProductCard";
+import { typeRank } from "@/lib/product-order";
+import { safeJsonLd } from "@/lib/json-ld";
+
+const SITE_URL =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+// "Engine Water Pump - CM1204350" -> "Engine Water Pump"
+const groupLabel = (name: string) =>
+  String(name ?? "").split(" - ")[0].replace(/\s*\(.*?\)\s*$/, "").trim() || "Other parts";
+const groupId = (label: string) => "g-" + label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 // Route: app/products/[year]/[[...rest]]/page.tsx
 // rest = [make, model, engine, trim], every part optional
@@ -255,52 +267,114 @@ export default async function VehicleProductsPage({ params }: PageProps) {
     .filter(Boolean)
     .join(" ");
 
+  // Group the parts by type (water pumps, brake pads, ...) so the page is easy to scan.
+  const groupMap = new Map<string, any[]>();
+  for (const product of products) {
+    const label = groupLabel(product.product_name);
+    groupMap.set(label, [...(groupMap.get(label) ?? []), product]);
+  }
+  const groups = [...groupMap.entries()]
+    .map(([label, items]) => ({ label, id: groupId(label), items }))
+    .sort((a, b) => typeRank(a.label) - typeRank(b.label) || a.label.localeCompare(b.label));
+
+  const canonicalPath = ["/products", yearRow.year, ...(rest ?? [])].join("/");
+  const itemList = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: `Parts for ${vehicleName}`,
+    url: `${SITE_URL}${canonicalPath}`,
+    mainEntity: {
+      "@type": "ItemList",
+      numberOfItems: products.length,
+      itemListElement: products.slice(0, 50).map((product, index) => ({
+        "@type": "ListItem",
+        position: index + 1,
+        url: `${SITE_URL}/product/${product.slug || product.id}`,
+        name: product.product_name,
+      })),
+    },
+  };
+
+  const chip =
+    "rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 text-xs font-bold text-white/85";
+
   return (
     <main className="min-h-screen bg-secondary">
-      <div className="mx-auto max-w-7xl px-6 py-12">
-        {/* Breadcrumb */}
-        <nav
-          aria-label="Breadcrumb"
-          className="mb-6 text-sm text-muted-foreground"
-        >
-          <ol className="flex flex-wrap gap-2">
-            <li>Home</li>
-            <li>/</li>
-            <li>Products</li>
-            <li>/</li>
-            <li>{yearRow.year}</li>
-            {manufacturer && (
-              <>
-                <li>/</li>
-                <li>{manufacturer.manufacturer_name}</li>
-              </>
-            )}
-            {selectedModel && (
-              <>
-                <li>/</li>
-                <li>{selectedModel.model_name}</li>
-              </>
-            )}
-          </ol>
-        </nav>
+      {/* Vehicle header */}
+      <section className="relative overflow-hidden bg-ink text-white">
+        <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand/25 blur-3xl" />
+        <div className="cm-container relative py-10 md:py-14">
+          <nav aria-label="Breadcrumb" className="mb-5 text-sm text-white/60">
+            <ol className="flex flex-wrap gap-2">
+              <li>
+                <Link href="/" className="hover:text-white">Home</Link>
+              </li>
+              <li>/</li>
+              <li>
+                <Link href="/products" className="hover:text-white">Products</Link>
+              </li>
+              <li>/</li>
+              <li>{yearRow.year}</li>
+              {manufacturer && (
+                <>
+                  <li>/</li>
+                  <li>
+                    <Link href={`/brands/${manufacturer.slug}`} className="hover:text-white">
+                      {manufacturer.manufacturer_name}
+                    </Link>
+                  </li>
+                </>
+              )}
+              {selectedModel && (
+                <>
+                  <li>/</li>
+                  <li className="text-white">{selectedModel.model_name}</li>
+                </>
+              )}
+            </ol>
+          </nav>
 
-        <header className="max-w-3xl">
-          <p className="text-sm font-semibold uppercase tracking-widest text-brand">
-            Compatible Automotive Parts
-          </p>
+          <p className="cm-eyebrow">Compatible Automotive Parts</p>
 
-          <h1 className="mt-2 text-3xl font-bold text-ink md:text-4xl">
+          <h1 className="mt-3 text-4xl font-black tracking-[-0.04em] md:text-6xl">
             Parts for {vehicleName}
           </h1>
 
-          <p className="mt-4 leading-7 text-muted-foreground">
+          <p className="mt-5 max-w-2xl leading-7 text-white/70">
             Browse replacement parts and automotive components matched to your{" "}
             {vehicleName}. Compatibility is based on your selected vehicle
             configuration.
           </p>
-        </header>
 
-        <section aria-labelledby="products-heading" className="mt-10">
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            <span className={chip}>{yearRow.year}</span>
+            {manufacturer && <span className={chip}>{manufacturer.manufacturer_name}</span>}
+            {selectedModel && <span className={chip}>{selectedModel.model_name}</span>}
+            {selectedEngine && <span className={chip}>{selectedEngine.engine_name}</span>}
+            {selectedTrim && <span className={chip}>{selectedTrim.trim_name}</span>}
+            <span className="rounded-full bg-brand px-3.5 py-1.5 text-xs font-black text-white">
+              {products.length} compatible {products.length === 1 ? "part" : "parts"}
+            </span>
+          </div>
+
+          {groups.length > 1 && (
+            <nav aria-label="Jump to a part type" className="mt-6 flex flex-wrap gap-2">
+              {groups.map((g) => (
+                <a
+                  key={g.id}
+                  href={`#${g.id}`}
+                  className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:border-brand hover:bg-brand"
+                >
+                  {g.label} <span className="opacity-60">{g.items.length}</span>
+                </a>
+              ))}
+            </nav>
+          )}
+        </div>
+      </section>
+
+      <div className="cm-container py-10 md:py-14">
+        <section aria-labelledby="products-heading">
           <h2 id="products-heading" className="sr-only">
             Compatible products
           </h2>
@@ -316,13 +390,42 @@ export default async function VehicleProductsPage({ params }: PageProps) {
               </p>
             </div>
           ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {products.map((product) => (
-                <ProductCard key={product.id} product={product} />
+            <div className="space-y-12">
+              {groups.map((g) => (
+                <div key={g.id} id={g.id} className="scroll-mt-28">
+                  <div className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-black/10 pb-3">
+                    <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
+                      {g.label}
+                    </h3>
+                    <p className="text-sm font-semibold text-muted-foreground">
+                      {g.items.length} {g.items.length === 1 ? "option" : "options"} for your {vehicleName}
+                    </p>
+                  </div>
+                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    {g.items.map((product) => (
+                      <ProductCard key={product.id} product={product} />
+                    ))}
+                  </div>
+                </div>
               ))}
+
+              <aside className="rounded-[26px] border border-brand/15 bg-white p-6 shadow-[0_14px_40px_rgba(0,0,0,0.05)] md:flex md:items-center md:justify-between md:gap-6 md:p-8">
+                <div>
+                  <h3 className="text-xl font-black text-ink">Not sure which one fits?</h3>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Several options can fit the same vehicle. Ask Axel, our parts assistant, a few
+                    quick questions and we will help you choose the exact part before you buy.
+                  </p>
+                </div>
+              </aside>
             </div>
           )}
         </section>
+
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(itemList) }}
+        />
       </div>
     </main>
   );

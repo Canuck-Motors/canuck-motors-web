@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { AdminNav } from "@/components/AdminNav";
+import AiStatusCard from "@/components/admin/AiStatusCard";
 
 export const instant = false;
 
@@ -216,6 +217,8 @@ export default async function AdminDashboardPage() {
           <h1 className="cm-section-title mt-3">Operations dashboard</h1>
           <p className="mt-3 text-sm text-muted-foreground">Signed in as {role}.</p>
         </div>
+
+        {role === "admin" && <AiStatusCard />}
 
         {/* Needs attention */}
         <h2 className="mt-8 text-sm font-bold uppercase tracking-[0.16em] text-muted-foreground">

@@ -8,6 +8,10 @@ export type SpecQuestion = { name: string; options: string[] };
 // Easiest things to check on the old part come first (used to break ties)
 const PREFERRED = [
   "Position",
+  "Trim",
+  "Body Type",
+  "Fuel Type",
+  "Engine",
   "Caliper Pistons",
   "Heavy Duty Brakes",
   "Brake Code",
@@ -50,12 +54,63 @@ function noteFeatures(note: string): Record<string, string> {
 
 // Adds "Position" and the note facts as extra specs, so the same
 // narrowing questions (with "Not sure") work for them too.
-export function addNoteSpecs(specs: SpecMap, products: CatalogProduct[]) {
+// Several values for one question are stored in one string, joined like this
+const SEP = " | ";
+const values = (v: string) => v.split(SEP).map((x) => x.trim()).filter(Boolean);
+
+// Clauses of a fitment note ("Heavy Duty Brakes; Built after 03/2012") that
+// the brake facts above do not already cover.
+const HANDLED = /heavy duty|piston|brake code|front disc/i;
+function noteClauses(note: string): string[] {
+  return note
+    .split(/[;|\n]/)
+    .map((c) => c.replace(/=/g, "-").replace(/\s+/g, " ").trim().replace(/\.$/, ""))
+    .filter((c) => c.length >= 3 && c.length <= 70 && !HANDLED.test(c) && !/^(front|rear|front and rear)$/i.test(c));
+}
+
+// Adds "Position", the vehicle details (trim, body type, fuel type, and engine
+// when the customer did not know it) and the facts from the fitment notes as
+// extra specs, so the same narrowing questions (with "Not sure") work for them.
+export function addNoteSpecs(
+  specs: SpecMap,
+  products: CatalogProduct[],
+  opts: { includeEngine?: boolean } = {},
+) {
+  // Which note clauses does each part have? Only clauses that tell parts apart are kept.
+  const clausesOf = new Map<number, Set<string>>();
+  const clauseText = new Map<string, string>();
+  for (const p of products) {
+    const notes = p.notes ?? [];
+    if (!notes.length) continue;
+    const perNote = notes.map((n) => new Set(noteClauses(n).map((c) => c.toLowerCase())));
+    for (const n of notes) for (const c of noteClauses(n)) clauseText.set(c.toLowerCase(), c);
+    // A clause counts for the part only when every note of the part has it
+    const common = [...perNote[0]].filter((c) => perNote.every((set) => set.has(c)));
+    clausesOf.set(p.id, new Set(common));
+  }
+  const allClauses = new Set<string>();
+  for (const set of clausesOf.values()) for (const c of set) allClauses.add(c);
+  const askable = [...allClauses].filter((c) => {
+    const have = [...clausesOf.values()].filter((set) => set.has(c)).length;
+    return have < clausesOf.size; // some parts have it, some do not
+  });
+
   for (const p of products) {
     const own = specs.get(p.id) ?? new Map<string, string>();
     if (!specs.has(p.id)) specs.set(p.id, own);
 
     if (p.position) own.set("Position", p.position);
+
+    // What this part's fitment rows say about the vehicle
+    const fits = p.fits ?? [];
+    const dim = (name: string, pick: (f: NonNullable<CatalogProduct["fits"]>[number]) => string) => {
+      const set = new Set(fits.map(pick).filter(Boolean));
+      if (set.size) own.set(name, [...set].sort().join(SEP));
+    };
+    dim("Trim", (f) => f.trim);
+    dim("Body Type", (f) => f.body);
+    dim("Fuel Type", (f) => f.fuel);
+    if (opts.includeEngine) dim("Engine", (f) => f.engine);
 
     // A fact counts only when every note of this part agrees on it
     const seen = new Map<string, Set<string>>();
@@ -65,8 +120,22 @@ export function addNoteSpecs(specs: SpecMap, products: CatalogProduct[]) {
         (seen.get(name) ?? seen.set(name, new Set()).get(name)!).add(found[name] ?? "");
       }
     }
-    for (const [name, values] of seen) {
-      if (values.size === 1 && [...values][0]) own.set(name, [...values][0]);
+    for (const [name, vals] of seen) {
+      if (vals.size === 1 && [...vals][0]) own.set(name, [...vals][0]);
+    }
+
+    // Other note clauses become Yes / No questions
+    // A part whose notes do not mention the clause (or that has no notes) is the plain one
+    const mine = clausesOf.get(p.id);
+    for (const c of askable) own.set(`Note: ${clauseText.get(c)}`, mine?.has(c) ? "Yes" : "No");
+  }
+
+  // If some parts are "Heavy Duty", the parts that do not say so are the standard ones
+  const anyHeavy = products.some((p) => specs.get(p.id)?.get("Heavy Duty Brakes") === "Yes");
+  if (anyHeavy) {
+    for (const p of products) {
+      const own = specs.get(p.id)!;
+      if (!own.has("Heavy Duty Brakes")) own.set("Heavy Duty Brakes", "No");
     }
   }
 }
@@ -147,7 +216,7 @@ export function narrow(
       if (f.value === null) return true;
       if (f.name === "Position" && low(f.value) === "all") return true;
       const v = specs.get(p.id)?.get(f.name);
-      return v === undefined || low(v) === low(f.value);
+      return v === undefined || values(v).some((x) => low(x) === low(f.value as string));
     }),
   );
 
@@ -179,7 +248,8 @@ export function narrow(
       if (v !== undefined) groups.set(v, (groups.get(v) ?? 0) + 1);
     }
     if (groups.size < 2) continue;
-    if ([...groups.keys()].some((v) => v.length > 28)) continue;
+    const singles = [...new Set([...groups.keys()].flatMap(values))];
+    if (singles.some((v) => v.length > 28)) continue;
 
     // Smaller biggest group = better question
     const score = Math.max(...groups.values());
@@ -187,7 +257,7 @@ export function narrow(
     const pref = idx === -1 ? 99 : idx;
 
     if (!best || score < best.score || (score === best.score && pref < best.pref)) {
-      best = { name, options: [...groups.keys()].sort(), score, pref };
+      best = { name, options: singles.sort(), score, pref };
     }
   }
 
@@ -206,6 +276,14 @@ export function questionText(q: SpecQuestion, count: number) {
   if (q.name === "Caliper Pistons") return `${lead}How many pistons does your brake caliper have: 1 (single) or 2 (dual)?`;
   if (q.name === "Brake Code") return `${lead}Do you know your brake code?`;
   if (q.name === "Front Disc Size") return `${lead}What is the diameter of your front brake disc (rotor)?`;
+
+  if (q.name.startsWith("Note: ")) {
+    return `${lead}Does this apply to your vehicle: "${q.name.slice(6)}"?`;
+  }
+  if (q.name === "Trim") return `${lead}Which trim is your vehicle?`;
+  if (q.name === "Body Type") return `${lead}What body style is your vehicle?`;
+  if (q.name === "Fuel Type") return `${lead}What fuel type does your vehicle use?`;
+  if (q.name === "Engine") return `${lead}Which engine does your vehicle have?`;
 
   const yesNo = q.options.every((o) => ["yes", "no"].includes(low(o)));
   const ask = yesNo

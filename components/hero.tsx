@@ -9,7 +9,23 @@ import { useRouter } from "next/navigation";
 import { lookupVin } from "@/app/vin-actions";
 
 const field =
-  "w-full appearance-none rounded-2xl border border-black/10 bg-white py-3.5 pl-4 pr-12 text-sm font-medium text-ink shadow-sm outline-none transition duration-200 hover:border-black/20 focus:border-brand/60 focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:bg-black/[0.035] disabled:text-muted-foreground";
+  "w-full [color-scheme:light] [&>option]:bg-white [&>option]:text-ink appearance-none rounded-2xl border-2 border-black/25 bg-white py-3.5 pl-4 pr-12 text-base font-semibold text-ink shadow-sm outline-none transition duration-200 hover:border-black/50 focus:border-brand/60 focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:bg-white disabled:text-ink/60 disabled:opacity-100";
+
+function StepLabel({ n, text, done, active }: { n: number; text: string; done: boolean; active: boolean }) {
+  return (
+    <div className="mb-2 flex items-center gap-2">
+      <span
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black transition-colors duration-300 ${
+          done ? "bg-white text-ink" : active ? "bg-brand text-white" : "bg-white/15 text-white/70"
+        }`}
+        aria-hidden="true"
+      >
+        {done ? "✓" : n}
+      </span>
+      <span className={`text-sm font-bold ${done || active ? "text-white" : "text-white/70"}`}>{text}</span>
+    </div>
+  );
+}
 
 type YearOption = {
   id: number;
@@ -39,6 +55,21 @@ type TrimOption = {
   trim_name: string;
   slug: string;
 };
+
+// Supabase returns at most 1000 rows per request, so read every page.
+// (Without this, a year with thousands of fitments showed only some makes.)
+async function fetchAllRows(
+  page: (from: number, to: number) => PromiseLike<{ data: any[] | null; error: { message: string } | null }>,
+): Promise<{ data: any[] | null; error: { message: string } | null }> {
+  const all: any[] = [];
+  for (let from = 0; from < 100000; from += 1000) {
+    const { data, error } = await page(from, from + 999);
+    if (error) return { data: null, error };
+    all.push(...(data ?? []));
+    if ((data ?? []).length < 1000) break;
+  }
+  return { data: all, error: null };
+}
 
 export function Hero() {
   const [supabase] = useState(() => createClient());
@@ -129,8 +160,9 @@ export function Hero() {
 
     setLoadingMakes(true);
 
-    const { data, error } = await supabase
-      .from("vehicle_fitments")
+    const { data, error } = await fetchAllRows((from, to) =>
+      supabase
+        .from("vehicle_fitments")
       .select(`
         manufacturer_id,
         manufacturer (
@@ -139,7 +171,10 @@ export function Hero() {
           slug
         )
       `)
-      .eq("year_id", Number(yearId));
+      .eq("year_id", Number(yearId))
+        .order("id")
+        .range(from, to),
+    );
 
     if (error) {
       console.error("Error loading manufacturers:", error.message);
@@ -185,8 +220,9 @@ export function Hero() {
 
     setLoadingModels(true);
 
-    const { data, error } = await supabase
-      .from("vehicle_fitments")
+    const { data, error } = await fetchAllRows((from, to) =>
+      supabase
+        .from("vehicle_fitments")
       .select(`
         model_id,
         models (
@@ -196,7 +232,10 @@ export function Hero() {
         )
       `)
       .eq("year_id", Number(year))
-      .eq("manufacturer_id", Number(manufacturerId));
+      .eq("manufacturer_id", Number(manufacturerId))
+        .order("id")
+        .range(from, to),
+    );
 
     if (error) {
       console.error("Error loading models:", error.message);
@@ -240,8 +279,9 @@ export function Hero() {
 
     setLoadingEngines(true);
 
-    const { data, error } = await supabase
-      .from("vehicle_fitments")
+    const { data, error } = await fetchAllRows((from, to) =>
+      supabase
+        .from("vehicle_fitments")
       .select(`
         engine_size_id,
         engine_sizes (
@@ -252,7 +292,10 @@ export function Hero() {
       `)
       .eq("year_id", Number(year))
       .eq("manufacturer_id", Number(make))
-      .eq("model_id", Number(modelId));
+      .eq("model_id", Number(modelId))
+        .order("id")
+        .range(from, to),
+    );
 
     if (error) {
       console.error("Error loading engines:", error.message);
@@ -293,8 +336,9 @@ export function Hero() {
 
     setLoadingTrims(true);
 
-    const { data, error } = await supabase
-      .from("vehicle_fitments")
+    const { data, error } = await fetchAllRows((from, to) =>
+      supabase
+        .from("vehicle_fitments")
       .select(`
         trim_id,
         trim (
@@ -306,7 +350,10 @@ export function Hero() {
       .eq("year_id", Number(year))
       .eq("manufacturer_id", Number(make))
       .eq("model_id", Number(model))
-      .eq("engine_size_id", Number(engineId));
+      .eq("engine_size_id", Number(engineId))
+        .order("id")
+        .range(from, to),
+    );
 
     if (error) {
       console.error("Error loading trims:", error.message);
@@ -397,6 +444,9 @@ export function Hero() {
     setVinMsg("");
   };
 
+  const stepVals = [year, make, model, engine, trim];
+  const activeStep = stepVals.findIndex((v) => !v);
+
   return (
     <section id="vehicle-finder" className="relative isolate overflow-hidden bg-ink">
       {pending && (
@@ -447,7 +497,7 @@ export function Hero() {
         </div>
 
         {/* Finder card */}
-        <div className="mt-10 overflow-hidden rounded-[30px] border border-white/30 bg-white/[0.84] shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-lg md:mt-12">
+        <div className="mt-10 overflow-hidden rounded-[30px] border border-white/20 bg-black/40 shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-[6px] md:mt-12">
           <div className="border-b border-black/5 bg-[linear-gradient(90deg,#0d0d0d,#181818)] px-6 py-5 text-white md:px-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -458,7 +508,7 @@ export function Hero() {
                   Find parts made for your vehicle
                 </h2>
               </div>
-              <p className="text-sm font-medium text-white/55">
+              <p className="text-sm font-semibold text-white/85">
                 Year → Make → Model → Engine → Trim
               </p>
             </div>
@@ -469,9 +519,7 @@ export function Hero() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
             {/* YEAR */}
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Year
-              </label>
+              <StepLabel n={1} text="Year" done={Boolean(stepVals[0])} active={activeStep === 0} />
 
               <div className="relative">
               <select
@@ -490,7 +538,7 @@ export function Hero() {
                 ))}
               </select>
               <ChevronDown
-                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/70"
                 aria-hidden="true"
               />
             </div>
@@ -498,9 +546,7 @@ export function Hero() {
 
             {/* MAKE */}
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Make
-              </label>
+              <StepLabel n={2} text="Make" done={Boolean(stepVals[1])} active={activeStep === 1} />
 
               <div className="relative">
               <select
@@ -520,7 +566,7 @@ export function Hero() {
                 ))}
               </select>
               <ChevronDown
-                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/70"
                 aria-hidden="true"
               />
             </div>
@@ -528,9 +574,7 @@ export function Hero() {
 
             {/* MODEL */}
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Model
-              </label>
+              <StepLabel n={3} text="Model" done={Boolean(stepVals[2])} active={activeStep === 2} />
 
               <div className="relative">
               <select
@@ -550,7 +594,7 @@ export function Hero() {
                 ))}
               </select>
               <ChevronDown
-                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/70"
                 aria-hidden="true"
               />
             </div>
@@ -558,9 +602,7 @@ export function Hero() {
 
             {/* ENGINE */}
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Engine
-              </label>
+              <StepLabel n={4} text="Engine" done={Boolean(stepVals[3])} active={activeStep === 3} />
 
               <div className="relative">
               <select
@@ -580,7 +622,7 @@ export function Hero() {
                 ))}
               </select>
               <ChevronDown
-                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/70"
                 aria-hidden="true"
               />
             </div>
@@ -588,9 +630,7 @@ export function Hero() {
 
             {/* TRIM */}
             <div>
-              <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Trim
-              </label>
+              <StepLabel n={5} text="Trim" done={Boolean(stepVals[4])} active={activeStep === 4} />
 
               <div className="relative">
               <select
@@ -610,7 +650,7 @@ export function Hero() {
                 ))}
               </select>
               <ChevronDown
-                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/45"
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink/70"
                 aria-hidden="true"
               />
             </div>
@@ -618,7 +658,7 @@ export function Hero() {
           </div>
 
           {/* Search / reset (the vehicle finder is the only search here) */}
-          <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
             <div className="sm:w-80">
               <input
                 value={vin}
@@ -644,7 +684,7 @@ export function Hero() {
 
             <button
               onClick={handleReset}
-              className="min-h-[48px] rounded-full px-6 py-3 text-sm font-bold text-ink/60 transition hover:bg-brand-tint hover:text-brand"
+              className="min-h-[48px] rounded-full px-6 py-3 text-sm font-bold text-white/85 transition hover:bg-white/10 hover:text-white"
             >
               Reset
             </button>

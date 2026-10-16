@@ -401,3 +401,116 @@ input[type="search"]::-webkit-search-decoration {
   .cm-cat-card { opacity: 1; animation: none; }
   .cm-cat-card:hover::before, .cm-cat-card:hover .cm-cat-shine { animation: none; }
 }
+
+/* Categories page: cards reveal as you scroll (no JS), and the hero has moving speed lines. */
+@supports (animation-timeline: view()) {
+  .cm-cat-card {
+    opacity: 1;
+    animation: cm-cat-in linear both;
+    animation-timeline: view();
+    animation-range: entry 0% cover 30%;
+    animation-delay: 0s !important;
+  }
+}
+@keyframes cm-speed-move { to { background-position: -240px 0; } }
+.cm-speed {
+  background-image: repeating-linear-gradient(110deg, transparent 0 46px, rgba(255, 255, 255, 0.045) 46px 48px);
+  background-size: 240px 100%;
+  animation: cm-speed-move 6s linear infinite;
+  mask-image: linear-gradient(180deg, transparent, #000 40%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 40%, transparent);
+}
+@media (prefers-reduced-motion: reduce) { .cm-speed { animation: none; } }
+
+/* Text reveal: each line slides up out of a mask. The text is normal HTML, always readable by search engines. */
+@keyframes cm-up {
+  from { transform: translateY(105%); opacity: 0.01; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes cm-line-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.cm-mask { display: block; overflow: hidden; padding-bottom: 0.08em; }
+.cm-up { display: block; animation: cm-up 0.85s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: var(--d, 0s); }
+.cm-up.cm-eyebrow { display: block; }
+.cm-line { animation: cm-line-grow 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.3s both; }
+@supports (animation-timeline: view()) {
+  .cm-cat-card .cm-up {
+    animation: cm-up linear both;
+    animation-timeline: view();
+    animation-range: entry 8% cover 34%;
+    animation-delay: 0s;
+  }
+  .cm-cat-card .cm-line {
+    animation: cm-line-grow linear both;
+    animation-timeline: view();
+    animation-range: entry 20% cover 40%;
+  }
+}
+
+/* Home page Amazon reviews spotlight (components/AmazonReviews.tsx) */
+.cm-reviews-viewport {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+}
+.cm-reviews-track {
+  display: flex;
+  width: max-content;
+  animation: cm-reviews-scroll 80s linear infinite;
+}
+.cm-reviews-viewport:hover .cm-reviews-track,
+.cm-reviews-track:focus-within { animation-play-state: paused; }
+@keyframes cm-reviews-scroll { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .cm-reviews-track { animation: none; }
+  .cm-reviews-viewport { overflow-x: auto; -webkit-mask-image: none; mask-image: none; }
+}
+
+
+/* Admin sidebar: items slide in one by one, glow dot pulses */
+@keyframes cm-side-in { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+@keyframes cm-side-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(214, 40, 40, 0.55); } 50% { box-shadow: 0 0 0 6px rgba(214, 40, 40, 0); } }
+.cm-side-item { animation: cm-side-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 55ms); }
+.cm-side-dot { animation: cm-side-pulse 2s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .cm-side-item, .cm-side-dot { animation: none; } }
+
+
+/* About / Manufacturer page: scroll reveals, marquee, drifting grid (CSS only, text stays in the HTML) */
+@keyframes cm-reveal-in { from { opacity: 0; transform: translateY(46px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes cm-reveal-left { from { opacity: 0; transform: translateX(-70px); } to { opacity: 1; transform: none; } }
+@keyframes cm-reveal-right { from { opacity: 0; transform: translateX(70px); } to { opacity: 1; transform: none; } }
+@keyframes cm-marquee { to { transform: translateX(-50%); } }
+@keyframes cm-grid-drift { to { background-position: 64px 64px; } }
+@keyframes cm-glow { 0%, 100% { opacity: 0.45; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.18); } }
+@keyframes cm-sweep { from { transform: translateX(-120%) skewX(-18deg); } to { transform: translateX(320%) skewX(-18deg); } }
+.cm-marquee-track { display: flex; width: max-content; animation: cm-marquee 38s linear infinite; }
+.cm-marquee:hover .cm-marquee-track { animation-play-state: paused; }
+.cm-grid-drift { animation: cm-grid-drift 10s linear infinite; }
+.cm-glow { animation: cm-glow 6s ease-in-out infinite; }
+.cm-sweep::after {
+  content: ""; position: absolute; inset: 0; width: 35%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.10), transparent);
+  animation: cm-sweep 5.5s ease-in-out infinite; pointer-events: none;
+}
+@supports (animation-timeline: view()) {
+  .cm-reveal { animation: cm-reveal-in linear both; animation-timeline: view(); animation-range: entry 4% cover 26%; }
+  .cm-reveal-l { animation: cm-reveal-left linear both; animation-timeline: view(); animation-range: entry 4% cover 30%; }
+  .cm-reveal-r { animation: cm-reveal-right linear both; animation-timeline: view(); animation-range: entry 4% cover 30%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-reveal, .cm-reveal-l, .cm-reveal-r, .cm-marquee-track, .cm-grid-drift, .cm-glow, .cm-sweep::after { animation: none; }
+}
+
+/* Catalog hero: slowly turning brake rotor and gear */
+@keyframes cm-spin { to { transform: rotate(360deg); } }
+@keyframes cm-spin-rev { to { transform: rotate(-360deg); } }
+@keyframes cm-spark { 0% { transform: translateX(-20vw); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateX(110vw); opacity: 0; } }
+.cm-spin { animation: cm-spin 60s linear infinite; transform-origin: center; }
+.cm-spin-rev { animation: cm-spin-rev 40s linear infinite; transform-origin: center; }
+.cm-spark { animation: cm-spark 7s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .cm-spin, .cm-spin-rev, .cm-spark { animation: none; } }
+
+/* Brands hero: sweeping speedometer needle and reverse marquee */
+@keyframes cm-needle { 0%, 100% { transform: rotate(-115deg); } 38% { transform: rotate(75deg); } 50% { transform: rotate(58deg); } 62% { transform: rotate(82deg); } }
+.cm-needle { animation: cm-needle 10s cubic-bezier(0.45, 0, 0.25, 1) infinite; transform-origin: center; }
+.cm-marquee-rev { animation-direction: reverse; animation-duration: 46s; }
+@media (prefers-reduced-motion: reduce) { .cm-needle, .cm-marquee-rev { animation: none; } }

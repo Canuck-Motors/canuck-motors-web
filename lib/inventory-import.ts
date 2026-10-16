@@ -164,12 +164,8 @@ function normalizeRows(rows: string[][]): ImportRow[] {
   }
 
   const headers = rows[0].map((value) => value?.trim().toLowerCase());
-  const skuIndex = headers.findIndex((value) =>
-    ["sku", "part_number", "part number", "partnumber"].includes(value)
-  );
-  const quantityIndex = headers.findIndex((value) =>
-    ["quantity", "qty", "stock", "on_hand", "on hand"].includes(value)
-  );
+  const skuIndex = headers.findIndex((value) => hasAlias(value, ["sku", "part_number", "part number", "partnumber"]));
+  const quantityIndex = headers.findIndex((value) => hasAlias(value, QTY_ALIASES));
 
   if (skuIndex < 0 || quantityIndex < 0) {
     throw new Error("Inventory file must contain SKU and Quantity columns.");
@@ -231,13 +227,18 @@ export type ProductImportRow = {
   low_stock: string;
 };
 
+// Compare headers ignoring case, spaces, dots and other symbols ("SKU.", "Qty:" and "On Hand" all work).
+const normHeader = (value: unknown) => String(value ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const hasAlias = (header: unknown, aliases: string[]) => aliases.some((a) => normHeader(a) === normHeader(header));
+const QTY_ALIASES = ["quantity", "qty", "stock", "on_hand", "on hand", "quentity", "quanity", "quantiy", "qnty"];
+
 const HEADER_ALIASES: Record<keyof Omit<ProductImportRow, "row_number">, string[]> = {
   sku: ["sku", "part_number", "part number", "partnumber", "cm number", "cm_number"],
   name: ["name", "product name", "product_name", "title"],
   price: ["price", "unit price", "unit_price", "price (cad)"],
   description: ["description", "details"],
   category: ["category", "category name", "product category"],
-  quantity: ["quantity", "qty", "stock", "on hand", "on_hand"],
+  quantity: QTY_ALIASES,
   low_stock: ["low stock", "low_stock", "low stock level", "low-stock level", "low_stock_threshold"],
 };
 
@@ -264,7 +265,7 @@ export function parseProductFile(fileName: string, bytes: ArrayBuffer): ProductI
 
   const headers = rows[0].map((h) => String(h ?? "").trim().toLowerCase());
   const col = (key: keyof typeof HEADER_ALIASES) =>
-    headers.findIndex((h) => HEADER_ALIASES[key].includes(h));
+    headers.findIndex((h) => hasAlias(h, HEADER_ALIASES[key]));
   const idx = {
     sku: col("sku"),
     name: col("name"),

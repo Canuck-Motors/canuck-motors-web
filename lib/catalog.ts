@@ -58,6 +58,8 @@ export type CatalogProduct = {
   availability?: "in_stock" | "low_stock" | "out_of_stock" | "unknown";
   // Fitment notes for the chosen vehicle (the old site's "Comment" column)
   notes?: string[];
+  // Every fitment row of this part for the chosen vehicle (used to tell parts apart)
+  fits?: { trim: string; engine: string; fuel: string; body: string }[];
 };
 
 type Named = { id: number; name: string; slug: string };
@@ -109,21 +111,26 @@ async function fitmentOptions(
   nameColumn: string,
   filters: Record<string, number | number[]>,
 ): Promise<Named[]> {
-  let query = supabase
-    .from("vehicle_fitments")
-    .select(`${relation} ( id, ${nameColumn}, slug )`);
+  // Supabase returns at most 1000 rows per request: read every page
+  const data: any[] = [];
+  for (let from = 0; from < 100000; from += 1000) {
+    let query = supabase
+      .from("vehicle_fitments")
+      .select(`${relation} ( id, ${nameColumn}, slug )`);
 
-  for (const [column, value] of Object.entries(filters)) {
-    query = Array.isArray(value)
-      ? query.in(column, value)
-      : query.eq(column, value);
-  }
+    for (const [column, value] of Object.entries(filters)) {
+      query = Array.isArray(value)
+        ? query.in(column, value)
+        : query.eq(column, value);
+    }
 
-  const { data, error } = await query;
-
-  if (error) {
-    console.error(`Fitment ${relation} lookup failed:`, error.message);
-    return [];
+    const res = await query.order("id").range(from, from + 999);
+    if (res.error) {
+      console.error(`Fitment ${relation} lookup failed:`, res.error.message);
+      return [];
+    }
+    data.push(...(res.data ?? []));
+    if ((res.data ?? []).length < 1000) break;
   }
 
   const unique = new Map<number, Named>();
@@ -235,6 +242,7 @@ export async function findPartsForVehicle(params: {
   engine?: string;
   trim?: string;
   part?: string;
+  anyEngine?: boolean; // customer does not know the engine: show parts for every engine
 }) {
   const supabase = createPublicClient();
 
@@ -328,7 +336,7 @@ export async function findPartsForVehicle(params: {
     engineIds: number[],
     trimId?: number,
   ): Promise<any[] | null> => {
-    const run = (withNotes: boolean) => {
+    const run = (level: 0 | 1 | 2) => {
       let q = supabase
         .from("products")
         .select(
@@ -340,8 +348,9 @@ export async function findPartsForVehicle(params: {
         slug,
         position,
         product_fitments!inner (
-          ${withNotes ? "comment," : ""}
-          vehicle_fitments!inner ( id )
+          ${level >= 1 ? "comment," : ""}
+          ${level >= 2 ? "body_type," : ""}
+          vehicle_fitments!inner ( id${level >= 2 ? ", trim ( trim_name ), engine_sizes ( engine_name )" : ""} )
         )
       `,
         )
@@ -358,9 +367,10 @@ export async function findPartsForVehicle(params: {
       return q.order("product_name");
     };
 
-    let { data, error } = await run(true);
-    // "comment" column not created yet: carry on without notes
-    if (error) ({ data, error } = await run(false));
+    let { data, error } = await run(2);
+    // Extra fitment details not available: fall back to notes only, then to nothing
+    if (error) ({ data, error } = await run(1));
+    if (error) ({ data, error } = await run(0));
 
     if (error) {
       console.error("Vehicle products lookup failed:", error.message);
@@ -400,6 +410,7 @@ export async function findPartsForVehicle(params: {
   // answer changes which parts fit.
   let engineLabel: string | null = null;
   let engineIds: number[];
+  let engineUnknown = false;
 
   if (params.engine) {
     const wanted = norm(params.engine).replace(
@@ -453,9 +464,18 @@ export async function findPartsForVehicle(params: {
           .join(",");
       const first = key(withParts[0].matches);
 
-      if (withParts.every((g) => key(g.matches) === first)) {
+      // Engine-dependent parts (water pump, timing belt, ...) always get the
+      // engine question, even when the catalog lists the same part for every engine.
+      const engineSensitive = /water|timing|thermostat|oil pump|fuel pump|spark|gasket|valve cover|camshaft|crankshaft/i.test(
+        params.part ?? "",
+      );
+      if (!engineSensitive && withParts.every((g) => key(g.matches) === first)) {
         // Every engine gets the same parts, so there is nothing to ask
         engineIds = withParts.flatMap((g) => g.ids);
+      } else if (params.anyEngine) {
+        // Customer does not know the engine: do not ask again, show every engine's parts
+        engineIds = withParts.flatMap((g) => g.ids);
+        engineUnknown = true;
       } else {
         return {
           status: "choose",
@@ -518,11 +538,31 @@ export async function findPartsForVehicle(params: {
             .filter((c: string) => c && c.toLowerCase() !== "none"),
         ),
       ) as string[],
+      fits: (p.product_fitments ?? [])
+        .map((f: any) => {
+          const vf = Array.isArray(f.vehicle_fitments) ? f.vehicle_fitments[0] : f.vehicle_fitments;
+          const eng = Array.isArray(vf?.engine_sizes) ? vf?.engine_sizes[0] : vf?.engine_sizes;
+          const tr = Array.isArray(vf?.trim) ? vf?.trim[0] : vf?.trim;
+          const engineName = String(eng?.engine_name ?? "");
+          return {
+            trim: String(tr?.trim_name ?? "").trim(),
+            engine: engineName ? engineBase(engineName) : "",
+            fuel: engineName ? engineFuel(engineName) : "",
+            body: String(f.body_type ?? "").trim(),
+          };
+        })
+        .filter((x: any) => x.trim || x.engine || x.fuel || x.body),
     })),
     positions: Array.from(
       new Set(matches.map((p: any) => p.position).filter(Boolean)),
     ),
     available_trims: trim ? [] : names(trims),
+    ...(engineUnknown
+      ? {
+          engine_note:
+            "The customer does not know the engine, so these parts cover every engine for this vehicle. Tell them in one short sentence that a VIN gives the exact match.",
+        }
+      : {}),
     ...(params.trim && trimNotTracked
       ? {
           trim_note:
@@ -716,6 +756,61 @@ export async function findPartsByVin(vin: string, part?: string) {
       engine: decoded.engine_description,
       body: decoded.body,
     },
+    vin_summary: [decoded.year, decoded.make, decoded.model, decoded.trim, decoded.engine_description]
+      .filter(Boolean)
+      .join(" "),
     ...fitment,
   };
+}
+
+// ---------------------------------------------------------------
+// 3. Parts VERIFIED to fit a make + model (any year), used by the AI blog.
+//    Returns nothing unless the make and model really exist in the fitment data.
+// ---------------------------------------------------------------
+export async function findVerifiedProductsForVehicle(
+  makeName: string,
+  modelName: string,
+  partWords: string[],
+  limit = 6,
+): Promise<{ id: number; name: string; sku: string | null; price: number | null; position: string | null; url: string }[]> {
+  const supabase = createPublicClient();
+  const { data: makeRows } = await supabase.from("manufacturer").select("id, manufacturer_name, slug");
+  const makes: Named[] = (makeRows ?? []).map((m: any) => ({ id: m.id, name: m.manufacturer_name, slug: m.slug }));
+  const make = makes.find((m) => norm(m.name) === norm(makeName));
+  if (!make) return [];
+
+  const models = await fitmentOptions(supabase, "models", "model_name", { manufacturer_id: make.id });
+  const model = models.find((m) => norm(m.name) === norm(modelName));
+  if (!model) return [];
+
+  let q = supabase
+    .from("products")
+    .select("id, product_name, price, sku, slug, position, product_fitments!inner ( vehicle_fitments!inner ( id ) )")
+    .eq("is_active", true)
+    .eq("is_delete", false)
+    .eq("product_fitments.vehicle_fitments.manufacturer_id", make.id)
+    .eq("product_fitments.vehicle_fitments.model_id", model.id);
+  for (const w of partWords.map(clean).filter((w) => w.length > 1)) q = q.ilike("product_name", `%${w}%`);
+
+  const { data, error } = await q.order("product_name").limit(40);
+  if (error) {
+    console.error("Verified vehicle products lookup failed:", error.message);
+    return [];
+  }
+  const seen = new Set<number>();
+  const out: { id: number; name: string; sku: string | null; price: number | null; position: string | null; url: string }[] = [];
+  for (const p of (data ?? []) as any[]) {
+    if (seen.has(p.id)) continue;
+    seen.add(p.id);
+    out.push({
+      id: p.id,
+      name: withMaterial(p.product_name, p.sku),
+      sku: p.sku ?? null,
+      price: p.price ?? null,
+      position: p.position ?? null,
+      url: `/product/${p.slug || p.id}`,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
 }

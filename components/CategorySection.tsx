@@ -15,14 +15,8 @@ export async function CategorySection() {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_15%,rgba(249,115,22,0.07),transparent_22rem)]" />
 
       <div className="cm-container relative">
-        <div className="flex items-end justify-between gap-4">
-          <div>
-            <p className="cm-eyebrow">Browse the catalog</p>
-            <h2 className="cm-section-title mt-3">Shop by Category</h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground md:text-base">
-              Explore our core automotive product categories and get to the right parts faster.
-            </p>
-          </div>
+        <div className="flex items-end justify-end gap-4">
+          <h2 className="sr-only">Shop by Category</h2>
 
           <Link
             href="/categories"
@@ -33,7 +27,7 @@ export async function CategorySection() {
           </Link>
         </div>
 
-        <div className="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
           {categories?.map((category, i) => (
             <Link
               key={category.id}

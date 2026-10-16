@@ -1,15 +1,10 @@
 import Link from "next/link";
+import { NAV_LINKS, getHiddenNavKeys } from "@/lib/site-nav";
 
-const links = [
-  { label: "Home", href: "/" },
-  { label: "Auto Parts", href: "/products" },
-  { label: "Categories", href: "/categories" },
-  { label: "Brands", href: "/brands" },
-  { label: "Deals", href: "/deals" },
-  { label: "About Us", href: "/about" },
-];
+export default async function Navbar() {
+  const hidden = await getHiddenNavKeys();
+  const links = NAV_LINKS.filter((l) => l.locked || !hidden.includes(l.key));
 
-export default function Navbar() {
   return (
     <nav className="w-full border-b border-white/5 bg-ink text-white shadow-[0_8px_24px_rgba(0,0,0,0.14)]">
       <div className="cm-container flex items-center gap-8 overflow-x-auto">

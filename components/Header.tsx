@@ -226,14 +226,6 @@ export default function Header() {
                     </div>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  aria-label="Log out"
-                  className="hidden rounded-full p-2 text-ink/60 transition hover:bg-black/5 hover:text-brand md:inline-flex"
-                >
-                  <LogOut className="h-4 w-4" aria-hidden="true" />
-                </button>
               </>
             ) : (
               <Link

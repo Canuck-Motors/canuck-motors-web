@@ -4,9 +4,9 @@ import { DateRangeFilter, inRange, ALL_TIME, type DateRange } from "@/components
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight, Download, Printer, Search, X } from "lucide-react";
 import {
-  advanceOrders,
   createShipment,
   setOrderNote,
   updateOrderStatus,
@@ -43,6 +43,36 @@ export type OrderRow = {
 type Filter = "all" | "toship" | "shipped" | "delivered" | "cancelled" | "unpaid";
 const PAGE = 50;
 const label = (s: string) => s.replaceAll("_", " ");
+
+// Plain-words status for the shop owner
+const STATUS_TEXT: Record<string, [string, string]> = {
+  paid: ["New order", "bg-blue-100 text-blue-800"],
+  processing: ["Being prepared", "bg-amber-100 text-amber-800"],
+  packed: ["Packed", "bg-amber-100 text-amber-800"],
+  ready_to_ship: ["Ready to ship", "bg-amber-100 text-amber-800"],
+  shipped: ["Shipped", "bg-indigo-100 text-indigo-800"],
+  out_for_delivery: ["Out for delivery", "bg-indigo-100 text-indigo-800"],
+  delivered: ["Delivered", "bg-green-100 text-green-800"],
+  cancelled: ["Cancelled", "bg-red-100 text-red-800"],
+  cancellation_requested: ["Customer wants to cancel", "bg-red-100 text-red-800"],
+  refund_pending: ["Refund in progress", "bg-red-100 text-red-800"],
+  refunded: ["Refunded", "bg-red-100 text-red-800"],
+  pending: ["Waiting for payment", "bg-secondary text-ink/70"],
+  payment_pending: ["Waiting for payment", "bg-secondary text-ink/70"],
+};
+const statusText = (s: string): [string, string] =>
+  STATUS_TEXT[s] ?? [label(s), "bg-secondary text-ink/70"];
+
+const NEXT_BUTTON: Record<string, string> = {
+  paid: "Start preparing this order",
+  processing: "Mark as packed",
+  packed: "Mark as ready to ship",
+  ready_to_ship: "Mark as shipped",
+  shipped: "Mark as out for delivery",
+  out_for_delivery: "Mark as delivered",
+  pending: "Cancel this order",
+  payment_pending: "Cancel this order",
+};
 const money = (n: number, c = "CAD") =>
   new Intl.NumberFormat("en-CA", { style: "currency", currency: c }).format(n);
 
@@ -67,15 +97,28 @@ function csvCell(v: string | number) {
 }
 
 export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
+  const router = useRouter();
+  // Live updates: re-read the orders every 10 seconds while this tab is open
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") router.refresh();
+    };
+    const t = setInterval(refresh, 10000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [router]);
+
   const [rows, setRows] = useState(initial);
   useEffect(() => setRows(initial), [initial]);
 
   const [q, setQ] = useState("");
   const [range, setRange] = useState<DateRange>(ALL_TIME);
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("toship");
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -120,24 +163,6 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
       }
     });
 
-  const allShownSelected = shown.length > 0 && shown.every((o) => selected.has(o.id));
-  const toggleOne = (id: string) =>
-    setSelected((s) => {
-      const n = new Set(s);
-      if (n.has(id)) n.delete(id);
-      else n.add(id);
-      return n;
-    });
-
-  const bulkAdvance = () =>
-    run(async () => {
-      const r = await advanceOrders([...selected]);
-      setSelected(new Set());
-      return `${r.done} order${r.done === 1 ? "" : "s"} moved to the next step.${
-        r.failed.length ? ` Skipped: ${r.failed.join("; ")}` : ""
-      }`;
-    });
-
   const downloadCsv = (list: OrderRow[]) => {
     const head = ["Order", "Date", "Customer", "Email", "Status", "Payment", "Total", "Currency", "Items", "Ship to", "Tracking"];
     const lines = list.map((o) =>
@@ -166,12 +191,12 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
   };
 
   const tabs: [Filter, string][] = [
-    ["all", "All"],
-    ["toship", "To ship"],
+    ["toship", "New orders (to ship)"],
     ["shipped", "Shipped"],
     ["delivered", "Delivered"],
     ["cancelled", "Cancelled"],
-    ["unpaid", "Unpaid"],
+    ["unpaid", "Not paid yet"],
+    ["all", "All orders"],
   ];
 
   const input = "mt-3 w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm";
@@ -214,6 +239,11 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
         </button>
       </div>
 
+      <p className="mt-3 text-sm text-muted-foreground">
+        A paid order shows up as <b>New order</b>. Click an order to open it, then use the big button to move it
+        forward one step at a time. Cancelled orders appear under <b>Cancelled</b>.
+      </p>
+
       <div className="mt-3 flex flex-wrap gap-2">
         {tabs.map(([key, text]) => (
           <button
@@ -234,30 +264,6 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
         ))}
       </div>
 
-      {selected.size > 0 && (
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl bg-ink px-4 py-3 text-sm text-white">
-          <span className="font-semibold">{selected.size} selected</span>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={bulkAdvance}
-            className="rounded-full bg-brand px-4 py-1.5 font-bold disabled:opacity-60"
-          >
-            Move to next step
-          </button>
-          <button
-            type="button"
-            onClick={() => downloadCsv(rows.filter((o) => selected.has(o.id)))}
-            className="rounded-full bg-white px-4 py-1.5 font-bold text-ink"
-          >
-            Download CSV
-          </button>
-          <button type="button" onClick={() => setSelected(new Set())} className="ml-auto underline">
-            Clear
-          </button>
-        </div>
-      )}
-
       {msg && (
         <p role="status" className="mt-3 rounded-lg bg-black/5 px-4 py-2.5 text-sm font-medium text-ink">
           {msg}
@@ -273,17 +279,6 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="bg-secondary">
               <tr>
-                <th className="w-10 px-4 py-4">
-                  <input
-                    type="checkbox"
-                    checked={allShownSelected}
-                    onChange={() =>
-                      setSelected(allShownSelected ? new Set() : new Set(shown.map((o) => o.id)))
-                    }
-                    aria-label="Select all shown orders"
-                    className="h-4 w-4 accent-[#d62828]"
-                  />
-                </th>
                 <th className="px-3 py-4 font-semibold text-ink">Order</th>
                 <th className="px-3 py-4 font-semibold text-ink">Customer</th>
                 <th className="px-3 py-4 font-semibold text-ink">Items</th>
@@ -306,15 +301,6 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
                       className={`cursor-pointer hover:bg-black/[0.02] ${isOpen ? "bg-brand-tint/40" : ""}`}
                       onClick={() => setOpen(isOpen ? null : o.id)}
                     >
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                        <input
-                          type="checkbox"
-                          checked={selected.has(o.id)}
-                          onChange={() => toggleOne(o.id)}
-                          aria-label={`Select ${o.number}`}
-                          className="h-4 w-4 accent-[#d62828]"
-                        />
-                      </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2 font-bold text-ink">
                           {isOpen ? (
@@ -341,16 +327,14 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
                       </td>
                       <td className="px-3 py-3 font-bold text-ink">{money(o.total, o.currency)}</td>
                       <td className="px-3 py-3">
-                        <span className="rounded-full bg-brand-tint px-3 py-1 text-xs font-bold capitalize text-brand">
-                          {label(o.status)}
+                        <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusText(o.status)[1]}`}>
+                          {statusText(o.status)[0]}
                         </span>
-                        <span
-                          className={`ml-2 rounded-full px-3 py-1 text-xs font-bold capitalize ${
-                            o.payment === "paid" ? "bg-green-100 text-green-800" : "bg-secondary text-ink/70"
-                          }`}
-                        >
-                          {label(o.payment)}
-                        </span>
+                        {o.payment !== "paid" && o.status !== "cancelled" && (
+                          <span className="ml-2 rounded-full bg-secondary px-3 py-1 text-xs font-bold text-ink/70">
+                            Not paid
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                         {o.shipment?.tracking ? (
@@ -374,7 +358,7 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
 
                     {isOpen && (
                       <tr className="bg-secondary/40">
-                        <td colSpan={7} className="px-6 py-5">
+                        <td colSpan={6} className="px-6 py-5">
                           <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr_1fr]">
                             <div>
                               <p className="font-bold text-ink">Items</p>
@@ -400,12 +384,12 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
                                     onClick={() =>
                                       run(async () => {
                                         await updateOrderStatus(o.id, next);
-                                        return `${o.number} marked ${label(next)}.`;
+                                        return `${o.number}: ${statusText(next)[0]}.`;
                                       })
                                     }
                                     className="cm-button-dark disabled:opacity-60"
                                   >
-                                    Mark {label(next)}
+                                    {NEXT_BUTTON[o.status] ?? `Mark ${label(next)}`}
                                   </button>
                                 )}
                                 <Link
@@ -498,7 +482,7 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
                             <form
                               action={(fd) =>
                                 run(async () => {
-                                  await createShipment(
+                                  const emailNote = await createShipment(
                                     o.id,
                                     String(fd.get("carrier") || ""),
                                     String(fd.get("tracking_number") || ""),
@@ -506,7 +490,7 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
                                     String(fd.get("service_level") || ""),
                                     String(fd.get("estimated_delivery") || "")
                                   );
-                                  return `Shipment saved for ${o.number}.`;
+                                  return `Shipment saved for ${o.number}. ${emailNote ?? ""}`.trim();
                                 })
                               }
                               className="rounded-2xl border border-black/5 bg-white p-4"
@@ -529,7 +513,7 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
               })}
               {shown.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
                     No orders match.
                   </td>
                 </tr>

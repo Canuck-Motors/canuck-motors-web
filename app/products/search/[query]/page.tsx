@@ -1,6 +1,8 @@
 import { findProductIds } from "@/lib/part-search";
 import type { Metadata } from "next";
 import { cacheLife, cacheTag } from "next/cache";
+import Link from "next/link";
+import { redirect } from "next/navigation";
 import { ProductCard } from "@/components/ProductCard";
 import { createPublicClient } from "@/lib/supabase/public";
 
@@ -62,6 +64,60 @@ async function searchProducts(searchTerm: string): Promise<SearchProduct[]> {
   return products ?? [];
 }
 
+const squash = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// "2012 Dodge Grand Caravan": the search box is for parts, so when nothing matches
+// but the text names a vehicle, point the customer to that vehicle's parts.
+async function findVehicle(term: string) {
+  const supabase = createPublicClient();
+  const year = term.match(/\b(19[5-9]\d|20[0-4]\d)\b/)?.[1] ?? null;
+  const text = squash(term.replace(/\b(19[5-9]\d|20[0-4]\d)\b/, ""));
+  if (!text) return null;
+
+  const { data: makes } = await supabase.from("manufacturer").select("id, manufacturer_name, slug");
+  const brand = (makes ?? [])
+    .filter((m) => text.startsWith(squash(m.manufacturer_name)))
+    .sort((a, b) => b.manufacturer_name.length - a.manufacturer_name.length)[0];
+  if (!brand) return null;
+
+  const rest = text.slice(squash(brand.manufacturer_name).length);
+  if (!rest) return { brand, model: null, year, choices: [] as { id: number; model_name: string; slug: string }[] };
+
+  const { data: models } = await supabase
+    .from("models")
+    .select("id, model_name, slug")
+    .eq("manufacturer_id", brand.id);
+
+  // An exact model name wins ("Ram 1500"). "Ram" alone matches several models, so
+  // never pick one for the customer: let them choose.
+  const all = models ?? [];
+  const exact = all.find((m) => squash(m.model_name) === rest);
+  if (exact) return { brand, model: exact, year, choices: [] as typeof all };
+
+  let candidates = all.filter((m) => squash(m.model_name).startsWith(rest));
+
+  // With a year, keep only the models that have parts that year
+  if (year && candidates.length > 1) {
+    const { data: yr } = await supabase.from("year").select("id").eq("year", Number(year)).maybeSingle();
+    if (yr) {
+      const { data: fits } = await supabase
+        .from("vehicle_fitments")
+        .select("model_id")
+        .eq("year_id", yr.id)
+        .eq("manufacturer_id", brand.id)
+        .in("model_id", candidates.map((m) => m.id))
+        .limit(1000);
+      const have = new Set((fits ?? []).map((f: any) => f.model_id));
+      const filtered = candidates.filter((m) => have.has(m.id));
+      if (filtered.length > 0) candidates = filtered;
+    }
+  }
+
+  candidates.sort((a, b) => a.model_name.localeCompare(b.model_name, undefined, { numeric: true }));
+  if (candidates.length === 1) return { brand, model: candidates[0], year, choices: [] as typeof all };
+  return { brand, model: null, year, choices: candidates };
+}
+
 export const instant = false;
 
 export async function generateMetadata({
@@ -90,6 +146,22 @@ export default async function ProductSearchPage({
   const { query } = await params;
   const searchTerm = cleanSearchTerm(query);
   const products = searchTerm ? await searchProducts(searchTerm) : [];
+  const hasYear = /\b(19[5-9]\d|20[0-4]\d)\b/.test(searchTerm);
+  const vehicle = searchTerm && (products.length === 0 || hasYear) ? await findVehicle(searchTerm) : null;
+
+  // A vehicle typed in the search box goes straight to that vehicle's parts
+  if (vehicle && vehicle.choices.length === 0) {
+    if (vehicle.model && vehicle.year) {
+      redirect(`/products/${vehicle.year}/${vehicle.brand.slug}/${vehicle.model.slug}`);
+    }
+    if (products.length === 0) {
+      redirect(
+        vehicle.model
+          ? `/brands/${vehicle.brand.slug}/${vehicle.model.slug}`
+          : `/brands/${vehicle.brand.slug}`,
+      );
+    }
+  }
 
   return (
     <main className="min-h-screen bg-secondary/40">
@@ -109,14 +181,40 @@ export default async function ProductSearchPage({
           </p>
         </header>
 
-        {products.length === 0 ? (
+        {vehicle && vehicle.choices.length > 1 && (
+          <section className="mt-10 rounded-2xl border border-brand/20 bg-white p-6 md:p-8">
+            <h2 className="text-xl font-bold text-ink">
+              Which {vehicle.brand.manufacturer_name} model do you mean?
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Pick your model to see the parts that fit{vehicle.year ? ` a ${vehicle.year}` : ""}.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {vehicle.choices.map((m) => (
+                <Link
+                  key={m.id}
+                  href={
+                    vehicle.year
+                      ? `/products/${vehicle.year}/${vehicle.brand.slug}/${m.slug}`
+                      : `/brands/${vehicle.brand.slug}/${m.slug}`
+                  }
+                  className="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm font-bold text-ink transition hover:border-brand hover:bg-brand hover:text-white"
+                >
+                  {vehicle.brand.manufacturer_name} {m.model_name}
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {products.length === 0 && !(vehicle && vehicle.choices.length > 1) ? (
           <section className="mt-10 rounded-2xl border bg-white p-10 text-center">
             <h2 className="text-xl font-bold text-ink">No products found</h2>
             <p className="mt-2 text-muted-foreground">
               Try another part number, OE number, interchange number, or product name.
             </p>
           </section>
-        ) : (
+        ) : products.length === 0 ? null : (
           <section aria-labelledby="search-results-heading" className="mt-10">
             <div className="mb-6">
               <h2 id="search-results-heading" className="text-2xl font-bold text-ink">

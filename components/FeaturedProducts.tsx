@@ -16,6 +16,9 @@ type FeaturedProduct = {
   title_tag?: string | null;
 };
 
+// SKUs hidden from the Featured Products section
+const HIDDEN_SKUS = new Set(["CM1203072", "CM1204230"]);
+
 async function getFeaturedProducts(): Promise<FeaturedProduct[]> {
   "use cache";
 
@@ -29,7 +32,7 @@ async function getFeaturedProducts(): Promise<FeaturedProduct[]> {
 
   const supabase = createPublicClient();
 
-  // Two of each type, in the company's order (water pump first),
+  // Three of each type (4 types = 12 products, 3 rows of 4), in the company's order (water pump first),
   // preferring products that already have a photo
   const picks = await Promise.all(
     PRODUCT_TYPE_ORDER.map(async ({ match, exclude }) => {
@@ -59,14 +62,27 @@ async function getFeaturedProducts(): Promise<FeaturedProduct[]> {
         return [];
       }
 
-      const rows = (data ?? []) as FeaturedProduct[];
+      const rows = ((data ?? []) as FeaturedProduct[]).filter(
+        (r) => !HIDDEN_SKUS.has((r.sku ?? "").trim().toUpperCase()),
+      );
       const withPhoto = rows.filter((r) => (r as any).product_images?.length);
       const withoutPhoto = rows.filter((r) => !(r as any).product_images?.length);
-      return [...withPhoto, ...withoutPhoto].slice(0, 2);
+      return [...withPhoto, ...withoutPhoto];
     }),
   );
 
-  return picks.flat();
+  // 3 per type first, then fill any gaps from the leftovers up to 12 total
+  const TOTAL = 12;
+  const chosen = picks.flatMap((rows) => rows.slice(0, 3));
+  const seen = new Set(chosen.map((p) => p.id));
+  for (const p of picks.flatMap((rows) => rows.slice(3))) {
+    if (chosen.length >= TOTAL) break;
+    if (!seen.has(p.id)) {
+      seen.add(p.id);
+      chosen.push(p);
+    }
+  }
+  return chosen.slice(0, TOTAL);
 }
 
 export async function FeaturedProducts() {

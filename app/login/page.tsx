@@ -34,19 +34,8 @@ export default function LoginPage() {
       return;
     }
 
-    const { data: staffRole, error: roleError } = await supabase.rpc(
-      "current_user_staff_role"
-    );
-
-    if (roleError) {
-      setMessage("Signed in, but we could not determine your account access. Please try again.");
-      setLoading(false);
-      return;
-    }
-
-    // Full page load starts with a clean server session. Admins go straight to
-    // operations; customers use their account dashboard.
-    window.location.assign(staffRole === "admin" ? "/admin" : "/account");
+    // Full page load starts with a clean server session, then everyone lands on the home page.
+    window.location.assign("/");
   };
 
   return (

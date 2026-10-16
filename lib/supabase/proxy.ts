@@ -65,6 +65,13 @@ export async function updateSession(request: NextRequest) {
   "/about",
   "/contact",
   "/blogs",
+  "/blog",
+  "/llms.txt",
+  "/sitemap.xml",
+  "/robots.txt",
+  "/api/blog/generate",
+  "/api/fulfillment/process",
+  "/api/auth/email-exists",
   "/manufacturers",
 ];
 

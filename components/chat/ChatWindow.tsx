@@ -71,19 +71,7 @@ const MENU = [
   { id: "team", label: "Talk to our team" },
 ];
 
-const OPTIONS = [
-  { label: "Water pump", text: "I'm looking for a water pump" },
-  { label: "Brake pads", text: "I'm looking for brake pads" },
-  { label: "Brake shoes", text: "I'm looking for brake shoes" },
-  {
-    label: "Timing belt kit with water pump",
-    text: "I'm looking for a timing belt kit with water pump",
-  },
-  {
-    label: "Front and rear brake kit",
-    text: "I'm looking for a front and rear brake kit",
-  },
-];
+type PartOption = { label: string; text: string };
 
 const LEVEL_LABEL: Record<string, string> = {
   make: "Make",
@@ -180,6 +168,17 @@ export default function ChatWindow({
       ...WELCOME,
     ];
   });
+  const [partOptions, setPartOptions] = useState<PartOption[]>([]);
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/chat/parts")
+      .then((r) => r.json())
+      .then((j: { options?: PartOption[] }) => alive && setPartOptions(j.options ?? []))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [intro, setIntro] = useState(true);
@@ -318,7 +317,7 @@ export default function ChatWindow({
     <div
       role="dialog"
       aria-label="Chat with Axel, the Canuck Motors parts assistant"
-      className="cm-window fixed inset-x-3 bottom-3 z-50 flex h-[78vh] max-h-[620px] flex-col overflow-hidden rounded-3xl border border-black/10 bg-white shadow-[0_24px_70px_rgba(0,0,0,0.25)] sm:inset-x-auto sm:bottom-5 sm:right-5 sm:w-[390px]"
+      className={`cm-window fixed inset-x-3 bottom-3 z-50 flex h-[78vh] max-h-[620px] flex-col overflow-hidden rounded-3xl border border-black/10 bg-white shadow-[0_24px_70px_rgba(0,0,0,0.25)] sm:inset-x-auto sm:bottom-5 sm:right-5 sm:w-[390px]`}
     >
       {/* Header: Axel only, kept slim */}
       <div className="relative bg-white px-4 py-3">
@@ -345,6 +344,15 @@ export default function ChatWindow({
               Clear history
             </button>
           )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Minimize chat"
+            title="Minimize (your chat is kept)"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-xl font-bold leading-none text-ink/60 transition hover:bg-brand-tint hover:text-brand"
+          >
+            –
+          </button>
           <button
             type="button"
             onClick={onClose}
@@ -421,7 +429,7 @@ export default function ChatWindow({
 
         {stage === "parts" && (
           <div className="cm-pop flex flex-wrap gap-2 pl-9">
-            {OPTIONS.map((o) => (
+            {partOptions.map((o) => (
               <button
                 key={o.label}
                 type="button"
