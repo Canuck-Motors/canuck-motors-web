@@ -353,3 +353,176 @@ export async function processFulfillmentQueue(limit = 25): Promise<FulfillmentRe
     failed,
   };
 }
+
+
+async function fetchAmazonFulfillmentOrder(sellerFulfillmentOrderId: string) {
+  const token = await getAmazonAccessToken();
+  const response = await fetch(
+    `${amazonEndpoint()}/fba/outbound/2020-07-01/fulfillmentOrders/${encodeURIComponent(
+      sellerFulfillmentOrderId
+    )}`,
+    {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        "x-amz-access-token": token,
+      },
+      cache: "no-store",
+    }
+  );
+
+  const text = await response.text();
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = { raw: text.slice(0, 2000) };
+  }
+
+  if (!response.ok) {
+    const message =
+      json?.errors?.[0]?.message ||
+      json?.message ||
+      `Amazon MCF status request failed with status ${response.status}.`;
+    throw new Error(String(message));
+  }
+
+  return json;
+}
+
+function normalizeAmazonOrderState(status: string) {
+  const value = status.toLowerCase();
+  if (["invalid", "cancelled", "unfulfillable"].includes(value)) {
+    return { routing: "error", order: "exception", fulfillment: "unfulfilled" };
+  }
+  if (["complete", "completepartialled"].includes(value)) {
+    return { routing: "completed", order: "shipped", fulfillment: "shipped" };
+  }
+  if (["processing", "planning", "received"].includes(value)) {
+    return { routing: "submitted", order: "processing", fulfillment: "processing" };
+  }
+  return { routing: "submitted", order: null, fulfillment: null };
+}
+
+export async function syncAmazonMcfOrders(limit = 50) {
+  const admin = createAdminClient();
+  const capped = Math.max(1, Math.min(100, Math.trunc(limit)));
+
+  const { data: orders, error } = await admin
+    .from("orders")
+    .select(
+      "id, order_number, status, fulfillment_status, fulfillment_provider_order_id, fulfillment_routing_status"
+    )
+    .eq("fulfillment_provider", "amazon_mcf")
+    .in("fulfillment_routing_status", ["submitted", "queued"])
+    .order("updated_on", { ascending: true })
+    .limit(capped);
+
+  if (error) throw new Error(error.message);
+
+  let synced = 0;
+  let failed = 0;
+
+  for (const order of orders ?? []) {
+    const providerOrderId = String(
+      order.fulfillment_provider_order_id || order.order_number
+    );
+
+    try {
+      const response = await fetchAmazonFulfillmentOrder(providerOrderId);
+      const payload = response?.payload ?? {};
+      const amazonStatus = String(payload.fulfillmentOrder?.fulfillmentOrderStatus || "");
+      const normalized = normalizeAmazonOrderState(amazonStatus);
+
+      const orderPatch: Record<string, unknown> = {
+        fulfillment_routing_status: normalized.routing,
+        fulfillment_error: null,
+        updated_on: new Date().toISOString(),
+      };
+
+      if (normalized.order && !["delivered", "cancelled", "refunded"].includes(String(order.status))) {
+        orderPatch.status = normalized.order;
+      }
+      if (
+        normalized.fulfillment &&
+        !["delivered", "cancelled"].includes(String(order.fulfillment_status))
+      ) {
+        orderPatch.fulfillment_status = normalized.fulfillment;
+      }
+
+      await admin.from("orders").update(orderPatch).eq("id", order.id);
+
+      const shipments = payload.fulfillmentShipments ?? [];
+      for (const shipment of shipments) {
+        const amazonShipmentId = String(shipment.amazonShipmentId || "");
+        const shipmentStatus = String(shipment.fulfillmentShipmentStatus || "");
+        const packages = shipment.fulfillmentShipmentPackage ?? [];
+
+        for (const pkg of packages) {
+          const carrier = String(pkg.carrierCode || "Amazon MCF");
+          const tracking = String(pkg.trackingNumber || "");
+          if (!tracking) continue;
+
+          const status =
+            shipmentStatus.toLowerCase() === "shipped" ? "in_transit" : "label_created";
+
+          const row = {
+            order_id: order.id,
+            carrier,
+            tracking_number: tracking,
+            tracking_url: null,
+            status,
+            estimated_delivery: shipment.estimatedArrivalDateTime || null,
+            shipped_on:
+              shipmentStatus.toLowerCase() === "shipped"
+                ? shipment.shippingDateTime || new Date().toISOString()
+                : null,
+            external_shipment_id: amazonShipmentId
+              ? `${amazonShipmentId}:${String(pkg.packageNumber ?? 1)}`
+              : null,
+            metadata: {
+              provider: "amazon_mcf",
+              amazon_shipment_id: amazonShipmentId || null,
+              package_number: pkg.packageNumber ?? null,
+              fulfillment_order_status: amazonStatus || null,
+            },
+            updated_on: new Date().toISOString(),
+          };
+
+          await admin.from("shipments").upsert(row, {
+            onConflict: "carrier,tracking_number",
+          });
+        }
+      }
+
+      await admin.from("fulfillment_events").insert({
+        order_id: order.id,
+        provider: "amazon_mcf",
+        event_type: "status_sync",
+        detail: amazonStatus
+          ? `Amazon MCF status synchronized: ${amazonStatus}.`
+          : "Amazon MCF status synchronized.",
+        payload: {
+          fulfillment_order_status: amazonStatus || null,
+          shipment_count: shipments.length,
+        },
+      });
+
+      synced += 1;
+    } catch (caught) {
+      failed += 1;
+      const message =
+        caught instanceof Error ? caught.message : "Amazon MCF synchronization failed.";
+
+      await admin
+        .from("orders")
+        .update({
+          fulfillment_error: message.slice(0, 2000),
+          updated_on: new Date().toISOString(),
+        })
+        .eq("id", order.id);
+    }
+  }
+
+  return { processed: (orders ?? []).length, synced, failed };
+}
