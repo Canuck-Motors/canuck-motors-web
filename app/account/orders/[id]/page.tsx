@@ -83,7 +83,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
       supabase
         .from("return_requests")
         .select(
-          "id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_tracking_number, return_carrier, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due"
+          "id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_tracking_number, return_carrier, fulfillment_provider, amazon_return_status, amazon_rma_id, amazon_rma_page_url, amazon_return_error, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due"
         )
         .eq("order_id", order.id)
         .order("requested_on", { ascending: false }),
@@ -441,6 +441,31 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                               .filter(Boolean)
                               .join(" · ")}
                           </p>
+                        </div>
+                      )}
+
+                      {request.fulfillment_provider === "amazon_mcf" && request.amazon_rma_id && (
+                        <div className="mt-3 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm">
+                          <p className="font-bold text-ink">Amazon MCF return</p>
+                          <p className="mt-1 text-muted-foreground">
+                            RMA {request.amazon_rma_id}
+                            {request.amazon_return_status
+                              ? ` · ${request.amazon_return_status.replaceAll("_", " ")}`
+                              : ""}
+                          </p>
+                          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                            Print the Amazon return authorization document. Attach the return-center mailing label to the package and place the authorization slip inside. Return postage is not included.
+                          </p>
+                          {request.amazon_rma_page_url && (
+                            <a
+                              href={request.amazon_rma_page_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="cm-button-primary mt-3"
+                            >
+                              Open Amazon return document
+                            </a>
+                          )}
                         </div>
                       )}
 
