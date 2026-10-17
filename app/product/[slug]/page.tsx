@@ -373,6 +373,7 @@ export default async function ProductDetailPage({
         </div>
 
         <ProductTabs
+          fancy={product.sku?.toLowerCase() === "cm1012h"}
           description={description}
           specs={specs}
           fitments={fitments}

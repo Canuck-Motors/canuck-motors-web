@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { ChevronDown } from "lucide-react";
-import RoadLoader from "@/components/RoadLoader";
+import LoadingAnimation from "@/components/LoadingAnimation";
 import { createClient } from "@/lib/supabase/client";
 // import { useRouter } from "next/router";
 import { useRouter } from "next/navigation";
@@ -449,11 +449,8 @@ export function Hero() {
 
   return (
     <section id="vehicle-finder" className="relative isolate overflow-hidden bg-ink">
-      {pending && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-white/90 backdrop-blur-sm">
-          <RoadLoader />
-        </div>
-      )}
+      {/* Search, VIN and vehicle-fitment lookups: fades in while loading, fades out when done */}
+      <LoadingAnimation variant="page" show={pending} />
       {/* Background video */}
       <video
         autoPlay

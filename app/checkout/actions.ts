@@ -13,7 +13,13 @@ function getSiteUrl() {
   );
 }
 
-export async function beginCheckout() {
+export async function beginCheckout(formData: FormData) {
+  if (formData.get("fit_confirmed") !== "yes") {
+    redirect(
+      `/cart?checkout_error=${encodeURIComponent("Please confirm that the parts fit your vehicle.")}`
+    );
+  }
+
   const supabase = await createClient();
 
   const { data: authData, error: authError } = await supabase.auth.getUser();

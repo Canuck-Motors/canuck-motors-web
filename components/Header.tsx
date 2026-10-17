@@ -4,13 +4,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { Search, ShoppingCart, UserRound, LogOut, LayoutDashboard, Package, ChevronDown } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import LoadingAnimation from "@/components/LoadingAnimation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function Header() {
   const [supabase] = useState(() => createClient());
   const router = useRouter();
   const pathname = usePathname();
+  const [searching, startSearch] = useTransition();
 
   const [searchText, setSearchText] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -98,7 +100,7 @@ export default function Header() {
   const handleSearch = () => {
     const query = searchText.trim();
     if (!query) return;
-    router.push(`/products/search/${encodeURIComponent(query)}`);
+    startSearch(() => router.push(`/products/search/${encodeURIComponent(query)}`));
   };
 
   const handleLogout = async () => {
@@ -111,6 +113,7 @@ export default function Header() {
   };
 
   return (
+    <>
     <header className="sticky top-0 z-50 w-full border-b border-black/5 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
       <div className="flex w-full items-center gap-3 px-3 py-3 sm:px-5 md:gap-6">
         <Link
@@ -248,5 +251,7 @@ export default function Header() {
         </div>
       </div>
     </header>
+    <LoadingAnimation variant="page" show={searching} message="Searching our catalog..." />
+    </>
   );
 }

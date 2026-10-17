@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AxelIcon from "./AxelIcon";
 
 type Choices = { level: string; options: string[]; spec?: string };
@@ -12,6 +12,7 @@ type Msg = {
   local?: boolean; // handled in the browser, never sent to the AI
   old?: boolean; // from an earlier visit: shown above, never sent to the AI
   divider?: boolean; // "New conversation" separator
+  welcome?: boolean; // the two greeting messages
 };
 
 // Chat is kept in this browser (localStorage) for 24 hours.
@@ -38,7 +39,7 @@ function loadChat(STORE_KEY: string): Saved | null {
 function saveChat(STORE_KEY: string, messages: Msg[]) {
   try {
     // Only real conversation is kept (not the greeting or the divider)
-    const real = messages.filter((m) => !WELCOME.includes(m) && !m.divider);
+    const real = messages.filter((m) => !m.welcome && !m.divider);
     if (!real.some((m) => m.role === "user")) {
       localStorage.removeItem(STORE_KEY);
       return;
@@ -52,17 +53,23 @@ function saveChat(STORE_KEY: string, messages: Msg[]) {
   }
 }
 
-// Step 1: greet. Step 2: ask what they are looking for.
-const WELCOME: Msg[] = [
-  {
-    role: "assistant",
-    content: "Hi! I'm Axel, your Canuck Motors auto parts assistant.",
-  },
-  {
-    role: "assistant",
-    content: "How can I help you today?",
-  },
-];
+// Step 1: greet (by first name when the customer is signed in). Step 2: ask what they need.
+function makeWelcome(name: string): Msg[] {
+  return [
+    {
+      role: "assistant",
+      content: name
+        ? `Hi ${name}! I'm Axel, your Canuck Motors auto parts assistant.`
+        : "Hi! I'm Axel, your Canuck Motors auto parts assistant.",
+      welcome: true,
+    },
+    {
+      role: "assistant",
+      content: "How can I help you today?",
+      welcome: true,
+    },
+  ];
+}
 
 const MENU = [
   { id: "parts", label: "I'm looking for parts" },
@@ -122,18 +129,77 @@ function renderLinks(text: string, keyPrefix: string) {
   });
 }
 
-function renderBold(text: string) {
-  return (
-    <span style={{ whiteSpace: "pre-line" }}>
-      {text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
-        part.startsWith("**") && part.endsWith("**") ? (
-          <strong key={i}>{part.slice(2, -2)}</strong>
-        ) : (
-          <span key={i}>{renderLinks(part, String(i))}</span>
-        )
-      )}
-    </span>
+function renderInline(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith("**") && part.endsWith("**") ? (
+      <strong key={i}>{part.slice(2, -2)}</strong>
+    ) : (
+      <span key={i}>{renderLinks(part, String(i))}</span>
+    )
   );
+}
+
+// Product lines ("• [name](url) - price" plus an optional indented note line)
+// are shown as one small card per part, so each note clearly belongs to its part.
+function renderBold(text: string) {
+  const lines = text.split("\n");
+  const out: React.ReactNode[] = [];
+  let buf: string[] = [];
+
+  const flush = (key: string) => {
+    const t = buf.join("\n").trim();
+    buf = [];
+    if (t) {
+      out.push(
+        <span key={key} style={{ whiteSpace: "pre-line" }} className="block">
+          {renderInline(t)}
+        </span>
+      );
+    }
+  };
+
+  for (let n = 0; n < lines.length; n++) {
+    const line = lines[n];
+    if (line.startsWith("• ")) {
+      flush(`t${n}`);
+      const notes: string[] = [];
+      while (n + 1 < lines.length && /^\s{3}\S/.test(lines[n + 1])) {
+        notes.push(lines[n + 1].trim());
+        n++;
+      }
+      out.push(
+        <div
+          key={`c${n}`}
+          className="my-1.5 rounded-xl border border-black/10 bg-secondary/60 px-3 py-2"
+        >
+          <div className="text-[15px] font-semibold">{renderInline(line.slice(2))}</div>
+          {notes.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {notes
+                .flatMap((note) => note.split(" · "))
+                .filter(Boolean)
+                .map((detail, k) => (
+                  <span
+                    key={k}
+                    className="inline-flex items-center gap-1 rounded-full border border-brand/20 bg-white px-2.5 py-1 text-[13px] font-semibold leading-none text-ink shadow-sm"
+                  >
+                    <span aria-hidden="true" className="text-brand">
+                      ✓
+                    </span>
+                    {detail}
+                  </span>
+                ))}
+            </div>
+          )}
+        </div>
+      );
+    } else {
+      buf.push(line);
+    }
+  }
+  flush("end");
+
+  return <div>{out}</div>;
 }
 
 function Avatar({ size, active = false }: { size: string; active?: boolean }) {
@@ -147,15 +213,18 @@ function Avatar({ size, active = false }: { size: string; active?: boolean }) {
 }
 
 const chip =
-  "rounded-full border border-brand/30 bg-white px-3.5 py-2 text-xs font-bold text-brand shadow-sm transition hover:-translate-y-0.5 hover:bg-brand hover:text-white";
+  "rounded-full border border-brand/30 bg-white px-3.5 py-2 text-[13px] font-bold text-brand shadow-sm transition hover:-translate-y-0.5 hover:bg-brand hover:text-white";
 
 export default function ChatWindow({
   onClose,
   storeKey,
+  name,
 }: {
   onClose: () => void;
   storeKey: string; // one saved chat per person (see ChatLauncher)
+  name?: string; // first name of the signed-in customer
 }) {
+  const WELCOME = useMemo(() => makeWelcome(name ?? ""), [name]);
   // ChatWindow only renders in the browser, so localStorage is safe here
   // Every visit starts a fresh chat; the earlier chat sits above it (scroll up)
   const [messages, setMessages] = useState<Msg[]>(() => {
@@ -392,7 +461,7 @@ export default function ChatWindow({
           >
             {m.role === "assistant" && <Avatar size="h-7 w-7" />}
             <div
-              className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-sm leading-6 ${m.old ? "opacity-60" : ""} ${
+              className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-[15px] leading-6 ${m.old ? "opacity-60" : ""} ${
                 m.role === "user"
                   ? "rounded-br-md bg-brand text-white"
                   : "rounded-bl-md bg-white text-ink shadow-sm"
@@ -442,7 +511,7 @@ export default function ChatWindow({
             <button
               type="button"
               onClick={() => send("I want to find parts using my VIN")}
-              className="rounded-full border border-ink/20 bg-ink px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand"
+              className="rounded-full border border-ink/20 bg-ink px-3.5 py-2 text-[13px] font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand"
             >
               Find parts by VIN
             </button>
@@ -452,7 +521,7 @@ export default function ChatWindow({
         {/* Real options from the catalog (engine, trim, and so on) */}
         {choices && (
           <div className="cm-pop pl-9">
-            <p className="mb-2 text-xs font-semibold text-muted-foreground">
+            <p className="mb-2 text-[13px] font-semibold text-muted-foreground">
               {choices.level === "confirm"
                 ? "Is this your vehicle?"
                 : choices.level === "spec"
@@ -486,7 +555,7 @@ export default function ChatWindow({
                   onClick={() =>
                     send("I don't know my engine. Help me use my VIN instead.")
                   }
-                  className="rounded-full border border-ink/20 bg-ink px-3.5 py-2 text-xs font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand"
+                  className="rounded-full border border-ink/20 bg-ink px-3.5 py-2 text-[13px] font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand"
                 >
                   I don&apos;t know - use my VIN
                 </button>
@@ -530,7 +599,7 @@ export default function ChatWindow({
             onKeyDown={(e) => e.key === "Enter" && send()}
             maxLength={500}
             placeholder="Ask Axel, or paste your VIN..."
-            className="flex-1 rounded-full border border-input bg-secondary px-4 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            className="flex-1 rounded-full border border-input bg-secondary px-4 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
           <button
             type="button"

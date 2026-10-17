@@ -85,7 +85,11 @@ ${
       }),
       cache: "no-store",
     });
-    if (!res.ok) return "Shipment saved, but the email could not be sent.";
+    if (!res.ok) {
+      const body = (await res.json().catch(() => null)) as { message?: string } | null;
+      const why = body?.message ? ` Reason: ${body.message}` : "";
+      return `Shipment saved, but the email could not be sent.${why}`;
+    }
     return `Customer emailed at ${to}.`;
   } catch {
     return "Shipment saved, but the email could not be sent.";

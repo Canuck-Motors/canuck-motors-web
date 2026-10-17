@@ -7,12 +7,12 @@ export async function GET() {
   try {
     const cats = await getVisibleCategories(createPublicClient());
     const options = cats.map((c) => ({
-      label: c.category_name,
+      label: c.category_name.replace(/\s+set$/i, ""),
       text: `I'm looking for ${c.category_name.toLowerCase()}`,
     }));
     // the front/rear kit is a brake-pad product, so only offer it while brake pads are on
     if (cats.some((c) => /brake pad/i.test(c.category_name))) {
-      options.push({ label: "Front and rear brake kit", text: "I'm looking for a front and rear brake kit" });
+      options.push({ label: "Brake pad kit (front & rear)", text: "I'm looking for a front and rear brake kit" });
     }
     return NextResponse.json({ options }, { headers: { "cache-control": "public, max-age=60" } });
   } catch {

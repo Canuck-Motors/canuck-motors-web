@@ -120,6 +120,11 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(null), 9000);
+    return () => clearTimeout(t);
+  }, [msg]);
   const [pending, start] = useTransition();
 
   const scoped = useMemo(() => rows.filter((o) => inRange(o.createdOn, range)), [rows, range]);
@@ -265,9 +270,20 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
       </div>
 
       {msg && (
-        <p role="status" className="mt-3 rounded-lg bg-black/5 px-4 py-2.5 text-sm font-medium text-ink">
-          {msg}
-        </p>
+        <div
+          role="status"
+          aria-live="polite"
+          className={`cm-toast fixed right-5 top-5 z-[100] flex max-w-sm items-start gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold shadow-[0_18px_50px_rgba(0,0,0,0.25)] ${
+            /could not|not set up|no customer|went wrong|failed|error/i.test(msg)
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-green-200 bg-green-50 text-green-900"
+          }`}
+        >
+          <span className="flex-1">{msg}</span>
+          <button type="button" onClick={() => setMsg(null)} aria-label="Close message">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       )}
 
       <div

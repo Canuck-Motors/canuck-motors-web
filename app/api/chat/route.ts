@@ -213,12 +213,29 @@ function formatProducts(
     const price =
       p.price !== null ? `$${Number(p.price).toFixed(2)}` : "Contact for price";
     const position = p.position ? ` · ${p.position}` : "";
-    return `• [${label}](${p.url}) - ${price}${position}`;
+    // When there are several parts, show what makes each one different.
+    // Pieces that only repeat the vehicle (trim codes like STX, fuel like FLEX) are dropped.
+    const repeated = /^(all|gas|flex|flexfuel|ffv|e85|cng|lpg|propane|diesel|hybrid|electric|alltypes|none)$/i;
+    const details =
+      items.length > 1 && p.notes?.length
+        ? Array.from(
+            new Set(
+              p.notes[0]
+                .split(";")
+                .map((x) => x.replace(/\s+/g, " ").trim())
+                .filter((x) => x && !repeated.test(x) && !/^[A-Z0-9-]{1,4}$/.test(x)),
+            ),
+          ).slice(0, 5)
+        : [];
+    return `• [${label}](${p.url}) - ${price}${position}${details.length ? `\n   ${details.join(" · ")}` : ""}`;
   });
 
   const out: string[] = [];
   if (heading) out.push(heading);
   out.push(...lines);
+  if (items.length > 1 && lines.some((l) => l.includes("\n"))) {
+    out.push("Compare the details above with your old part, then tap the one that matches.");
+  }
 
   if (vehicleUrl && total > items.length) {
     out.push(`[See all ${total} parts for this vehicle](${vehicleUrl})`);
@@ -235,7 +252,7 @@ type Ctx = { tool: "find_parts_for_vehicle" | "find_parts_by_vin"; input: any };
 async function present(out: any, filters: SpecFilter[]) {
   const all: CatalogProduct[] = out.products ?? [];
   const specs = await getSpecsForProducts(all.map((p) => p.id));
-  addNoteSpecs(specs, all, { includeEngine: Boolean(out.engine_note) }); // Position, vehicle details + facts from the fitment notes
+  addNoteSpecs(specs, all); // Position, vehicle details + facts from the fitment notes
   let { candidates, question } = narrow(all, specs, filters);
   let note: string | null = null;
 
@@ -281,8 +298,12 @@ async function present(out: any, filters: SpecFilter[]) {
   }
   // Several parts are still possible and nothing more can be asked: say so plainly
   if (candidates.length > 1 && !question && filters.length > 0 && !notSureAboutEverything(filters)) {
-    base.override =
-      "I can't confirm which of these fits with the details available, so I won't pick one for you. Please check the fitment table on each part's page, or paste your VIN or call us and we'll verify it. These parts could fit:";
+    const anyNotSure = filters.some((f) => f.value === null);
+    base.override = anyNotSure
+      ? "I can't confirm which of these fits with the details available, so I won't pick one for you. Please check the fitment table on each part's page, or paste your VIN or call us and we'll verify it. These parts could fit:"
+      : `All ${candidates.length} of these fit your vehicle. They are different builds of the same part, so go by the details below and your budget:`;
+    base.shown = [...candidates].sort((a, b) => Number(a.price ?? 0) - Number(b.price ?? 0)).slice(0, 8);
+    base.heading = null;
   }
   return base;
 }

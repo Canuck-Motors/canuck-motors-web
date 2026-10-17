@@ -27,7 +27,28 @@ const PREFERRED = [
   "Hub Height",
 ];
 
-const MAX_QUESTIONS = 3;
+const MAX_QUESTIONS = 4;
+const SEAL = "Gasket or O-ring included";
+
+// Last resort when two parts still fit and nothing else tells them apart: ask about
+// build details (customer can answer "Not sure" and then sees the parts).
+const LAST_RESORT = ["Impeller Material", "Impeller Rotation", "Housing Material", "Hub Pilot Diameter", "Hub Height"];
+
+// "2.91 IN" vs "2.9 IN", or "Aluminum" vs "Cast Aluminum", are the same thing to a customer
+function nearlySame(a: string, b: string) {
+  const x = a.toLowerCase().trim();
+  const y = b.toLowerCase().trim();
+  if (x.includes(y) || y.includes(x)) return true;
+  const n = (v: string) => parseFloat(v.replace(/[^0-9.]/g, ""));
+  const nx = n(x);
+  const ny = n(y);
+  return Number.isFinite(nx) && Number.isFinite(ny) && Math.abs(nx - ny) / Math.max(nx, ny) < 0.05;
+}
+
+// Specs that need a ruler or a taken-apart pump, and extras that come in the box
+// (gasket, O-ring). These never decide fitment, so Axel never asks about them.
+const MEASUREMENT =
+  /diameter|height|length|width|thickness|depth|\(in\)|\(mm\)|housing material|impeller material|impeller rotation|gasket|o-?ring/i;
 
 const low = (s: string) => s.trim().toLowerCase();
 
@@ -110,7 +131,7 @@ export function addNoteSpecs(
     dim("Trim", (f) => f.trim);
     dim("Body Type", (f) => f.body);
     dim("Fuel Type", (f) => f.fuel);
-    if (opts.includeEngine) dim("Engine", (f) => f.engine);
+    if (opts.includeEngine !== false) dim("Engine", (f) => f.engine);
 
     // A fact counts only when every note of this part agrees on it
     const seen = new Map<string, Set<string>>();
@@ -128,6 +149,11 @@ export function addNoteSpecs(
     // A part whose notes do not mention the clause (or that has no notes) is the plain one
     const mine = clausesOf.get(p.id);
     for (const c of askable) own.set(`Note: ${clauseText.get(c)}`, mine?.has(c) ? "Yes" : "No");
+
+    // Gasket and O-ring are one thing to the customer ("a seal in the box").
+    // Ask about it only when some parts have one and some do not.
+    const hasSeal = [...(mine ?? [])].some((c) => /gasket|o-?ring/i.test(c));
+    own.set(SEAL, hasSeal ? "Yes" : "No");
   }
 
   // If some parts are "Heavy Duty", the parts that do not say so are the standard ones
@@ -238,27 +264,49 @@ export function narrow(
   const positionGroups = new Set(candidates.map((p) => specs.get(p.id)?.get("Position")).filter(Boolean));
   const positionFirst = !asked.has("Position") && positionGroups.size > 1;
 
+  // Pass 0: questions about the old part. Pass 1 (only when pass 0 finds nothing and
+  // parts are still left): "do you want the gasket / O-ring included?" so the customer
+  // still gets a choice instead of a list.
+  for (const pass of [0, 1, 2]) {
+  if (best) break;
   for (const name of ordered) {
     if (positionFirst && name !== "Position") continue;
     if (asked.has(name)) continue;
+    // Customers can't measure their old part: skip measurement questions
+    // (hub pilot diameter, hub height, ...) and let them pick from the parts shown
+    if (pass === 0 && MEASUREMENT.test(name)) continue;
+    if (pass === 1 && name !== SEAL) continue;
+    if (pass === 2 && !LAST_RESORT.includes(name)) continue;
 
     const groups = new Map<string, number>();
     for (const p of candidates) {
       const v = specs.get(p.id)?.get(name);
       if (v !== undefined) groups.set(v, (groups.get(v) ?? 0) + 1);
     }
-    if (groups.size < 2) continue;
     const singles = [...new Set([...groups.keys()].flatMap(values))];
+    // Engine, then trim, are always asked when the vehicle comes in several trims, even if every
+    // part fits them all: the customer confirms their own vehicle.
+    const trimAlways = (name === "Trim" || name === "Engine") && singles.length >= 2;
+    if (groups.size < 2 && !trimAlways) continue;
     if (singles.some((v) => v.length > 28)) continue;
+    if (pass === 2 && singles.every((v, i) => singles.every((w, j) => i === j || nearlySame(v, w)))) continue;
 
     // Smaller biggest group = better question
-    const score = Math.max(...groups.values());
+    const score = trimAlways ? (name === "Engine" ? -2 : -1) : Math.max(...groups.values());
     const idx = PREFERRED.indexOf(name);
-    const pref = idx === -1 ? 99 : idx;
+    let pref = idx === -1 ? 99 : idx;
+    // Fitment notes that a customer can see on the old part come first
+    if (name.startsWith("Note: ")) {
+      if (/pulley/i.test(name)) pref = -3;
+      else if (/gasket|o-?ring|seal/i.test(name)) pref = -2;
+      else if (/housing|kit|bypass|tensioner|thermostat|idler|belt/i.test(name)) pref = -1;
+      else pref = 40;
+    }
 
     if (!best || score < best.score || (score === best.score && pref < best.pref)) {
       best = { name, options: singles.sort(), score, pref };
     }
+  }
   }
 
   return {
@@ -267,6 +315,18 @@ export function narrow(
       ? { name: best.name, options: orderOptions(best.name, best.options) }
       : null,
   };
+}
+
+// Turns a fitment note ("Supplied With Pulley") into a plain question
+function noteQuestion(clause: string) {
+  const c = clause.trim();
+  if (/(without|w\/o|no)\s+pulley/i.test(c)) return "Is your old part WITHOUT a pulley (bare pump)?";
+  if (/pulley/i.test(c)) return "Does your old water pump come with the pulley attached?";
+  if (/gasket/i.test(c)) return "Both fit your vehicle. Do you want the gasket included in the box?";
+  if (/o-?ring/i.test(c)) return "Both fit your vehicle. Do you want the O-ring included in the box?";
+  const bolts = c.match(/(\d+)[ -]*bolt/i);
+  if (bolts) return `Does the mounting flange of your old part have ${bolts[1]} bolts?`;
+  return `Does this describe your old part: "${c}"?`;
 }
 
 export function questionText(q: SpecQuestion, count: number) {
@@ -278,8 +338,11 @@ export function questionText(q: SpecQuestion, count: number) {
   if (q.name === "Front Disc Size") return `${lead}What is the diameter of your front brake disc (rotor)?`;
 
   if (q.name.startsWith("Note: ")) {
-    return `${lead}Does this apply to your vehicle: "${q.name.slice(6)}"?`;
+    return `${lead}${noteQuestion(q.name.slice(6))}`;
   }
+  if (q.name === SEAL) return `${lead}Both fit your vehicle. Do you want the one that comes with a gasket / O-ring in the box?`;
+  if (q.name === "Impeller Material") return `${lead}Both fit your vehicle. Do you know what the impeller (the fan inside the pump) is made of?`;
+  if (q.name === "Impeller Rotation") return `${lead}Both fit your vehicle. Which way does the impeller turn on your old pump?`;
   if (q.name === "Trim") return `${lead}Which trim is your vehicle?`;
   if (q.name === "Body Type") return `${lead}What body style is your vehicle?`;
   if (q.name === "Fuel Type") return `${lead}What fuel type does your vehicle use?`;

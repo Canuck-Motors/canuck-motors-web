@@ -1,10 +1,6 @@
-import RoadLoader from "@/components/RoadLoader";
+import LoadingAnimation from "@/components/LoadingAnimation";
 
 // Shown while any /products page (vehicle results, search) is loading
 export default function Loading() {
-  return (
-    <main className="flex min-h-[60vh] items-center justify-center bg-white">
-      <RoadLoader />
-    </main>
-  );
+  return <LoadingAnimation variant="page" />;
 }

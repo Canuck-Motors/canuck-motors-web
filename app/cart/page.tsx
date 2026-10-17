@@ -144,12 +144,12 @@ export default async function CartPage({ searchParams }: PageProps) {
       <div className="cm-container py-12 md:py-16">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-brand">
-              Shopping Cart
-            </p>
-            <h1 className="mt-2 text-4xl font-black tracking-[-0.04em] text-ink md:text-5xl">
+            <h1 className="text-4xl font-black tracking-[-0.04em] text-ink md:text-5xl">
               Your cart
             </h1>
+            <p className="mt-2 text-muted-foreground">
+              Review your parts, then head to secure checkout.
+            </p>
           </div>
           <Link href="/" className="text-sm font-semibold text-brand hover:underline">
             Continue shopping

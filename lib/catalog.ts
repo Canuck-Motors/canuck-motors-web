@@ -334,7 +334,7 @@ export async function findPartsForVehicle(params: {
   // Products for the given engines (and trim), using the website's rules
   const fetchMatches = async (
     engineIds: number[],
-    trimId?: number,
+    trimIds?: number[],
   ): Promise<any[] | null> => {
     const run = (level: 0 | 1 | 2) => {
       let q = supabase
@@ -361,8 +361,8 @@ export async function findPartsForVehicle(params: {
         .eq("product_fitments.vehicle_fitments.model_id", model.id)
         .in("product_fitments.vehicle_fitments.engine_size_id", engineIds);
 
-      if (trimId) {
-        q = q.eq("product_fitments.vehicle_fitments.trim_id", trimId);
+      if (trimIds?.length) {
+        q = q.in("product_fitments.vehicle_fitments.trim_id", trimIds);
       }
       return q.order("product_name");
     };
@@ -378,9 +378,20 @@ export async function findPartsForVehicle(params: {
     }
 
     // Optional part filter (ignores spaces and plurals: "brake pads" = "Brake Pad")
-    return (data ?? []).filter((p: any) =>
+    const all = data ?? [];
+    const strict = all.filter((p: any) =>
       partTokens.every((t) => norm(p.product_name).includes(t)),
     );
+    if (strict.length > 0) return strict;
+
+    // "engine water pump" should still find a product named just "Water Pump":
+    // retry without generic words like "engine" when other words remain
+    const GENERIC = new Set(["engine", "auto", "automotive", "car", "part", "parts"]);
+    const core = partTokens.filter((t) => !GENERIC.has(t));
+    if (core.length > 0 && core.length < partTokens.length) {
+      return all.filter((p: any) => core.every((t) => norm(p.product_name).includes(t)));
+    }
+    return strict;
   };
 
   // Group the fuel variants of one engine ("4.2L | V6 | ALL / GAS / ELECTRIC").
@@ -455,6 +466,19 @@ export async function findPartsForVehicle(params: {
     if (withParts.length === 0) {
       engineIds = engines.map((e) => e.id);
     } else if (withParts.length === 1) {
+      // Only one engine has a part in our catalog. For engine-dependent parts we
+      // still ask which engine the vehicle has: a customer with another engine
+      // must NOT be told this part fits.
+      const engineDependent = /water|timing|thermostat|oil pump|fuel pump|spark|gasket|valve cover|camshaft|crankshaft/i.test(
+        params.part ?? "",
+      );
+      if (engineDependent && !params.anyEngine) {
+        return {
+          status: "choose",
+          level: "engine",
+          options: perGroup.map((g) => g.group.name),
+        };
+      }
       engineIds = withParts[0].ids;
     } else {
       const key = (m: any[]) =>
@@ -506,7 +530,13 @@ export async function findPartsForVehicle(params: {
     trim = trimPick.item;
   }
 
-  let matches = await fetchMatches(engineIds, trim?.id);
+  // The catalog can hold several trim records with the same name (one per
+  // engine variant), so use all of them
+  const trimIds = trim
+    ? trims.filter((t) => norm(t.name) === norm(trim!.name)).map((t) => t.id)
+    : undefined;
+
+  let matches = await fetchMatches(engineIds, trimIds);
 
   if (matches === null) {
     return { status: "error", message: "Lookup failed. Please try again." };

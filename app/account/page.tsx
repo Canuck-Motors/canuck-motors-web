@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Gauge, Package, ShoppingCart, UserRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { updateCommunicationPreferences } from "@/app/account/actions";
+import ProfileForm from "@/components/account/ProfileForm";
 
 export const instant = false;
 
@@ -20,11 +20,22 @@ export default async function AccountPage() {
     redirect("/login");
   }
 
-  const { data: profile } = await supabase
+  // The address column is added by database/user_profile_address.sql; until that has been
+  // run, load the profile without it so the page never breaks.
+  let { data: profile } = (await supabase
     .from("users")
-    .select("id, first_name, last_name, email_id, phone_number, whatsapp_opt_in")
+    .select("id, first_name, last_name, email_id, phone_number, whatsapp_opt_in, shipping_address")
     .eq("auth_user_id", authData.user.id)
-    .maybeSingle();
+    .maybeSingle()) as { data: Record<string, any> | null };
+
+  if (!profile) {
+    const fallback = await supabase
+      .from("users")
+      .select("id, first_name, last_name, email_id, phone_number, whatsapp_opt_in")
+      .eq("auth_user_id", authData.user.id)
+      .maybeSingle();
+    profile = fallback.data as Record<string, any> | null;
+  }
 
   if (!profile) {
     throw new Error("Customer profile is unavailable.");
@@ -38,6 +49,22 @@ export default async function AccountPage() {
     .eq("user_id", profile.id)
     .order("created_on", { ascending: false })
     .limit(5);
+
+  const saved = (profile.shipping_address ?? {}) as Record<string, string | null>;
+  const savedValues = {
+    first_name: profile.first_name ?? "",
+    last_name: profile.last_name ?? "",
+    email: profile.email_id ?? "",
+    phone_number: profile.phone_number ?? "",
+    whatsapp_opt_in: Boolean(profile.whatsapp_opt_in),
+    address: {
+      line1: saved.line1 ?? "",
+      line2: saved.line2 ?? "",
+      city: saved.city ?? "",
+      province: saved.province ?? "",
+      postal_code: saved.postal_code ?? "",
+    },
+  };
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_24%,#fafafa_100%)]">
@@ -63,32 +90,12 @@ export default async function AccountPage() {
             <h2 className="mt-5 text-xl font-black text-ink">Your cart</h2>
             <p className="mt-2 text-sm text-muted-foreground">Return to your current shopping cart.</p>
           </Link>
-          <div className="rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_38px_rgba(0,0,0,0.06)]">
+          <a href="#my-details" className="group rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_38px_rgba(0,0,0,0.06)] transition hover:-translate-y-1 hover:border-brand/25">
             <UserRound className="h-6 w-6 text-brand" aria-hidden="true" />
-            <h2 className="mt-5 text-xl font-black text-ink">Updates</h2>
+            <h2 className="mt-5 text-xl font-black text-ink">My details</h2>
             <p className="mt-2 text-sm text-muted-foreground">{profile.email_id}</p>
-            <form action={updateCommunicationPreferences} className="mt-4 space-y-3">
-              <input
-                name="phone_number"
-                type="tel"
-                defaultValue={profile.phone_number || ""}
-                placeholder="+1 416 555 0123"
-                className="w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
-              />
-              <label className="flex items-start gap-2 text-sm text-muted-foreground">
-                <input
-                  name="whatsapp_opt_in"
-                  type="checkbox"
-                  defaultChecked={profile.whatsapp_opt_in}
-                  className="mt-1"
-                />
-                <span>Send WhatsApp order and delivery updates.</span>
-              </label>
-              <button type="submit" className="cm-button-dark w-full">
-                Save preferences
-              </button>
-            </form>
-          </div>
+            <p className="mt-1 text-sm font-bold text-brand group-hover:underline">Edit name, phone and address</p>
+          </a>
           {staffRole && (
             <Link href="/admin" className="group rounded-[26px] border border-black/5 bg-ink p-6 text-white shadow-[0_14px_38px_rgba(0,0,0,0.10)] transition hover:-translate-y-1 hover:border-brand/40">
               <Gauge className="h-6 w-6 text-brand" aria-hidden="true" />
@@ -97,6 +104,12 @@ export default async function AccountPage() {
             </Link>
           )}
         </div>
+
+        <section id="my-details" className="mt-10 scroll-mt-24 rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_16px_46px_rgba(0,0,0,0.06)] md:p-8">
+          <p className="cm-eyebrow">Profile</p>
+          <h2 className="mt-2 text-2xl font-black tracking-[-0.03em] text-ink">My details</h2>
+          <ProfileForm values={savedValues} />
+        </section>
 
         <section className="mt-10 rounded-[28px] border border-black/5 bg-white p-6 shadow-[0_16px_46px_rgba(0,0,0,0.06)] md:p-8">
           <div className="flex items-end justify-between gap-4">

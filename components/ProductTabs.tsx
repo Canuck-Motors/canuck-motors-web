@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Car, FileText, Hash, ListChecks, Tags, type LucideIcon } from "lucide-react";
 
 type Spec = { name: string; value: string };
 type PartNumber = { brand: string; number: string };
@@ -138,21 +139,42 @@ export default function ProductTabs({
   fitments,
   oe,
   interchanges,
+  fancy = false,
 }: {
+  fancy?: boolean;
   description: string;
   specs: Spec[];
   fitments: Fitment[];
   oe: PartNumber[];
   interchanges: PartNumber[];
 }) {
-  const tabs = [
-    { id: "description", label: "Description" },
-    { id: "specification", label: "Specification" },
-    { id: "compatibility", label: `Vehicle Compatibility (${fitments.length.toLocaleString()})` },
-    { id: "oe", label: `OE Parts Number (${oe.length})` },
-    { id: "other", label: `Other Part Numbers (${interchanges.length})` },
+  const tabs: { id: string; label: string; name: string; count?: string; Icon: LucideIcon }[] = [
+    { id: "description", label: "Description", name: "Description", Icon: FileText },
+    { id: "specification", label: "Specification", name: "Specification", Icon: ListChecks },
+    { id: "compatibility", label: `Vehicle Compatibility (${fitments.length.toLocaleString()})`, name: "Vehicle Compatibility", count: fitments.length.toLocaleString(), Icon: Car },
+    { id: "oe", label: `OE Parts Number (${oe.length})`, name: "OE Parts Number", count: String(oe.length), Icon: Hash },
+    { id: "other", label: `Other Part Numbers (${interchanges.length})`, name: "Other Part Numbers", count: String(interchanges.length), Icon: Tags },
   ];
   const [active, setActive] = useState("description");
+  const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [pill, setPill] = useState<{ left: number; width: number } | null>(null);
+
+  // Slide the red pill under the active tab (fancy bar only)
+  useLayoutEffect(() => {
+    if (!fancy) return;
+    const place = () => {
+      const el = btnRefs.current[active];
+      if (!el) return;
+      setPill({ left: el.offsetLeft, width: el.offsetWidth });
+      const bar = el.parentElement?.parentElement;
+      if (bar && bar.scrollWidth > bar.clientWidth) {
+        bar.scrollTo({ left: el.offsetLeft - 16, behavior: "smooth" });
+      }
+    };
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, [active, fancy]);
   const base = useId();
 
   // Links like <a href="#compatibility"> open that tab and scroll to it
@@ -193,6 +215,55 @@ export default function ProductTabs({
   // and AI crawlers still read all the content.
   return (
     <section id="product-tabs" className="mt-14 scroll-mt-28 rounded-[28px] border border-black/5 bg-white shadow-[0_16px_46px_rgba(0,0,0,0.06)]">
+      {fancy ? (
+        <div className="overflow-x-auto px-3 pt-3 md:px-5 md:pt-5 [scrollbar-width:none]">
+          <div
+            role="tablist"
+            aria-label="Product information"
+            className="relative inline-flex min-w-full gap-1 rounded-2xl bg-secondary p-1.5 md:min-w-0"
+          >
+            {pill && (
+              <span
+                aria-hidden="true"
+                className="cm-tab-pill absolute bottom-1.5 top-1.5 rounded-xl bg-brand shadow-[0_6px_18px_hsl(var(--brand)/0.35)]"
+                style={{ left: pill.left, width: pill.width }}
+              />
+            )}
+            {tabs.map((t) => {
+              const on = active === t.id;
+              return (
+                <button
+                  key={t.id}
+                  ref={(el) => {
+                    btnRefs.current[t.id] = el;
+                  }}
+                  role="tab"
+                  type="button"
+                  id={`${base}-tab-${t.id}`}
+                  aria-selected={on}
+                  aria-controls={`${base}-panel-${t.id}`}
+                  onClick={() => setActive(t.id)}
+                  className={`cm-tab group relative z-10 flex items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-bold transition-colors duration-300 ${
+                    on ? "text-white" : "text-muted-foreground hover:text-ink"
+                  }`}
+                >
+                  <t.Icon className="cm-tab-icon h-4 w-4" strokeWidth={2.2} />
+                  {t.name}
+                  {t.count !== undefined && (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-bold transition-colors duration-300 ${
+                        on ? "bg-white/25 text-white" : "bg-white text-ink"
+                      }`}
+                    >
+                      {t.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
       <div
         role="tablist"
         aria-label="Product information"
@@ -218,13 +289,15 @@ export default function ProductTabs({
         ))}
       </div>
 
+      )}
+
       <div className="p-5 md:p-8">
-        <div role="tabpanel" id={`${base}-panel-description`} aria-labelledby={`${base}-tab-description`} hidden={active !== "description"}>
+        <div role="tabpanel" id={`${base}-panel-description`} aria-labelledby={`${base}-tab-description`} className={fancy ? "cm-panel-in" : undefined} hidden={active !== "description"}>
           <h2 className="mb-4 text-xl font-bold text-ink">Description</h2>
           <div className="whitespace-pre-line leading-7 text-muted-foreground">{description}</div>
         </div>
 
-        <div role="tabpanel" id={`${base}-panel-specification`} aria-labelledby={`${base}-tab-specification`} hidden={active !== "specification"}>
+        <div role="tabpanel" id={`${base}-panel-specification`} aria-labelledby={`${base}-tab-specification`} className={fancy ? "cm-panel-in" : undefined} hidden={active !== "specification"}>
           <h2 className="mb-4 text-xl font-bold text-ink">Specification</h2>
           {specs.length ? (
             <dl className="overflow-hidden rounded-2xl border border-border text-sm">
@@ -240,17 +313,17 @@ export default function ProductTabs({
           )}
         </div>
 
-        <div role="tabpanel" id={`${base}-panel-compatibility`} aria-labelledby={`${base}-tab-compatibility`} hidden={active !== "compatibility"}>
+        <div role="tabpanel" id={`${base}-panel-compatibility`} aria-labelledby={`${base}-tab-compatibility`} className={fancy ? "cm-panel-in" : undefined} hidden={active !== "compatibility"}>
           <h2 className="mb-4 text-xl font-bold text-ink">Vehicle Compatibility</h2>
           <Compatibility rows={fitments} />
         </div>
 
-        <div role="tabpanel" id={`${base}-panel-oe`} aria-labelledby={`${base}-tab-oe`} hidden={active !== "oe"}>
+        <div role="tabpanel" id={`${base}-panel-oe`} aria-labelledby={`${base}-tab-oe`} className={fancy ? "cm-panel-in" : undefined} hidden={active !== "oe"}>
           <h2 className="mb-4 text-xl font-bold text-ink">OE Parts Number</h2>
           <PartTable rows={oe} head="OE brand" />
         </div>
 
-        <div role="tabpanel" id={`${base}-panel-other`} aria-labelledby={`${base}-tab-other`} hidden={active !== "other"}>
+        <div role="tabpanel" id={`${base}-panel-other`} aria-labelledby={`${base}-tab-other`} className={fancy ? "cm-panel-in" : undefined} hidden={active !== "other"}>
           <h2 className="mb-4 text-xl font-bold text-ink">Other Part Numbers</h2>
           <PartTable rows={interchanges} head="Brand" />
         </div>

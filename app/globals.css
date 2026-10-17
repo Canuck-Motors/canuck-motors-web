@@ -224,6 +224,12 @@
 
 .cm-pop { animation: cm-pop 0.35s ease-out both; }
 .cm-window { animation: cm-window-in 0.3s ease-out both; }
+/* The launcher only fades in (no movement), so it never fights its hover effect */
+@keyframes cm-launch-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: none; }
+}
+.cm-launch-bounce { animation: cm-launch-in 0.2s ease-out 1 both; }
 .cm-dot { animation: cm-dot 1s ease-in-out infinite; }
 .cm-stripe {
   background-image: linear-gradient(
@@ -370,7 +376,7 @@ input[type="search"]::-webkit-search-decoration {
   from { transform: translateX(-130%) skewX(-20deg); }
   to   { transform: translateX(330%) skewX(-20deg); }
 }
-.cm-cat-card { opacity: 0; animation: cm-cat-in 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) forwards; }
+.cm-cat-card { opacity: 1; }
 .cm-cat-card::before {
   content: "";
   position: absolute;
@@ -403,15 +409,6 @@ input[type="search"]::-webkit-search-decoration {
 }
 
 /* Categories page: cards reveal as you scroll (no JS), and the hero has moving speed lines. */
-@supports (animation-timeline: view()) {
-  .cm-cat-card {
-    opacity: 1;
-    animation: cm-cat-in linear both;
-    animation-timeline: view();
-    animation-range: entry 0% cover 30%;
-    animation-delay: 0s !important;
-  }
-}
 @keyframes cm-speed-move { to { background-position: -240px 0; } }
 .cm-speed {
   background-image: repeating-linear-gradient(110deg, transparent 0 46px, rgba(255, 255, 255, 0.045) 46px 48px);
@@ -432,19 +429,6 @@ input[type="search"]::-webkit-search-decoration {
 .cm-up { display: block; animation: cm-up 0.85s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: var(--d, 0s); }
 .cm-up.cm-eyebrow { display: block; }
 .cm-line { animation: cm-line-grow 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.3s both; }
-@supports (animation-timeline: view()) {
-  .cm-cat-card .cm-up {
-    animation: cm-up linear both;
-    animation-timeline: view();
-    animation-range: entry 8% cover 34%;
-    animation-delay: 0s;
-  }
-  .cm-cat-card .cm-line {
-    animation: cm-line-grow linear both;
-    animation-timeline: view();
-    animation-range: entry 20% cover 40%;
-  }
-}
 
 /* Home page Amazon reviews spotlight (components/AmazonReviews.tsx) */
 .cm-reviews-viewport {
@@ -491,11 +475,6 @@ input[type="search"]::-webkit-search-decoration {
   background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.10), transparent);
   animation: cm-sweep 5.5s ease-in-out infinite; pointer-events: none;
 }
-@supports (animation-timeline: view()) {
-  .cm-reveal { animation: cm-reveal-in linear both; animation-timeline: view(); animation-range: entry 4% cover 26%; }
-  .cm-reveal-l { animation: cm-reveal-left linear both; animation-timeline: view(); animation-range: entry 4% cover 30%; }
-  .cm-reveal-r { animation: cm-reveal-right linear both; animation-timeline: view(); animation-range: entry 4% cover 30%; }
-}
 @media (prefers-reduced-motion: reduce) {
   .cm-reveal, .cm-reveal-l, .cm-reveal-r, .cm-marquee-track, .cm-grid-drift, .cm-glow, .cm-sweep::after { animation: none; }
 }
@@ -514,3 +493,72 @@ input[type="search"]::-webkit-search-decoration {
 .cm-needle { animation: cm-needle 10s cubic-bezier(0.45, 0, 0.25, 1) infinite; transform-origin: center; }
 .cm-marquee-rev { animation-direction: reverse; animation-duration: 46s; }
 @media (prefers-reduced-motion: reduce) { .cm-needle, .cm-marquee-rev { animation: none; } }
+
+@keyframes cm-toast-in {
+  from { opacity: 0; transform: translateY(-14px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.cm-toast { animation: cm-toast-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+@media (prefers-reduced-motion: reduce) { .cm-toast { animation: none; } }
+
+/* Canuck Motors tyre loader (components/LoadingAnimation.tsx).
+   3s loop: a bump rolls along the road, the tyre hops over it and settles. */
+@keyframes cm-tire-bump {
+  0% { transform: translateX(186px); opacity: 0; }
+  3% { opacity: 1; }
+  72% { opacity: 1; }
+  78%, 100% { transform: translateX(8px); opacity: 0; }
+}
+@keyframes cm-tire-hop {
+  0%, 33% { transform: translateY(0) scale(1, 1); animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1); }
+  45% { transform: translateY(-46px) scale(1, 1); animation-timing-function: cubic-bezier(0.6, 0, 0.9, 0.4); }
+  58% { transform: translateY(0) scale(1.05, 0.93); animation-timing-function: ease-out; }
+  66% { transform: translateY(-3px) scale(0.99, 1.01); animation-timing-function: ease-in-out; }
+  74%, 100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes cm-tire-roll { to { transform: rotate(-360deg); } }
+@keyframes cm-tire-slide { to { stroke-dashoffset: -22; } }
+.cm-tire-bump { animation: cm-tire-bump 3s linear infinite; }
+.cm-tire-hop { transform-box: fill-box; transform-origin: bottom center; animation: cm-tire-hop 3s infinite; }
+.cm-tire-roll { transform-box: fill-box; transform-origin: center; animation: cm-tire-roll 1.4s linear infinite; }
+.cm-tire-dash { animation: cm-tire-slide 0.9s linear infinite; }
+
+/* Page overlay: waits a moment before appearing (fast loads never flash), fades out when done */
+@keyframes cm-ld-in { from { opacity: 0; } to { opacity: 1; } }
+.cm-ld-overlay, .cm-ld-inline { animation: cm-ld-in 0.25s ease-out 0.12s both; }
+.cm-ld-overlay.cm-ld-leaving, .cm-ld-inline.cm-ld-leaving {
+  animation: none;
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+  pointer-events: none;
+}
+
+/* Reduce motion: a still tyre */
+@media (prefers-reduced-motion: reduce) {
+  .cm-tire-bump, .cm-tire-hop, .cm-tire-roll, .cm-tire-dash, .cm-ld-overlay, .cm-ld-inline { animation: none; }
+  .cm-tire-bump { opacity: 0; }
+}
+
+/* ------------------------------------------------------------------
+   Product tabs (components/ProductTabs.tsx, fancy bar).
+   A red pill slides to the active tab; the new panel fades up once.
+   Reduced motion is handled by the global rule.
+   ------------------------------------------------------------------ */
+.cm-tab-pill {
+  transition: left 0.45s cubic-bezier(0.3, 0.8, 0.2, 1), width 0.45s cubic-bezier(0.3, 0.8, 0.2, 1);
+}
+.cm-tab-icon { transition: transform 0.3s cubic-bezier(0.3, 0.8, 0.2, 1); }
+.cm-tab:hover .cm-tab-icon { transform: translateY(-2px) scale(1.12); }
+@keyframes cm-panel-in {
+  from { opacity: 0.01; transform: translateY(10px); }
+  to   { opacity: 1;    transform: none; }
+}
+.cm-panel-in:not([hidden]) { animation: cm-panel-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+/* Cart: shake the fit checkbox when someone tries to check out without ticking it. */
+@keyframes cm-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+.cm-shake { animation: cm-shake 0.45s ease-in-out; }
