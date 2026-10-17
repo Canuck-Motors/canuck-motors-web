@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { processFulfillmentQueue } from "@/lib/fulfillment";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { processFulfillmentQueue, syncAmazonMcfOrders } from "@/lib/fulfillment";
+import { syncAmazonMcfReturn } from "@/lib/amazon-mcf-returns";
 
 export async function POST(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -10,8 +12,40 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await processFulfillmentQueue(25);
-    return NextResponse.json(result);
+    const queued = await processFulfillmentQueue(25);
+    const outbound = await syncAmazonMcfOrders(50);
+
+    const admin = createAdminClient();
+    const { data: returns } = await admin
+      .from("return_requests")
+      .select("id")
+      .eq("fulfillment_provider", "amazon_mcf")
+      .not("amazon_rma_id", "is", null)
+      .not("amazon_return_status", "in", '("received","completed","cancelled")')
+      .order("amazon_return_synced_on", { ascending: true, nullsFirst: true })
+      .limit(50);
+
+    let returnSynced = 0;
+    let returnFailed = 0;
+    for (const row of returns ?? []) {
+      try {
+        await syncAmazonMcfReturn(String(row.id));
+        returnSynced += 1;
+      } catch (error) {
+        returnFailed += 1;
+        console.error("Amazon MCF return sync failed:", row.id, error);
+      }
+    }
+
+    return NextResponse.json({
+      queue: queued,
+      outbound,
+      returns: {
+        processed: (returns ?? []).length,
+        synced: returnSynced,
+        failed: returnFailed,
+      },
+    });
   } catch (error) {
     console.error("Fulfillment queue processing failed:", error);
     return NextResponse.json({ error: "Fulfillment processing failed" }, { status: 500 });
