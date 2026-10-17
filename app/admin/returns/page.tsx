@@ -25,7 +25,7 @@ export default async function ReturnsAdminPage() {
   const { data: requests, error } = await supabase
     .from("return_requests")
     .select(
-      "id, order_id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_carrier, return_tracking_number, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due, orders!order_id!inner(order_number, customer_name, customer_email, currency, shipping_address), return_request_items(id, quantity, received_quantity, order_items!inner(product_id, product_name, sku, unit_price))"
+      "id, order_id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_carrier, return_tracking_number, fulfillment_provider, amazon_return_status, amazon_rma_id, amazon_rma_page_url, amazon_return_error, amazon_return_synced_on, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due, orders!order_id!inner(order_number, customer_name, customer_email, currency, shipping_address), return_request_items(id, quantity, received_quantity, amazon_seller_sku, amazon_return_reason_code, amazon_return_item_status, amazon_return_condition, amazon_fulfillment_center_id, order_items!inner(product_id, product_name, sku, unit_price))"
     )
     .order("requested_on", { ascending: false })
     .limit(1000);
@@ -78,6 +78,11 @@ export default async function ReturnsAdminPage() {
         name: String(oi?.product_name ?? ""),
         sku: String(oi?.sku ?? ""),
         unitPrice: Number(oi?.unit_price ?? 0),
+        amazonSellerSku: String(it.amazon_seller_sku ?? ""),
+        amazonReturnReasonCode: String(it.amazon_return_reason_code ?? ""),
+        amazonReturnItemStatus: String(it.amazon_return_item_status ?? ""),
+        amazonReturnCondition: String(it.amazon_return_condition ?? ""),
+        amazonFulfillmentCenterId: String(it.amazon_fulfillment_center_id ?? ""),
       };
     });
     const subtotal = items.reduce(
@@ -95,6 +100,12 @@ export default async function ReturnsAdminPage() {
       requestedOn: String(r.requested_on),
       carrier: (r.return_carrier as string) ?? "",
       tracking: (r.return_tracking_number as string) ?? "",
+      fulfillmentProvider: (r.fulfillment_provider as string) ?? "",
+      amazonReturnStatus: (r.amazon_return_status as string) ?? "",
+      amazonRmaId: (r.amazon_rma_id as string) ?? "",
+      amazonRmaPageUrl: (r.amazon_rma_page_url as string) ?? "",
+      amazonReturnError: (r.amazon_return_error as string) ?? "",
+      amazonReturnSyncedOn: (r.amazon_return_synced_on as string) ?? "",
       replacementOrderId: (r.replacement_order_id as string) ?? null,
       replacementPaymentUrl: (r.replacement_payment_url as string) ?? "",
       replacementAmountDue: Number(r.replacement_amount_due ?? 0),
