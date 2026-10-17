@@ -6,11 +6,13 @@ import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import Image from "next/image";
 import { ChevronDown, ChevronRight, Download, Mail, Search, X } from "lucide-react";
 import {
+  createAmazonReturnAuthorization,
   createExchangeReplacement,
   getReturnPhotos,
   handleReturnStock,
   issueReturnRefund,
   sendReturnInstructions,
+  syncAmazonReturnStatus,
   updateReturnRequest,
 } from "@/app/admin/returns/actions";
 
@@ -25,6 +27,12 @@ export type ReturnRow = {
   requestedOn: string;
   carrier: string;
   tracking: string;
+  fulfillmentProvider: string;
+  amazonReturnStatus: string;
+  amazonRmaId: string;
+  amazonRmaPageUrl: string;
+  amazonReturnError: string;
+  amazonReturnSyncedOn: string;
   replacementOrderId: string | null;
   replacementPaymentUrl: string;
   replacementAmountDue: number;
@@ -50,6 +58,11 @@ export type ReturnRow = {
     name: string;
     sku: string;
     unitPrice: number;
+    amazonSellerSku: string;
+    amazonReturnReasonCode: string;
+    amazonReturnItemStatus: string;
+    amazonReturnCondition: string;
+    amazonFulfillmentCenterId: string;
   }[];
   subtotal: number;
   stock: "restocked" | "damaged" | null;
@@ -563,7 +576,95 @@ export default function ReturnsManager({
 
                             {/* Actions */}
                             <div className="space-y-4">
-                              {["received", "completed", "inspection_failed"].includes(r.status) && (
+                              {r.fulfillmentProvider === "amazon_mcf" && r.type === "return" && (
+                                <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
+                                  <p className="font-bold text-ink">Amazon MCF return</p>
+                                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                    For Canadian MCF orders this uses Amazon&apos;s RMA return flow. Amazon provides the return-center address and authorization slip; return postage is not included.
+                                  </p>
+
+                                  {r.amazonRmaId ? (
+                                    <div className="mt-3 space-y-2 text-sm">
+                                      <p>
+                                        <span className="font-semibold">RMA:</span> {r.amazonRmaId}
+                                      </p>
+                                      <p>
+                                        <span className="font-semibold">Amazon status:</span>{" "}
+                                        {r.amazonReturnStatus ? label(r.amazonReturnStatus) : "authorized"}
+                                      </p>
+                                      {r.amazonRmaPageUrl && (
+                                        <a
+                                          href={r.amazonRmaPageUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex font-bold text-brand hover:underline"
+                                        >
+                                          Open Amazon RMA document
+                                        </a>
+                                      )}
+                                      {r.amazonReturnSyncedOn && (
+                                        <p className="text-xs text-muted-foreground">
+                                          Last synced {new Date(r.amazonReturnSyncedOn).toLocaleString("en-CA")}
+                                        </p>
+                                      )}
+                                      <button
+                                        type="button"
+                                        disabled={pending}
+                                        onClick={() =>
+                                          run(async () => {
+                                            await syncAmazonReturnStatus(r.id);
+                                          }, "Amazon MCF return status synchronized.")
+                                        }
+                                        className="mt-2 w-full rounded-full border border-orange-300 px-4 py-2 text-sm font-bold text-orange-900 hover:bg-orange-100 disabled:opacity-60"
+                                      >
+                                        Sync Amazon return status
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled={pending || r.status !== "approved"}
+                                      onClick={() =>
+                                        run(async () => {
+                                          await createAmazonReturnAuthorization(r.id);
+                                        }, "Amazon MCF return authorization created.")
+                                      }
+                                      className="cm-button-primary mt-3 w-full disabled:opacity-50"
+                                    >
+                                      {r.status === "approved"
+                                        ? "Create Amazon RMA"
+                                        : "Approve request before creating Amazon RMA"}
+                                    </button>
+                                  )}
+
+                                  {r.amazonReturnError && (
+                                    <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-700">
+                                      {r.amazonReturnError}
+                                    </p>
+                                  )}
+
+                                  {r.items.some((item) => item.amazonReturnItemStatus) && (
+                                    <div className="mt-4 space-y-2">
+                                      {r.items.map((item) => (
+                                        <div key={item.id} className="rounded-xl bg-white p-3 text-xs">
+                                          <p className="font-bold text-ink">{item.sku}</p>
+                                          <p className="mt-1 text-muted-foreground">
+                                            {item.amazonReturnItemStatus
+                                              ? `Amazon: ${label(item.amazonReturnItemStatus)}`
+                                              : "Awaiting Amazon status"}
+                                            {item.amazonReturnCondition
+                                              ? ` · Condition: ${label(item.amazonReturnCondition)}`
+                                              : ""}
+                                          </p>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {r.fulfillmentProvider !== "amazon_mcf" &&
+                                ["received", "completed", "inspection_failed"].includes(r.status) && (
                                 <div className="rounded-2xl border border-black/5 bg-white p-4">
                                   <p className="font-bold text-ink">Returned stock</p>
                                   {r.stock ? (
