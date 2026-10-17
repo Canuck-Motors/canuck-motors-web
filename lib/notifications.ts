@@ -31,9 +31,20 @@ function messageFor(row: OutboxRow) {
 
     if (row.event_type === "return_instructions") {
       lines.push(`Here is how to send back your item for order ${order}.`);
+      const amazonRmaId = String(p.amazon_rma_id || "");
+      const amazonRmaPageUrl = String(p.amazon_rma_page_url || "");
       const address = String(p.return_address || "");
-      lines.push(address ? `Return address:\n${address}` : "Reply to this email and we will send you the return address.");
-      lines.push("Please pack the item securely, include your order number, and keep your tracking number.");
+
+      if (amazonRmaId) lines.push(`Amazon MCF RMA: ${amazonRmaId}`);
+      if (amazonRmaPageUrl) {
+        lines.push(`Amazon return document: ${amazonRmaPageUrl}`);
+        lines.push(
+          "Print the Amazon document, attach the return-center mailing label to the package, and place the authorization slip inside. Return postage is not included."
+        );
+      } else {
+        lines.push(address ? `Return address:\n${address}` : "Reply to this email and we will send you the return address.");
+        lines.push("Please pack the item securely, include your order number, and keep your tracking number.");
+      }
     } else {
       const status = String(p.status || "");
       const headline: Record<string, string> = {
