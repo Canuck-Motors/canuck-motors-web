@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeAmountCheckoutSession, createStripeRefund } from "@/lib/stripe";
+import { createAmazonMcfReturn, syncAmazonMcfReturn } from "@/lib/amazon-mcf-returns";
 
 async function requireAuthenticatedStaff() {
   const supabase = await createClient();
@@ -503,4 +504,76 @@ export async function getReturnPhotos(requestId: string): Promise<string[]> {
 
   const { data: signed } = await admin.storage.from("return-photos").createSignedUrls(paths, 3600);
   return (signed ?? []).map((s) => s.signedUrl).filter(Boolean) as string[];
+}
+
+
+export async function createAmazonReturnAuthorization(requestId: string) {
+  await requireAuthenticatedStaff();
+
+  try {
+    const result = await createAmazonMcfReturn(requestId);
+
+    await queueReturnEmail(requestId, "return_instructions", {
+      message:
+        "Amazon MCF has created your return authorization. Use the Amazon return document for the mailing address and place the authorization slip inside the package. Return postage is not included.",
+      return_address: "",
+      amazon_rma_id: result.amazonRmaId,
+      amazon_rma_page_url: result.rmaPageUrl,
+    });
+
+    await logActivity(
+      requestId,
+      "amazon_mcf_return",
+      `Amazon MCF return authorization created${result.amazonRmaId ? ` (RMA ${result.amazonRmaId})` : ""}`
+    );
+
+    revalidatePath("/admin/returns");
+    return result;
+  } catch (error) {
+    const admin = createAdminClient();
+    await admin
+      .from("return_requests")
+      .update({
+        amazon_return_status: "error",
+        amazon_return_error:
+          error instanceof Error ? error.message.slice(0, 2000) : "Amazon MCF return failed.",
+        amazon_return_synced_on: new Date().toISOString(),
+        updated_on: new Date().toISOString(),
+      })
+      .eq("id", requestId);
+
+    throw error;
+  }
+}
+
+export async function syncAmazonReturnStatus(requestId: string) {
+  await requireAuthenticatedStaff();
+
+  try {
+    const result = await syncAmazonMcfReturn(requestId);
+    await logActivity(
+      requestId,
+      "amazon_mcf_return_sync",
+      result.received
+        ? "Amazon MCF reports the returned item has been received."
+        : `Amazon MCF return status synchronized (${result.matchedItems} item${result.matchedItems === 1 ? "" : "s"}).`
+    );
+
+    revalidatePath("/admin/returns");
+    return result;
+  } catch (error) {
+    const admin = createAdminClient();
+    await admin
+      .from("return_requests")
+      .update({
+        amazon_return_status: "error",
+        amazon_return_error:
+          error instanceof Error ? error.message.slice(0, 2000) : "Amazon MCF return sync failed.",
+        amazon_return_synced_on: new Date().toISOString(),
+        updated_on: new Date().toISOString(),
+      })
+      .eq("id", requestId);
+
+    throw error;
+  }
 }
