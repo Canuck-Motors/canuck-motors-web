@@ -169,7 +169,7 @@ export async function createAmazonMcfReturn(requestId: string) {
   const { data: request, error } = await admin
     .from("return_requests")
     .select(
-      "id, order_id, request_type, reason_code, reason_text, fulfillment_provider, amazon_return_status, orders!order_id(order_number, fulfillment_provider, fulfillment_provider_order_id), return_request_items(id, order_item_id, quantity, order_items!inner(id, product_id, sku))"
+      "id, order_id, request_type, status, reason_code, reason_text, fulfillment_provider, amazon_return_status, orders!order_id(order_number, fulfillment_provider, fulfillment_provider_order_id), return_request_items(id, order_item_id, quantity, order_items!inner(id, product_id, sku))"
     )
     .eq("id", requestId)
     .single();
@@ -183,6 +183,10 @@ export async function createAmazonMcfReturn(requestId: string) {
 
   if (request.request_type !== "return") {
     throw new Error("Amazon MCF return authorization is currently available for returns, not exchange replacements.");
+  }
+
+  if (request.status !== "approved") {
+    throw new Error("Approve the return request before creating the Amazon MCF return authorization.");
   }
 
   if (request.amazon_return_status && request.amazon_return_status !== "error") {
