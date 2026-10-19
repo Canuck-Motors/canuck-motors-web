@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { isEmailConfigured, sendAppEmail } from "@/lib/email";
 
 const esc = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -16,9 +17,9 @@ type Details = {
 // returns a short plain message so the admin knows what happened.
 export async function emailShipmentToCustomer(d: Details): Promise<string> {
   try {
-    const apiKey = process.env.RESEND_API_KEY;
-    const from = process.env.EMAIL_FROM;
-    if (!apiKey || !from) return "Email is not set up, so the customer was not emailed.";
+    if (!isEmailConfigured()) {
+      return "Email is not set up, so the customer was not emailed.";
+    }
 
     const admin = createAdminClient();
     const { data: order } = await admin
@@ -73,23 +74,12 @@ ${
 }
 <p style="color:#666;font-size:13px">Thank you for shopping with Canuck Motors.</p></div>`;
 
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from,
-        to: [to],
-        subject: `Your Canuck Motors order ${number} has shipped`,
-        text,
-        html,
-      }),
-      cache: "no-store",
+    await sendAppEmail({
+      to,
+      subject: `Your Canuck Motors order ${number} has shipped`,
+      text,
+      html,
     });
-    if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { message?: string } | null;
-      const why = body?.message ? ` Reason: ${body.message}` : "";
-      return `Shipment saved, but the email could not be sent.${why}`;
-    }
     return `Customer emailed at ${to}.`;
   } catch {
     return "Shipment saved, but the email could not be sent.";
