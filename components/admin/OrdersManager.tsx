@@ -19,6 +19,9 @@ export type OrderRow = {
   status: string;
   fulfillment: string;
   payment: string;
+  provider: string;
+  routingStatus: string;
+  fulfillmentError: string;
   total: number;
   currency: string;
   email: string;
@@ -393,7 +396,7 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
                               </ul>
 
                               <div className="mt-4 flex flex-wrap gap-2">
-                                {next && (
+                                {next && o.provider !== "amazon_mcf" && (
                                   <button
                                     type="button"
                                     disabled={pending}
@@ -494,31 +497,45 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
                                   This order is {o.status.replaceAll("_", " ")}, so there is nothing to ship.
                                 </p>
                               </div>
+                            ) : o.provider === "amazon_mcf" ? (
+                              <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm">
+                                <p className="font-bold text-ink">Amazon MCF shipment</p>
+                                <p className="mt-2 leading-6 text-muted-foreground">
+                                  Amazon handles packing and delivery for this order. Do not create a manual shipment here.
+                                  Upload Amazon&apos;s tracking spreadsheet from Admin → Fulfillment and the tracking details
+                                  will be saved and emailed to the customer automatically.
+                                </p>
+                                {o.shipment?.tracking && (
+                                  <p className="mt-3 font-semibold text-ink">
+                                    Tracking: {o.shipment.tracking}
+                                  </p>
+                                )}
+                              </div>
                             ) : (
-                            <form
-                              action={(fd) =>
-                                run(async () => {
-                                  const emailNote = await createShipment(
-                                    o.id,
-                                    String(fd.get("carrier") || ""),
-                                    String(fd.get("tracking_number") || ""),
-                                    String(fd.get("tracking_url") || ""),
-                                    String(fd.get("service_level") || ""),
-                                    String(fd.get("estimated_delivery") || "")
-                                  );
-                                  return `Shipment saved for ${o.number}. ${emailNote ?? ""}`.trim();
-                                })
-                              }
-                              className="rounded-2xl border border-black/5 bg-white p-4"
-                            >
-                              <p className="font-bold text-ink">Create / update shipment</p>
-                              <input name="carrier" defaultValue={o.shipment?.carrier ?? ""} placeholder="Carrier" required className={input} />
-                              <input name="tracking_number" defaultValue={o.shipment?.tracking ?? ""} placeholder="Tracking number" required className={input} />
-                              <input name="tracking_url" defaultValue={o.shipment?.url ?? ""} placeholder="Carrier tracking URL" className={input} />
-                              <input name="service_level" placeholder="Service level, e.g. Ground" className={input} />
-                              <input name="estimated_delivery" type="datetime-local" className={input} />
-                              <button className="cm-button-primary mt-3 w-full">Save shipment</button>
-                            </form>
+                              <form
+                                action={(fd) =>
+                                  run(async () => {
+                                    const emailNote = await createShipment(
+                                      o.id,
+                                      String(fd.get("carrier") || ""),
+                                      String(fd.get("tracking_number") || ""),
+                                      String(fd.get("tracking_url") || ""),
+                                      String(fd.get("service_level") || ""),
+                                      String(fd.get("estimated_delivery") || "")
+                                    );
+                                    return `Shipment saved for ${o.number}. ${emailNote ?? ""}`.trim();
+                                  })
+                                }
+                                className="rounded-2xl border border-black/5 bg-white p-4"
+                              >
+                                <p className="font-bold text-ink">Create / update shipment</p>
+                                <input name="carrier" defaultValue={o.shipment?.carrier ?? ""} placeholder="Carrier" required className={input} />
+                                <input name="tracking_number" defaultValue={o.shipment?.tracking ?? ""} placeholder="Tracking number" required className={input} />
+                                <input name="tracking_url" defaultValue={o.shipment?.url ?? ""} placeholder="Carrier tracking URL" className={input} />
+                                <input name="service_level" placeholder="Service level, e.g. Ground" className={input} />
+                                <input name="estimated_delivery" type="datetime-local" className={input} />
+                                <button className="cm-button-primary mt-3 w-full">Save shipment</button>
+                              </form>
                             )}
                           </div>
                         </td>
