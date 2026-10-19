@@ -202,24 +202,6 @@ export async function createAmazonMcfReturn(requestId: string) {
   const returnRows = (request.return_request_items ?? []) as any[];
   if (!returnRows.length) throw new Error("No items are present on this return request.");
 
-  const productIds = returnRows
-    .map((row) => {
-      const oi = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
-      return Number(oi?.product_id);
-    })
-    .filter((id) => Number.isInteger(id) && id > 0);
-
-  const { data: mappings, error: mappingError } = await admin
-    .from("product_fulfillment_settings")
-    .select("product_id, amazon_mcf_eligible")
-    .in("product_id", productIds);
-
-  if (mappingError) throw new Error(mappingError.message);
-
-  const mappingByProduct = new Map(
-    (mappings ?? []).map((mapping) => [Number(mapping.product_id), mapping])
-  );
-
   const fulfillmentOrder = await getAmazonFulfillmentOrder(sellerFulfillmentOrderId);
   const createItems: any[] = [];
   const prepared: Array<{
@@ -233,11 +215,6 @@ export async function createAmazonMcfReturn(requestId: string) {
   for (const row of returnRows) {
     const oi = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
     const productId = Number(oi?.product_id);
-    const mapping = mappingByProduct.get(productId);
-
-    if (!mapping?.amazon_mcf_eligible) {
-      throw new Error(`Product ${oi?.sku || productId} is not enabled for Amazon MCF returns.`);
-    }
     if (!String(oi?.sku || "").trim()) {
       throw new Error(`Product ${productId} has no SKU.`);
     }
