@@ -4,6 +4,7 @@ on:
   push:
     branches: [dev]
     paths:
+      - "package.json"
       - ".github/workflows/refresh-dependencies.yml"
 
 permissions:
