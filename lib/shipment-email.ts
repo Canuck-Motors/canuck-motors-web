@@ -81,7 +81,9 @@ ${
       html,
     });
     return `Customer emailed at ${to}.`;
-  } catch {
-    return "Shipment saved, but the email could not be sent.";
+  } catch (error) {
+    console.error("Shipment email failed:", error);
+    const message = error instanceof Error ? error.message : "Unknown email error";
+    return `Shipment saved, but the email could not be sent: ${message}`;
   }
 }
