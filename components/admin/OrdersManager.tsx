@@ -461,7 +461,7 @@ export default function OrdersManager({
                               </ul>
 
                               <div className="mt-4 flex flex-wrap gap-2">
-                                {next && o.provider !== "amazon_mcf" && (
+                                {next && deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
                                   <button
                                     type="button"
                                     disabled={pending}
@@ -476,13 +476,15 @@ export default function OrdersManager({
                                     {NEXT_BUTTON[o.status] ?? `Mark ${label(next)}`}
                                   </button>
                                 )}
-                                <Link
-                                  href={`/admin/orders/${o.id}/packing-slip`}
-                                  target="_blank"
-                                  className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:border-brand hover:text-brand"
-                                >
-                                  <Printer className="h-4 w-4" aria-hidden="true" /> Packing slip
-                                </Link>
+                                {deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
+                                  <Link
+                                    href={`/admin/orders/${o.id}/packing-slip`}
+                                    target="_blank"
+                                    className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:border-brand hover:text-brand"
+                                  >
+                                    <Printer className="h-4 w-4" aria-hidden="true" /> Packing slip
+                                  </Link>
+                                )}
                               </div>
 
                               {(o.cancelReason || o.cancelledItems.length > 0) && (
