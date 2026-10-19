@@ -123,8 +123,9 @@ function findColumn(headers: string[], aliases: string[]) {
 function safeTrackingUrl(value: string) {
   const text = value.trim();
   if (!text) return "";
+  const candidate = /^[a-z][a-z0-9+.-]*:/i.test(text) ? text : `https://${text}`;
   try {
-    const url = new URL(text);
+    const url = new URL(candidate);
     if (url.protocol !== "https:" && url.protocol !== "http:") return "";
     return url.toString();
   } catch {
@@ -145,7 +146,8 @@ async function parseTrackingFile(file: File): Promise<TrackingImportRow[]> {
     if (!sheet) throw new Error("The workbook does not contain a worksheet.");
 
     sheet.eachRow({ includeEmpty: false }, (row) => {
-      rows.push(row.values.slice(1));
+      const values = row.values;
+      rows.push(Array.isArray(values) ? values.slice(1) : []);
     });
   } else if (name.endsWith(".csv")) {
     const text = bytes.toString("utf8").replace(/^\uFEFF/, "");
