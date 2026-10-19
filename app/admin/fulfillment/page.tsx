@@ -29,7 +29,7 @@ export default async function FulfillmentAdminPage() {
       .limit(2000),
     admin
       .from("product_fulfillment_settings")
-      .select("product_id, amazon_sku, amazon_mcf_eligible"),
+      .select("product_id, amazon_mcf_eligible"),
     admin
       .from("fulfillment_jobs")
       .select("id, order_id, provider, status, attempts, last_error, updated_on, orders(order_number)")
@@ -50,7 +50,6 @@ export default async function FulfillmentAdminPage() {
       sku: String(product.sku ?? ""),
       name: String(product.product_name ?? ""),
       active: Boolean(product.is_active),
-      amazonSku: String(mapping?.amazon_sku ?? ""),
       amazonMcfEligible: Boolean(mapping?.amazon_mcf_eligible),
     };
   });
