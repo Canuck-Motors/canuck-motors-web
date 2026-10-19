@@ -5,23 +5,14 @@ import {
   importAmazonTrackingSheet,
   processAmazonMcfQueueNow,
   saveFulfillmentSettings,
-  saveProductFulfillment,
 } from "@/app/admin/fulfillment/actions";
 
 type Provider = "amazon_mcf" | "delivery_partner";
 type Speed = "Standard" | "Expedited" | "Priority";
 
-type Product = {
-  id: number;
-  sku: string;
-  name: string;
-  amazonMcfEligible: boolean;
-};
-
 export default function FulfillmentSettings({
   initialSettings,
   amazonConfigured,
-  products: initialProducts,
 }: {
   initialSettings: {
     amazonMcfEnabled: boolean;
@@ -30,11 +21,9 @@ export default function FulfillmentSettings({
     amazonShippingSpeed: Speed;
   };
   amazonConfigured: boolean;
-  products: Product[];
   jobs: unknown[];
 }) {
   const [settings, setSettings] = useState(initialSettings);
-  const [products, setProducts] = useState(initialProducts);
   const [message, setMessage] = useState("");
   const [pending, start] = useTransition();
 
@@ -178,26 +167,6 @@ export default function FulfillmentSettings({
         </form>
       </section>
 
-      <section className="rounded-[26px] border bg-white p-6">
-        <h2 className="text-lg font-black">Amazon MCF eligibility</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Amazon uses the same SKU as Canuck Motors, so there is no separate Amazon SKU field.
-          Enable only the products that are stocked in Amazon MCF.
-        </p>
-        <div className="mt-4 space-y-3">
-          {products.map((product) => (
-            <ProductRow
-              key={product.id}
-              product={product}
-              disabled={pending}
-              onChange={(next) =>
-                setProducts((rows) => rows.map((p) => (p.id === next.id ? next : p)))
-              }
-              onSaved={(text) => setMessage(text)}
-            />
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
@@ -235,51 +204,6 @@ function ProviderCard({
           {checked ? "ON" : "OFF"}
         </button>
       </div>
-    </div>
-  );
-}
-
-function ProductRow({
-  product,
-  disabled,
-  onChange,
-  onSaved,
-}: {
-  product: Product;
-  disabled: boolean;
-  onChange: (value: Product) => void;
-  onSaved: (message: string) => void;
-}) {
-  return (
-    <div className="grid gap-3 rounded-2xl border p-4 md:grid-cols-[180px_1fr_auto_auto] md:items-center">
-      <strong>{product.sku}</strong>
-      <span className="text-sm">{product.name}</span>
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={product.amazonMcfEligible}
-          onChange={(e) => onChange({ ...product, amazonMcfEligible: e.target.checked })}
-        />
-        MCF eligible
-      </label>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={async () => {
-          try {
-            await saveProductFulfillment({
-              productId: product.id,
-              amazonMcfEligible: product.amazonMcfEligible,
-            });
-            onSaved(`${product.sku} saved.`);
-          } catch (e) {
-            onSaved(e instanceof Error ? e.message : "Unable to save product.");
-          }
-        }}
-        className="rounded-full bg-ink px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
-      >
-        Save
-      </button>
     </div>
   );
 }
