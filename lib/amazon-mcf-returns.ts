@@ -211,7 +211,7 @@ export async function createAmazonMcfReturn(requestId: string) {
 
   const { data: mappings, error: mappingError } = await admin
     .from("product_fulfillment_settings")
-    .select("product_id, amazon_sku, amazon_mcf_eligible")
+    .select("product_id, amazon_mcf_eligible")
     .in("product_id", productIds);
 
   if (mappingError) throw new Error(mappingError.message);
@@ -235,8 +235,11 @@ export async function createAmazonMcfReturn(requestId: string) {
     const productId = Number(oi?.product_id);
     const mapping = mappingByProduct.get(productId);
 
-    if (!mapping?.amazon_mcf_eligible || !mapping.amazon_sku) {
-      throw new Error(`Product ${oi?.sku || productId} is not configured for Amazon MCF returns.`);
+    if (!mapping?.amazon_mcf_eligible) {
+      throw new Error(`Product ${oi?.sku || productId} is not enabled for Amazon MCF returns.`);
+    }
+    if (!String(oi?.sku || "").trim()) {
+      throw new Error(`Product ${productId} has no SKU.`);
     }
 
     const sellerFulfillmentOrderItemId = String(row.order_item_id);
@@ -252,7 +255,7 @@ export async function createAmazonMcfReturn(requestId: string) {
     }
 
     const reasons = await getAmazonReturnReasons(
-      String(mapping.amazon_sku),
+      String(oi.sku).trim(),
       sellerFulfillmentOrderId
     );
     const chosen = chooseReason(String(request.reason_code), reasons);
@@ -271,7 +274,7 @@ export async function createAmazonMcfReturn(requestId: string) {
 
     prepared.push({
       returnRequestItemId: Number(row.id),
-      amazonSku: String(mapping.amazon_sku),
+      amazonSku: String(oi.sku).trim(),
       reasonCode: chosen.returnReasonCode,
       amazonShipmentId,
       sellerReturnItemId,
