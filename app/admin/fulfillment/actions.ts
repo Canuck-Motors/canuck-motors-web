@@ -141,7 +141,7 @@ async function parseTrackingFile(file: File): Promise<TrackingImportRow[]> {
   if (name.endsWith(".xlsx")) {
     const ExcelJS = await import("exceljs");
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(bytes);
+    await workbook.xlsx.load(bytes as any);
     const sheet = workbook.worksheets[0];
     if (!sheet) throw new Error("The workbook does not contain a worksheet.");
 
