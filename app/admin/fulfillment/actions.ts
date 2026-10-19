@@ -303,7 +303,7 @@ export async function importAmazonTrackingSheet(formData: FormData) {
 
     const { data: existing } = await admin
       .from("shipments")
-      .select("id, tracking_url")
+      .select("id, tracking_url, metadata")
       .eq("order_id", order.id)
       .eq("tracking_number", trackingNumber)
       .maybeSingle();
@@ -314,6 +314,11 @@ export async function importAmazonTrackingSheet(formData: FormData) {
         : null;
 
     if (existing) {
+      const existingMetadata =
+        existing.metadata && typeof existing.metadata === "object"
+          ? (existing.metadata as Record<string, unknown>)
+          : {};
+
       await admin
         .from("shipments")
         .update({
@@ -323,10 +328,44 @@ export async function importAmazonTrackingSheet(formData: FormData) {
           estimated_delivery: estimatedDelivery,
           status: "in_transit",
           shipped_on: new Date().toISOString(),
-          metadata: { provider: "amazon_mcf", source: "tracking_sheet_import" },
+          metadata: {
+            ...existingMetadata,
+            provider: "amazon_mcf",
+            source: "tracking_sheet_import",
+          },
           updated_on: new Date().toISOString(),
         })
         .eq("id", existing.id);
+
+      if (!existingMetadata.email_sent_at) {
+        const emailResult = await emailShipmentToCustomer({
+          orderId: String(order.id),
+          carrier: row.carrier,
+          trackingNumber,
+          trackingUrl: row.trackingUrl || String(existing.tracking_url || ""),
+          serviceLevel: row.serviceLevel,
+          estimatedDelivery: estimatedDelivery ?? "",
+        });
+
+        if (/Customer emailed/i.test(emailResult)) {
+          emailed++;
+          await admin
+            .from("shipments")
+            .update({
+              metadata: {
+                ...existingMetadata,
+                provider: "amazon_mcf",
+                source: "tracking_sheet_import",
+                email_sent_at: new Date().toISOString(),
+              },
+              updated_on: new Date().toISOString(),
+            })
+            .eq("id", existing.id);
+        } else {
+          errors.push(`${orderNumber}: ${emailResult}`);
+        }
+      }
+
       skipped++;
       continue;
     }
@@ -378,7 +417,38 @@ export async function importAmazonTrackingSheet(formData: FormData) {
       estimatedDelivery: estimatedDelivery ?? "",
     });
 
-    if (/Customer emailed/i.test(emailResult)) emailed++;
+    if (/Customer emailed/i.test(emailResult)) {
+      emailed++;
+      const { data: createdShipment } = await admin
+        .from("shipments")
+        .select("id, metadata")
+        .eq("order_id", order.id)
+        .eq("tracking_number", trackingNumber)
+        .maybeSingle();
+
+      if (createdShipment) {
+        const metadata =
+          createdShipment.metadata && typeof createdShipment.metadata === "object"
+            ? (createdShipment.metadata as Record<string, unknown>)
+            : {};
+
+        await admin
+          .from("shipments")
+          .update({
+            metadata: {
+              ...metadata,
+              provider: "amazon_mcf",
+              source: "tracking_sheet_import",
+              email_sent_at: new Date().toISOString(),
+            },
+            updated_on: new Date().toISOString(),
+          })
+          .eq("id", createdShipment.id);
+      }
+    } else {
+      errors.push(`${orderNumber}: ${emailResult}`);
+    }
+
     imported++;
   }
 
