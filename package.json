@@ -24,7 +24,8 @@
     "react-dom": "^19.0.0",
     "tailwind-merge": "^3.3.0",
     "zod": "^4.4.3",
-    "@modelcontextprotocol/server": "^2.3.0"
+    "@modelcontextprotocol/server": "^2.3.0",
+    "exceljs": "^4.4.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
