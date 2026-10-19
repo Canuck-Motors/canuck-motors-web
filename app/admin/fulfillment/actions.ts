@@ -61,24 +61,6 @@ export async function saveFulfillmentSettings(input: {
   revalidatePath("/admin/orders");
 }
 
-export async function saveProductFulfillment(input: {
-  productId: number;
-  amazonMcfEligible: boolean;
-}) {
-  if (!Number.isInteger(input.productId) || input.productId <= 0) {
-    throw new Error("Invalid product.");
-  }
-
-  const supabase = await requireAdmin();
-  const { error } = await supabase.rpc("admin_save_product_fulfillment", {
-    p_product_id: input.productId,
-    p_amazon_mcf_eligible: input.amazonMcfEligible,
-  });
-  if (error) throw new Error(error.message);
-
-  revalidatePath("/admin/fulfillment");
-}
-
 export async function overrideOrderFulfillment(
   orderId: string,
   provider: "amazon_mcf" | "delivery_partner"
@@ -93,9 +75,6 @@ export async function overrideOrderFulfillment(
     const message = error.message;
     if (/amazon_mcf_disabled/.test(message)) throw new Error("Amazon MCF is switched off.");
     if (/delivery_partner_disabled/.test(message)) throw new Error("Delivery Partner is switched off.");
-    if (/amazon_mcf_items_not_enabled/.test(message)) {
-      throw new Error("Every active item in this order must be enabled for Amazon MCF.");
-    }
     throw new Error(message);
   }
 
