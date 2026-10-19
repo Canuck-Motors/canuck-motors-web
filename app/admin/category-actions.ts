@@ -51,14 +51,3 @@ export async function reorderCategories(ids: number[]) {
   refresh();
 }
 
-export async function setProductsCategory(productIds: number[], categoryId: number | null) {
-  const supabase = await requireStaff();
-  const ids = Array.from(new Set(productIds)).slice(0, 1000);
-  if (!ids.length) return;
-  const { error } = await supabase.rpc("admin_set_product_category", {
-    p_ids: ids,
-    p_category_id: categoryId,
-  });
-  if (error) throw new Error(friendly(error.message));
-  refresh();
-}
