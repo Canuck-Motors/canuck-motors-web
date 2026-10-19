@@ -31,6 +31,32 @@ export async function saveFulfillmentSettings(input: {
   });
   if (error) throw new Error(error.message);
 
+  // Keep already-paid, not-yet-shipped orders aligned with the current
+  // fulfillment switches. This makes the Orders screen immediately follow
+  // the Amazon MCF / Delivery Partner settings instead of keeping stale routes.
+  const admin = createAdminClient();
+  const { data: openPaidOrders } = await admin
+    .from("orders")
+    .select("id, fulfillment_status")
+    .eq("payment_status", "paid");
+
+  for (const order of openPaidOrders ?? []) {
+    if (
+      ["shipped", "out_for_delivery", "delivered", "cancelled"].includes(
+        String(order.fulfillment_status || "")
+      )
+    ) {
+      continue;
+    }
+
+    const { error: routeError } = await admin.rpc("route_order_fulfillment", {
+      p_order_id: order.id,
+    });
+    if (routeError) {
+      console.error("Unable to re-route order after fulfillment settings change:", order.id, routeError);
+    }
+  }
+
   revalidatePath("/admin/fulfillment");
   revalidatePath("/admin/orders");
 }
