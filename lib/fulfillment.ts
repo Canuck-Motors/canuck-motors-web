@@ -83,7 +83,7 @@ async function submitAmazonMcfOrder(orderId: string) {
   const productIds = items.map((item: any) => Number(item.product_id));
   const { data: mappings, error: mappingError } = await admin
     .from("product_fulfillment_settings")
-    .select("product_id, amazon_sku, amazon_mcf_eligible")
+    .select("product_id, amazon_mcf_eligible")
     .in("product_id", productIds);
 
   if (mappingError) throw new Error(mappingError.message);
@@ -94,12 +94,15 @@ async function submitAmazonMcfOrder(orderId: string) {
 
   const amazonItems = items.map((item: any) => {
     const mapping = byProduct.get(Number(item.product_id));
-    if (!mapping?.amazon_mcf_eligible || !mapping.amazon_sku) {
-      throw new Error(`Product ${item.sku} is not configured for Amazon MCF.`);
+    if (!mapping?.amazon_mcf_eligible) {
+      throw new Error(`Product ${item.sku} is not enabled for Amazon MCF.`);
+    }
+    if (!String(item.sku || "").trim()) {
+      throw new Error(`Product ${item.product_name || item.product_id} has no SKU.`);
     }
 
     return {
-      sellerSku: String(mapping.amazon_sku),
+      sellerSku: String(item.sku).trim(),
       sellerFulfillmentOrderItemId: String(item.id),
       quantity: Number(item.quantity),
     };
