@@ -80,23 +80,7 @@ async function submitAmazonMcfOrder(orderId: string) {
   const items = (order.order_items ?? []).filter((item: any) => !item.cancelled_on);
   if (!items.length) throw new Error("Order has no active items to fulfill.");
 
-  const productIds = items.map((item: any) => Number(item.product_id));
-  const { data: mappings, error: mappingError } = await admin
-    .from("product_fulfillment_settings")
-    .select("product_id, amazon_mcf_eligible")
-    .in("product_id", productIds);
-
-  if (mappingError) throw new Error(mappingError.message);
-
-  const byProduct = new Map(
-    (mappings ?? []).map((row: any) => [Number(row.product_id), row])
-  );
-
   const amazonItems = items.map((item: any) => {
-    const mapping = byProduct.get(Number(item.product_id));
-    if (!mapping?.amazon_mcf_eligible) {
-      throw new Error(`Product ${item.sku} is not enabled for Amazon MCF.`);
-    }
     if (!String(item.sku || "").trim()) {
       throw new Error(`Product ${item.product_name || item.product_id} has no SKU.`);
     }
