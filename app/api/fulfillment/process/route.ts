@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { processFulfillmentQueue, syncAmazonMcfOrders } from "@/lib/fulfillment";
+import {
+  processFulfillmentQueue,
+  syncAmazonMcfOrders,
+  syncAmazonMcfPackageTracking,
+} from "@/lib/fulfillment";
 import { syncAmazonMcfReturn } from "@/lib/amazon-mcf-returns";
 
 export async function POST(request: Request) {
@@ -14,6 +18,7 @@ export async function POST(request: Request) {
   try {
     const queued = await processFulfillmentQueue(25);
     const outbound = await syncAmazonMcfOrders(50);
+    const tracking = await syncAmazonMcfPackageTracking(50);
 
     const admin = createAdminClient();
     const { data: returns } = await admin
@@ -40,6 +45,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       queue: queued,
       outbound,
+      tracking,
       returns: {
         processed: (returns ?? []).length,
         synced: returnSynced,
