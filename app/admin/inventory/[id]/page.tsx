@@ -4,7 +4,6 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AdminNav } from "@/components/AdminNav";
 import { saveProductEdit, setLowStockLevel } from "@/app/admin/actions";
-import { setProductsCategory } from "@/app/admin/category-actions";
 
 export const instant = false;
 
@@ -28,7 +27,7 @@ export default async function EditProductPage({
 
   const { data: p } = await supabase
     .from("products")
-    .select("id, product_name, sku, slug, description, price, is_active, product_category_id, product_images(id), inventory(quantity, reserved_quantity, low_stock_threshold)")
+    .select("id, product_name, sku, slug, description, price, is_active, product_images(id), inventory(quantity, reserved_quantity, low_stock_threshold)")
     .eq("id", productId)
     .maybeSingle();
   if (!p) notFound();
@@ -36,11 +35,6 @@ export default async function EditProductPage({
   const inv = Array.isArray(p.inventory) ? p.inventory[0] : p.inventory;
   const images = Array.isArray(p.product_images) ? p.product_images.length : 0;
 
-  const { data: cats } = await supabase
-    .from("product_categories")
-    .select("id, category_name")
-    .eq("is_delete", false)
-    .order("category_name");
 
   const { data: history } = await supabase.rpc("admin_stock_history", { p_product_id: productId });
   const log = (history ?? []) as {
@@ -121,34 +115,6 @@ export default async function EditProductPage({
           </Link>
         </div>
       </form>
-
-      <section className="max-w-3xl rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_16px_46px_rgba(0,0,0,0.06)]">
-        <h2 className="text-lg font-black text-ink">Category</h2>
-        <form
-          action={async (fd) => {
-            "use server";
-            const v = String(fd.get("category") || "");
-            await setProductsCategory([p.id], v ? Number(v) : null);
-          }}
-          className="mt-3 flex flex-wrap items-center gap-3"
-        >
-          <select
-            name="category"
-            defaultValue={p.product_category_id ?? ""}
-            className="rounded-lg border border-black/10 px-3 py-2 text-sm"
-          >
-            <option value="">(no category)</option>
-            {(cats ?? []).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.category_name}
-              </option>
-            ))}
-          </select>
-          <button className="rounded-full bg-ink px-5 py-2 text-sm font-bold text-white hover:bg-brand">
-            Save category
-          </button>
-        </form>
-      </section>
 
       <section className="max-w-3xl rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_16px_46px_rgba(0,0,0,0.06)]">
         <h2 className="text-lg font-black text-ink">Stock</h2>
