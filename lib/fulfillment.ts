@@ -513,3 +513,356 @@ export async function syncAmazonMcfOrders(limit = 50) {
 
   return { processed: (orders ?? []).length, synced, failed };
 }
+
+
+type AmazonPackageTrackingDetails = {
+  packageNumber?: number;
+  trackingNumber?: string;
+  customerTrackingLink?: string;
+  carrierCode?: string;
+  carrierURL?: string;
+  shipDate?: string;
+  estimatedArrivalDate?: string;
+  currentStatus?: string;
+  currentStatusDescription?: string;
+  signedForBy?: string;
+  additionalLocationInfo?: string;
+  trackingEvents?: Array<{
+    eventDate?: string;
+    eventCode?: string;
+    eventDescription?: string;
+  }>;
+};
+
+async function fetchAmazonPackageTrackingDetails(packageNumber: number) {
+  const token = await getAmazonAccessToken();
+  const url = new URL(`${amazonEndpoint()}/fba/outbound/2020-07-01/tracking`);
+  url.searchParams.set("packageNumber", String(packageNumber));
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      "x-amz-access-token": token,
+    },
+    cache: "no-store",
+  });
+
+  const text = await response.text();
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = { raw: text.slice(0, 2000) };
+  }
+
+  if (!response.ok) {
+    const message =
+      json?.errors?.[0]?.message ||
+      json?.message ||
+      `Amazon package tracking request failed with status ${response.status}.`;
+    throw new Error(String(message));
+  }
+
+  return (json?.payload ?? {}) as AmazonPackageTrackingDetails;
+}
+
+function normalizePackageStatus(value: string) {
+  const status = value.trim().toUpperCase().replace(/[\s-]+/g, "_");
+
+  if (status.includes("DELIVERED")) {
+    return {
+      shipment: "delivered",
+      order: "delivered",
+      fulfillment: "delivered",
+    };
+  }
+
+  if (status.includes("OUT_FOR_DELIVERY")) {
+    return {
+      shipment: "out_for_delivery",
+      order: "out_for_delivery",
+      fulfillment: "out_for_delivery",
+    };
+  }
+
+  if (
+    status.includes("UNDELIVERABLE") ||
+    status.includes("RETURNED") ||
+    status.includes("RETURN_TO_SENDER")
+  ) {
+    return {
+      shipment: "exception",
+      order: "exception",
+      fulfillment: "exception",
+    };
+  }
+
+  if (status.includes("DELAY")) {
+    return {
+      shipment: "delayed",
+      order: "shipped",
+      fulfillment: "shipped",
+    };
+  }
+
+  return {
+    shipment: "in_transit",
+    order: "shipped",
+    fulfillment: "shipped",
+  };
+}
+
+function latestTrackingEventDate(details: AmazonPackageTrackingDetails) {
+  const dates = (details.trackingEvents ?? [])
+    .map((event) => event.eventDate)
+    .filter((value): value is string => Boolean(value))
+    .map((value) => new Date(value))
+    .filter((value) => Number.isFinite(value.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime());
+
+  return dates[0]?.toISOString() ?? null;
+}
+
+export async function syncAmazonMcfPackageTracking(limit = 50) {
+  const admin = createAdminClient();
+  const capped = Math.max(1, Math.min(100, Math.trunc(limit)));
+
+  const { data: orders, error } = await admin
+    .from("orders")
+    .select(
+      "id, order_number, status, fulfillment_status, fulfillment_provider_order_id, delivered_on"
+    )
+    .eq("fulfillment_provider", "amazon_mcf")
+    .in("fulfillment_status", ["shipped", "out_for_delivery", "exception"])
+    .order("updated_on", { ascending: true })
+    .limit(capped);
+
+  if (error) throw new Error(error.message);
+
+  let synced = 0;
+  let delivered = 0;
+  let failed = 0;
+
+  for (const order of orders ?? []) {
+    const providerOrderId = String(
+      order.fulfillment_provider_order_id || order.order_number
+    );
+
+    try {
+      const fulfillmentResponse = await fetchAmazonFulfillmentOrder(providerOrderId);
+      const shipments = fulfillmentResponse?.payload?.fulfillmentShipments ?? [];
+      const packageStates: Array<{
+        status: string;
+        deliveredOn: string | null;
+      }> = [];
+
+      for (const shipment of shipments) {
+        const amazonShipmentId = String(shipment.amazonShipmentId || "");
+        const packages = shipment.fulfillmentShipmentPackage ?? [];
+
+        for (const pkg of packages) {
+          const packageNumber = Number(pkg.packageNumber);
+          if (!Number.isInteger(packageNumber) || packageNumber < 0) continue;
+
+          const details = await fetchAmazonPackageTrackingDetails(packageNumber);
+          const currentStatus = String(details.currentStatus || "");
+          const normalized = normalizePackageStatus(currentStatus);
+          const trackingNumber = String(
+            details.trackingNumber || pkg.trackingNumber || ""
+          ).trim();
+          const carrier = String(
+            details.carrierCode || pkg.carrierCode || "Amazon MCF"
+          );
+
+          const deliveredOn =
+            normalized.shipment === "delivered"
+              ? latestTrackingEventDate(details) || new Date().toISOString()
+              : null;
+
+          packageStates.push({
+            status: normalized.shipment,
+            deliveredOn,
+          });
+
+          if (!trackingNumber) continue;
+
+          const { data: existing } = await admin
+            .from("shipments")
+            .select("id, metadata, tracking_url, delivered_on")
+            .eq("order_id", order.id)
+            .eq("tracking_number", trackingNumber)
+            .maybeSingle();
+
+          const metadata =
+            existing?.metadata && typeof existing.metadata === "object"
+              ? (existing.metadata as Record<string, unknown>)
+              : {};
+
+          const patch = {
+            order_id: order.id,
+            carrier,
+            tracking_number: trackingNumber,
+            tracking_url:
+              details.customerTrackingLink ||
+              existing?.tracking_url ||
+              details.carrierURL ||
+              null,
+            status: normalized.shipment,
+            estimated_delivery:
+              details.estimatedArrivalDate ||
+              shipment.estimatedArrivalDateTime ||
+              null,
+            shipped_on: details.shipDate || shipment.shippingDateTime || null,
+            delivered_on: deliveredOn || existing?.delivered_on || null,
+            external_shipment_id: amazonShipmentId
+              ? `${amazonShipmentId}:${packageNumber}`
+              : null,
+            last_event_at: latestTrackingEventDate(details),
+            metadata: {
+              ...metadata,
+              provider: "amazon_mcf",
+              amazon_shipment_id: amazonShipmentId || null,
+              package_number: packageNumber,
+              amazon_tracking_status: currentStatus || null,
+              amazon_tracking_description:
+                details.currentStatusDescription || null,
+              signed_for_by: details.signedForBy || null,
+              additional_location_info:
+                details.additionalLocationInfo || null,
+              tracking_events: (details.trackingEvents ?? []).slice(-25),
+              tracking_synced_at: new Date().toISOString(),
+            },
+            updated_on: new Date().toISOString(),
+          };
+
+          if (existing?.id) {
+            await admin.from("shipments").update(patch).eq("id", existing.id);
+          } else {
+            await admin.from("shipments").insert(patch);
+          }
+        }
+      }
+
+      if (!packageStates.length) {
+        synced += 1;
+        continue;
+      }
+
+      const allDelivered = packageStates.every(
+        (state) => state.status === "delivered"
+      );
+      const anyOutForDelivery = packageStates.some(
+        (state) => state.status === "out_for_delivery"
+      );
+      const anyException = packageStates.some(
+        (state) => state.status === "exception"
+      );
+      const anyDelayed = packageStates.some(
+        (state) => state.status === "delayed"
+      );
+
+      let nextOrderStatus = "shipped";
+      let nextFulfillmentStatus = "shipped";
+
+      if (allDelivered) {
+        nextOrderStatus = "delivered";
+        nextFulfillmentStatus = "delivered";
+      } else if (anyException) {
+        nextOrderStatus = "exception";
+        nextFulfillmentStatus = "exception";
+      } else if (anyOutForDelivery) {
+        nextOrderStatus = "out_for_delivery";
+        nextFulfillmentStatus = "out_for_delivery";
+      }
+
+      const deliveredOn = allDelivered
+        ? packageStates
+            .map((state) => state.deliveredOn)
+            .filter((value): value is string => Boolean(value))
+            .sort()
+            .at(-1) || new Date().toISOString()
+        : null;
+
+      const previousStatus = String(order.status || "");
+      const orderPatch: Record<string, unknown> = {
+        status: nextOrderStatus,
+        fulfillment_status: nextFulfillmentStatus,
+        fulfillment_error: anyDelayed
+          ? "Amazon reports a delivery delay."
+          : anyException
+            ? "Amazon reports a delivery exception."
+            : null,
+        updated_on: new Date().toISOString(),
+      };
+
+      if (allDelivered) {
+        orderPatch.delivered_on = deliveredOn;
+        orderPatch.fulfillment_routing_status = "completed";
+      }
+
+      await admin.from("orders").update(orderPatch).eq("id", order.id);
+
+      if (previousStatus !== nextOrderStatus) {
+        await admin.from("order_status_history").insert({
+          order_id: order.id,
+          from_status: previousStatus,
+          to_status: nextOrderStatus,
+          source: "amazon_mcf_tracking",
+          reason: allDelivered
+            ? "Amazon package tracking reports all packages delivered."
+            : anyOutForDelivery
+              ? "Amazon package tracking reports package out for delivery."
+              : anyException
+                ? "Amazon package tracking reports delivery exception."
+                : anyDelayed
+                  ? "Amazon package tracking reports delivery delay."
+                  : "Amazon package tracking synchronized.",
+        });
+      }
+
+      await admin.from("fulfillment_events").insert({
+        order_id: order.id,
+        provider: "amazon_mcf",
+        event_type: "package_tracking_sync",
+        detail: allDelivered
+          ? "All Amazon MCF packages delivered."
+          : anyOutForDelivery
+            ? "Amazon MCF package out for delivery."
+            : anyException
+              ? "Amazon MCF delivery exception."
+              : anyDelayed
+                ? "Amazon MCF delivery delayed."
+                : "Amazon MCF package tracking synchronized.",
+        payload: {
+          packages: packageStates,
+          delivered_on: deliveredOn,
+        },
+      });
+
+      if (allDelivered && previousStatus !== "delivered") delivered += 1;
+      synced += 1;
+    } catch (caught) {
+      failed += 1;
+      const message =
+        caught instanceof Error
+          ? caught.message
+          : "Amazon MCF package tracking synchronization failed.";
+
+      await admin
+        .from("orders")
+        .update({
+          fulfillment_error: message.slice(0, 2000),
+          updated_on: new Date().toISOString(),
+        })
+        .eq("id", order.id);
+    }
+  }
+
+  return {
+    processed: (orders ?? []).length,
+    synced,
+    delivered,
+    failed,
+  };
+}
