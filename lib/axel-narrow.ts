@@ -112,9 +112,12 @@ export function addNoteSpecs(
   const allClauses = new Set<string>();
   for (const set of clausesOf.values()) for (const c of set) allClauses.add(c);
   const askable = [...allClauses].filter((c) => {
+    if (/pulley/i.test(c)) return false; // handled as the single "Pulley Included" question
     const have = [...clausesOf.values()].filter((set) => set.has(c)).length;
     return have < clausesOf.size; // some parts have it, some do not
   });
+  // Does any part's fitment note mention a pulley? ("Supplied With Pulley", "Without Pulley")
+  const anyPulleyNote = [...clausesOf.values()].some((set) => [...set].some((c) => /pulley/i.test(c)));
 
   for (const p of products) {
     const own = specs.get(p.id) ?? new Map<string, string>();
@@ -149,6 +152,14 @@ export function addNoteSpecs(
     // A part whose notes do not mention the clause (or that has no notes) is the plain one
     const mine = clausesOf.get(p.id);
     for (const c of askable) own.set(`Note: ${clauseText.get(c)}`, mine?.has(c) ? "Yes" : "No");
+
+    // "Pulley Included" has two sources: the spec table and the fitment note. Merge them into
+    // ONE spec so the customer is asked only once. A real spec always wins over the note.
+    if (anyPulleyNote && !own.has("Pulley Included")) {
+      const clause = [...(mine ?? [])].find((c) => /pulley/i.test(c));
+      if (clause) own.set("Pulley Included", /(without|w\/o|\bno\b|non)[ -]*pulley/i.test(clause) ? "No" : "Yes");
+      else own.set("Pulley Included", "No"); // the plain part: its note does not mention a pulley
+    }
 
     // Gasket and O-ring are one thing to the customer ("a seal in the box").
     // Ask about it only when some parts have one and some do not.
@@ -206,6 +217,35 @@ export function readFilters(
   return out;
 }
 
+// Reads EVERY spec answer of the current search, not only the trailing ones, so a
+// free-text message in the middle ("what fits my vehicle?") does not lose the answers.
+// A new vehicle, VIN or engine/trim button starts a new search.
+export function readAllFilters(
+  messages: { role: string; content: string }[],
+): SpecFilter[] {
+  let out: SpecFilter[] = [];
+  for (const m of messages) {
+    if (m.role !== "user") continue;
+    const t = m.content.trim();
+    const hit = t.match(/^Spec:\s*(.+?)\s*=\s*(.+)$/i);
+    if (hit) {
+      const f: SpecFilter = { name: hit[1], value: low(hit[2]) === "not sure" ? null : hit[2].trim() };
+      out = out.filter((x) => x.name !== f.name);
+      out.push(f);
+      continue;
+    }
+    const compact = t.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (
+      /^(Make|Model|Engine|Trim):\s*\S/i.test(t) ||
+      /\b(19[5-9]\d|20[0-4]\d)\b/.test(t) ||
+      /^[A-HJ-NPR-Z0-9]{17}$/.test(compact)
+    ) {
+      out = [];
+    }
+  }
+  return out;
+}
+
 export function isSpecMessage(text: string) {
   return /^Spec:\s*.+=.+$/i.test(text);
 }
@@ -252,6 +292,8 @@ export function narrow(
   if (filters.length >= MAX_QUESTIONS) return { candidates, question: null };
 
   const asked = new Set(filters.map((f) => f.name));
+  // The same question can be stored under several names: treat them as one
+  if ([...asked].some((n) => /pulley/i.test(n))) asked.add("Pulley Included");
   const names = new Set<string>();
   for (const p of candidates) {
     for (const n of specs.get(p.id)?.keys() ?? []) names.add(n);
@@ -295,6 +337,7 @@ export function narrow(
     const score = trimAlways ? (name === "Engine" ? -2 : -1) : Math.max(...groups.values());
     const idx = PREFERRED.indexOf(name);
     let pref = idx === -1 ? 99 : idx;
+    if (/pulley/i.test(name)) pref = -3; // easy to check on the old part, so it comes first
     // Fitment notes that a customer can see on the old part come first
     if (name.startsWith("Note: ")) {
       if (/pulley/i.test(name)) pref = -3;
@@ -336,6 +379,8 @@ export function questionText(q: SpecQuestion, count: number) {
   if (q.name === "Caliper Pistons") return `${lead}How many pistons does your brake caliper have: 1 (single) or 2 (dual)?`;
   if (q.name === "Brake Code") return `${lead}Do you know your brake code?`;
   if (q.name === "Front Disc Size") return `${lead}What is the diameter of your front brake disc (rotor)?`;
+
+  if (q.name === "Pulley Included") return `${lead}Does your old water pump come with the pulley attached?`;
 
   if (q.name.startsWith("Note: ")) {
     return `${lead}${noteQuestion(q.name.slice(6))}`;

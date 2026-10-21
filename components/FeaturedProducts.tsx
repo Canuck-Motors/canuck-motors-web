@@ -4,6 +4,7 @@ import { cacheLife, cacheTag } from "next/cache";
 
 import { createPublicClient } from "@/lib/supabase/public";
 import { ProductCard } from "@/components/ProductCard";
+import { isVideo } from "@/lib/product-images";
 import { PRODUCT_TYPE_ORDER } from "@/lib/product-order";
 
 type FeaturedProduct = {
@@ -65,8 +66,8 @@ async function getFeaturedProducts(): Promise<FeaturedProduct[]> {
       const rows = ((data ?? []) as FeaturedProduct[]).filter(
         (r) => !HIDDEN_SKUS.has((r.sku ?? "").trim().toUpperCase()),
       );
-      const withPhoto = rows.filter((r) => (r as any).product_images?.length);
-      const withoutPhoto = rows.filter((r) => !(r as any).product_images?.length);
+      const withPhoto = rows.filter((r) => (r as any).product_images?.some((i: any) => !isVideo(i.path)));
+      const withoutPhoto = rows.filter((r) => !(r as any).product_images?.some((i: any) => !isVideo(i.path)));
       return [...withPhoto, ...withoutPhoto];
     }),
   );

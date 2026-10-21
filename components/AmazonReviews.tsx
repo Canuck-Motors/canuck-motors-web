@@ -25,7 +25,8 @@ const fmtDate = (d: string) =>
 
 function ReviewCard({ review }: { review: AmazonReview }) {
   return (
-    <article className="group relative flex w-[290px] shrink-0 flex-col gap-4 overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.06] p-6 backdrop-blur-sm transition duration-300 hover:-translate-y-1.5 hover:border-brand/50 hover:bg-white/[0.09] sm:w-[330px]">
+    // Customer reviews stay in the words the customer wrote (not translated)
+    <article data-no-translate className="group relative flex w-[290px] shrink-0 flex-col gap-4 overflow-hidden rounded-[26px] border border-white/10 bg-white/[0.06] p-6 backdrop-blur-sm transition duration-300 hover:-translate-y-1.5 hover:border-brand/50 hover:bg-white/[0.09] sm:w-[330px]">
       <Quote className="absolute -right-2 -top-2 h-20 w-20 rotate-180 text-brand/15 transition duration-300 group-hover:text-brand/30" aria-hidden="true" />
       <div className="relative flex items-center gap-3">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-base font-black text-white">
@@ -220,7 +221,7 @@ export function AmazonReviews() {
 
         <div className="divide-y divide-black/5 px-6 pb-6">
           {newestFirst.map((r, i) => (
-            <article key={i} className="py-5">
+            <article key={i} data-no-translate className="py-5">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 <span className="font-bold text-ink">{r.name}</span>
                 <Stars rating={r.rating} />

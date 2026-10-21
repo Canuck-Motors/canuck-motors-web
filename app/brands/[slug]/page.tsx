@@ -27,7 +27,7 @@ async function getBrand(slug: string) {
     .select("id, model_name, slug")
     .eq("manufacturer_id", brand.id)
     .order("model_name")
-    .limit(200);
+    .limit(1000);
 
   const coverage = await getCoverage();
   const all = models ?? [];

@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import Script from "next/script";
 import Header from "@/components/Header";
 import Navbar from "@/components/Navbar";
 import { Outfit } from "next/font/google";
 import ChatLauncher from "@/components/chat/ChatLauncher";
+import FrenchRuntime from "@/components/i18n/FrenchRuntime";
+import { LANG_BOOT_SCRIPT } from "@/lib/i18n/lang";
 import "./globals.css";
 
 const defaultUrl =
@@ -69,7 +72,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* French visitors: set lang and hide the page until it is translated (max 1.5 s) */}
+        <Script id="lang-boot" strategy="beforeInteractive">{LANG_BOOT_SCRIPT}</Script>
+      </head>
       <body className={`${outfit.variable} ${outfit.className} antialiased`}>
   {/* Header reads the current path (usePathname), so it must stream in */}
   <Suspense fallback={<div className="h-20" aria-hidden="true" />}>
@@ -78,6 +85,7 @@ export default function RootLayout({
   <Navbar />
   {children}
   <ChatLauncher />
+  <FrenchRuntime />
   <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }} />
 </body>
     </html>

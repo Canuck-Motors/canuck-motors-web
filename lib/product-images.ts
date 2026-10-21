@@ -9,7 +9,10 @@ export function imageUrl(path: string) {
     .join("/")}`;
 }
 
-export type ProductImage = { id: number; path: string; url: string };
+// Videos (unboxing clips) live in the same table and bucket; the gallery plays them
+export const isVideo = (path: string) => /\.(mp4|webm|mov|m4v)$/i.test(path);
+
+export type ProductImage = { id: number; path: string; url: string; video?: boolean };
 
 // Lowest sort_order is the main image
 export async function getProductImages(productId: number): Promise<ProductImage[]> {
@@ -24,5 +27,5 @@ export async function getProductImages(productId: number): Promise<ProductImage[
     console.error("Product images lookup failed:", error.message);
     return [];
   }
-  return (data ?? []).map((r: any) => ({ id: r.id, path: r.path, url: imageUrl(r.path) }));
+  return (data ?? []).map((r: any) => ({ id: r.id, path: r.path, url: imageUrl(r.path), video: isVideo(r.path) }));
 }

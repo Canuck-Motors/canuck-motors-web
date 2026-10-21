@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { imageUrl } from "@/lib/product-images";
+import { imageUrl, isVideo } from "@/lib/product-images";
 import { withMaterial } from "@/lib/material";
 import CartInteractive from "@/components/cart/cart-interactive";
 
@@ -105,7 +105,7 @@ export default async function CartPage({ searchParams }: PageProps) {
         return null;
       }
 
-      const mainImage = [...(product.product_images ?? [])].sort(
+      const mainImage = (product.product_images ?? []).filter((i) => !isVideo(i.path)).sort(
         (a, b) => a.sort_order - b.sort_order,
       )[0];
 

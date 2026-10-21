@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import Image from "next/image";
-import { imageUrl } from "@/lib/product-images";
+import { imageUrl, isVideo } from "@/lib/product-images";
 import ReturnPhotos from "@/components/account/ReturnPhotos";
 import {
   cancelOrderItem,
@@ -116,7 +116,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
       supabase.from("products").select("id, slug").in("id", productIds),
     ]);
     for (const r of imgRows ?? []) {
-      if (!thumbByProduct.has(r.product_id)) thumbByProduct.set(r.product_id, imageUrl(r.path));
+      if (!thumbByProduct.has(r.product_id) && !isVideo(r.path)) thumbByProduct.set(r.product_id, imageUrl(r.path));
     }
     for (const r of prodRows ?? []) slugByProduct.set(r.id, String(r.slug ?? r.id));
   }

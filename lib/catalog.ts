@@ -59,7 +59,8 @@ export type CatalogProduct = {
   // Fitment notes for the chosen vehicle (the old site's "Comment" column)
   notes?: string[];
   // Every fitment row of this part for the chosen vehicle (used to tell parts apart)
-  fits?: { trim: string; engine: string; fuel: string; body: string }[];
+  // `comment` is that row's fitment comment, so Axel can read it per row
+  fits?: { trim: string; engine: string; fuel: string; body: string; comment?: string }[];
 };
 
 type Named = { id: number; name: string; slug: string };
@@ -579,9 +580,10 @@ export async function findPartsForVehicle(params: {
             engine: engineName ? engineBase(engineName) : "",
             fuel: engineName ? engineFuel(engineName) : "",
             body: String(f.body_type ?? "").trim(),
+            comment: String(f.comment ?? "").trim(),
           };
         })
-        .filter((x: any) => x.trim || x.engine || x.fuel || x.body),
+        .filter((x: any) => x.trim || x.engine || x.fuel || x.body || x.comment),
     })),
     positions: Array.from(
       new Set(matches.map((p: any) => p.position).filter(Boolean)),
@@ -697,7 +699,12 @@ export async function decodeVin(raw: string): Promise<VinDecoded | VinFailure> {
     const r = json?.Results?.[0];
 
     const year = Number(r?.ModelYear);
-    const make = String(r?.Make ?? "").trim();
+    // NHTSA sends makes in capitals ("VOLKSWAGEN"): show "Volkswagen" (short ones like BMW stay)
+    const rawMake = String(r?.Make ?? "").trim();
+    const make =
+      rawMake.length > 3 && rawMake === rawMake.toUpperCase()
+        ? rawMake.toLowerCase().replace(/(^|[\s-])([a-z])/g, (m) => m.toUpperCase())
+        : rawMake;
     const model = String(r?.Model ?? "").trim();
 
     if (!r || !year || !make || !model) {

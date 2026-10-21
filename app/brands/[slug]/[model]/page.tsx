@@ -33,12 +33,19 @@ async function getModelPage(brandSlug: string, modelSlug: string) {
   if (!model) return null;
 
   // Years this model has fitment for (links go to the exact-vehicle page)
-  const { data: fitYears } = await supabase
-    .from("vehicle_fitments")
-    .select("year ( year )")
-    .eq("manufacturer_id", brand.id)
-    .eq("model_id", model.id)
-    .limit(2000);
+  // Read in pages of 1000 (the database returns at most 1000 rows per request)
+  const fitYears: any[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data } = await supabase
+      .from("vehicle_fitments")
+      .select("year ( year )")
+      .eq("manufacturer_id", brand.id)
+      .eq("model_id", model.id)
+      .order("id")
+      .range(from, from + 999);
+    fitYears.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
 
   const years = Array.from(
     new Set(
@@ -61,7 +68,7 @@ async function getModelPage(brandSlug: string, modelSlug: string) {
     .eq("product_fitments.vehicle_fitments.manufacturer_id", brand.id)
     .eq("product_fitments.vehicle_fitments.model_id", model.id)
     .order("product_name")
-    .limit(200);
+    .limit(1000);
 
   return {
     brand,

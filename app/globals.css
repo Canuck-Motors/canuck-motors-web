@@ -562,3 +562,107 @@ input[type="search"]::-webkit-search-decoration {
   40%, 80% { transform: translateX(6px); }
 }
 .cm-shake { animation: cm-shake 0.45s ease-in-out; }
+
+/* French visitors: page stays hidden until the French text is in place (see lib/i18n/lang.ts) */
+html.i18n-pending body {
+  opacity: 0;
+}
+body {
+  transition: opacity 0.15s ease-out;
+}
+
+/* ------------------------------------------------------------------
+   Category banner (components/CategoryHero.tsx)
+   ------------------------------------------------------------------ */
+.cm-cat-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 80% 90% at 70% 50%, #000 30%, transparent 75%);
+}
+.cm-cat-glow {
+  background: radial-gradient(circle, hsl(var(--brand) / 0.45), hsl(var(--brand) / 0.12) 45%, transparent 70%);
+  filter: blur(10px);
+  animation: cm-cat-pulse 6s ease-in-out infinite;
+}
+@keyframes cm-cat-pulse {
+  0%, 100% { opacity: 0.55; transform: translateY(-50%) scale(0.92); }
+  50%      { opacity: 1;    transform: translateY(-50%) scale(1.06); }
+}
+.cm-cat-sweep {
+  background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.06) 50%, transparent 60%);
+  background-size: 250% 100%;
+  animation: cm-cat-sweep 9s linear infinite;
+}
+@keyframes cm-cat-sweep {
+  from { background-position: 150% 0; }
+  to   { background-position: -100% 0; }
+}
+.cm-cat-dot { animation: cm-cat-blink 1.6s ease-in-out infinite; }
+@keyframes cm-cat-blink { 50% { opacity: 0.35; } }
+
+/* Exploded part: layers spread apart along the depth axis, then close up again */
+.cm-xstack { perspective: 1400px; }
+.cm-xstack-inner {
+  transform-style: preserve-3d;
+  transform: rotateX(56deg) rotateZ(-30deg);
+  animation: cm-xturn 16s ease-in-out infinite alternate;
+}
+.cm-xlayer {
+  transform: translateZ(calc(var(--i) * 5px));
+  filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.55));
+  animation: cm-xexplode 7s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes cm-xexplode {
+  0%, 12%   { transform: translateZ(calc(var(--i) * 5px)); }
+  42%, 72%  { transform: translateZ(calc(var(--i) * 300px / var(--n))); }
+  100%      { transform: translateZ(calc(var(--i) * 5px)); }
+}
+@keyframes cm-xturn {
+  from { transform: rotateX(58deg) rotateZ(-36deg); }
+  to   { transform: rotateX(50deg) rotateZ(-20deg); }
+}
+
+/* Category banner photos: each slide fades in, zooms slowly, fades out; --n slides take turns */
+.cm-cat-photos {
+  mask-image: linear-gradient(90deg, transparent 0%, #000 38%);
+}
+@media (max-width: 767px) {
+  .cm-cat-photos { mask-image: none; opacity: 0.45; }
+}
+.cm-cat-slide {
+  opacity: 0;
+  animation: cm-cat-slide calc(var(--n) * 6s) ease-in-out infinite;
+  animation-delay: calc(var(--i) * 6s);
+}
+.cm-cat-slide:first-child { opacity: 1; }
+@keyframes cm-cat-slide {
+  0%   { opacity: 0; transform: scale(1.02); }
+  8%   { opacity: 1; }
+  33%  { opacity: 1; }
+  41%  { opacity: 0; transform: scale(1.12); }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+
+/* Light banner: white-background product photos melt into the white page */
+.cm-cat-photos-light {
+  mask-image: linear-gradient(90deg, transparent 0%, #000 18%);
+}
+@media (max-width: 767px) {
+  .cm-cat-photos-light { mask-image: none; opacity: 0.18; }
+}
+.cm-cat-glow-light {
+  background: radial-gradient(circle, hsl(var(--brand) / 0.14), hsl(var(--brand) / 0.05) 45%, transparent 70%);
+  animation: cm-cat-pulse 6s ease-in-out infinite;
+}
+
+/* Product photos only fade (no zoom), so nothing spills over the edge */
+.cm-cat-fade .cm-cat-slide { animation-name: cm-cat-fade; }
+@keyframes cm-cat-fade {
+  0%   { opacity: 0; }
+  8%   { opacity: 1; }
+  33%  { opacity: 1; }
+  41%  { opacity: 0; }
+  100% { opacity: 0; }
+}

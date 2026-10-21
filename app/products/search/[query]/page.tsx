@@ -54,7 +54,7 @@ async function searchProducts(searchTerm: string): Promise<SearchProduct[]> {
     .in("id", Array.from(matchedProductIds))
     .eq("is_active", true)
     .eq("is_delete", false)
-    .limit(50);
+    .limit(1000); // all matches (was 50: "water pump" alone matches about 200)
 
   if (error) {
     console.error("Product search result lookup failed:", error.message);
@@ -66,35 +66,80 @@ async function searchProducts(searchTerm: string): Promise<SearchProduct[]> {
 
 const squash = (v: string) => v.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-// "2012 Dodge Grand Caravan": the search box is for parts, so when nothing matches
-// but the text names a vehicle, point the customer to that vehicle's parts.
+// "2012 Dodge Grand Caravan", "ford f150", "mustang": the search box is for parts, so
+// when the text names a vehicle, point the customer to that vehicle's parts.
+type Make = { id: number; manufacturer_name: string; slug: string };
+type ModelChoice = { id: number; model_name: string; slug: string; brand: Make };
+
+async function allMakesAndModels() {
+  "use cache";
+  cacheLife({ stale: 3600, revalidate: 3600, expire: 86400 });
+  cacheTag("vehicle-names");
+  const supabase = createPublicClient();
+  const { data: makes } = await supabase.from("manufacturer").select("id, manufacturer_name, slug");
+  const models: { id: number; model_name: string; slug: string; manufacturer_id: number }[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data } = await supabase
+      .from("models")
+      .select("id, model_name, slug, manufacturer_id")
+      .order("id")
+      .range(from, from + 999);
+    models.push(...(data ?? []));
+    if (!data || data.length < 1000) break;
+  }
+  return { makes: (makes ?? []) as Make[], models };
+}
+
 async function findVehicle(term: string) {
   const supabase = createPublicClient();
   const year = term.match(/\b(19[5-9]\d|20[0-4]\d)\b/)?.[1] ?? null;
-  const text = squash(term.replace(/\b(19[5-9]\d|20[0-4]\d)\b/, ""));
+  // Nicknames people type for a make
+  const named = term
+    .replace(/\b(19[5-9]\d|20[0-4]\d)\b/, "")
+    .trim()
+    .replace(/^(chevy)\b/i, "Chevrolet")
+    .replace(/^(vw)\b/i, "Volkswagen")
+    .replace(/^(mercedes|benz|merc)\b(?!-)/i, "Mercedes-Benz")
+    .replace(/^(caddy)\b/i, "Cadillac");
+  const text = squash(named);
   if (!text) return null;
 
-  const { data: makes } = await supabase.from("manufacturer").select("id, manufacturer_name, slug");
-  const brand = (makes ?? [])
+  const { makes, models } = await allMakesAndModels();
+  const byId = new Map(makes.map((m) => [m.id, m]));
+  const brand = makes
     .filter((m) => text.startsWith(squash(m.manufacturer_name)))
     .sort((a, b) => b.manufacturer_name.length - a.manufacturer_name.length)[0];
-  if (!brand) return null;
 
-  const rest = text.slice(squash(brand.manufacturer_name).length);
-  if (!rest) return { brand, model: null, year, choices: [] as { id: number; model_name: string; slug: string }[] };
+  const toChoice = (m: (typeof models)[number]): ModelChoice => ({
+    id: m.id,
+    model_name: m.model_name,
+    slug: m.slug,
+    brand: byId.get(m.manufacturer_id)!,
+  });
+  const valid = models.filter((m) => byId.get(m.manufacturer_id) && m.slug);
 
-  const { data: models } = await supabase
-    .from("models")
-    .select("id, model_name, slug")
-    .eq("manufacturer_id", brand.id);
+  // A model typed on its own ("mustang", "accord"): exact model name, any make.
+  // Checked as well as the make reading, because some model names start with a
+  // make name: "Accord" starts with "AC", "Ramcharger" with "Ram", "Genesis" is both.
+  const exactAny = valid.filter((m) => squash(m.model_name) === text).map(toChoice);
 
-  // An exact model name wins ("Ram 1500"). "Ram" alone matches several models, so
-  // never pick one for the customer: let them choose.
-  const all = models ?? [];
-  const exact = all.find((m) => squash(m.model_name) === rest);
-  if (exact) return { brand, model: exact, year, choices: [] as typeof all };
+  const rest = brand ? text.slice(squash(brand.manufacturer_name).length) : text;
+  if (brand && !rest) {
+    if (exactAny.length) return { brand, model: null as ModelChoice | null, year, choices: exactAny, brandLink: brand };
+    return { brand, model: null as ModelChoice | null, year, choices: [] as ModelChoice[] };
+  }
 
-  let candidates = all.filter((m) => squash(m.model_name).startsWith(rest));
+  // Models of that make: exact name first ("Ram 1500"), then names starting with it.
+  // "Ram" alone matches several models, so never pick one for the customer: let them choose.
+  let candidates: ModelChoice[] = [];
+  if (brand) {
+    const pool = valid.filter((m) => m.manufacturer_id === brand.id).map(toChoice);
+    const exact = pool.filter((m) => squash(m.model_name) === rest);
+    candidates = exact.length ? exact : pool.filter((m) => squash(m.model_name).startsWith(rest));
+  }
+  for (const m of exactAny) if (!candidates.some((c) => c.id === m.id)) candidates.push(m);
+  if (candidates.length === 0) return brand ? { brand, model: null as ModelChoice | null, year, choices: [] as ModelChoice[] } : null;
+  if (candidates.length === 1) return { brand: candidates[0].brand, model: candidates[0], year, choices: [] as ModelChoice[] };
 
   // With a year, keep only the models that have parts that year
   if (year && candidates.length > 1) {
@@ -104,7 +149,6 @@ async function findVehicle(term: string) {
         .from("vehicle_fitments")
         .select("model_id")
         .eq("year_id", yr.id)
-        .eq("manufacturer_id", brand.id)
         .in("model_id", candidates.map((m) => m.id))
         .limit(1000);
       const have = new Set((fits ?? []).map((f: any) => f.model_id));
@@ -113,9 +157,13 @@ async function findVehicle(term: string) {
     }
   }
 
-  candidates.sort((a, b) => a.model_name.localeCompare(b.model_name, undefined, { numeric: true }));
-  if (candidates.length === 1) return { brand, model: candidates[0], year, choices: [] as typeof all };
-  return { brand, model: null, year, choices: candidates };
+  candidates.sort(
+    (a, b) =>
+      a.brand.manufacturer_name.localeCompare(b.brand.manufacturer_name) ||
+      a.model_name.localeCompare(b.model_name, undefined, { numeric: true }),
+  );
+  if (candidates.length === 1) return { brand: candidates[0].brand, model: candidates[0], year, choices: [] as ModelChoice[] };
+  return { brand: brand ?? null, model: null as ModelChoice | null, year, choices: candidates.slice(0, 40) };
 }
 
 export const instant = false;
@@ -145,23 +193,17 @@ export default async function ProductSearchPage({
 }: PageProps) {
   const { query } = await params;
   const searchTerm = cleanSearchTerm(query);
-  const products = searchTerm ? await searchProducts(searchTerm) : [];
-  const hasYear = /\b(19[5-9]\d|20[0-4]\d)\b/.test(searchTerm);
-  const vehicle = searchTerm && (products.length === 0 || hasYear) ? await findVehicle(searchTerm) : null;
-
-  // A vehicle typed in the search box goes straight to that vehicle's parts
-  if (vehicle && vehicle.choices.length === 0) {
-    if (vehicle.model && vehicle.year) {
-      redirect(`/products/${vehicle.year}/${vehicle.brand.slug}/${vehicle.model.slug}`);
-    }
-    if (products.length === 0) {
-      redirect(
-        vehicle.model
-          ? `/brands/${vehicle.brand.slug}/${vehicle.model.slug}`
-          : `/brands/${vehicle.brand.slug}`,
-      );
-    }
+  // A vehicle typed in the search box ("ford f150", "2014 ford f-150") goes straight to
+  // that vehicle's parts. It is checked first: "f150" also appears inside some unrelated
+  // OE numbers, which used to show 1 random part instead of the 23 that fit an F-150.
+  const vehicle = searchTerm ? await findVehicle(searchTerm) : null;
+  if (vehicle?.model) {
+    const b = vehicle.model.brand.slug;
+    redirect(vehicle.year ? `/products/${vehicle.year}/${b}/${vehicle.model.slug}` : `/brands/${b}/${vehicle.model.slug}`);
   }
+  const pickModel = Boolean(vehicle && (vehicle.choices.length > 1 || ("brandLink" in vehicle && vehicle.brandLink)));
+  const products = searchTerm && !pickModel ? await searchProducts(searchTerm) : [];
+  if (vehicle?.brand && !pickModel && products.length === 0) redirect(`/brands/${vehicle.brand.slug}`);
 
   return (
     <main className="min-h-screen bg-secondary/40">
@@ -181,33 +223,41 @@ export default async function ProductSearchPage({
           </p>
         </header>
 
-        {vehicle && vehicle.choices.length > 1 && (
+        {pickModel && vehicle && (
           <section className="mt-10 rounded-2xl border border-brand/20 bg-white p-6 md:p-8">
             <h2 className="text-xl font-bold text-ink">
-              Which {vehicle.brand.manufacturer_name} model do you mean?
+              Which {vehicle.brand ? `${vehicle.brand.manufacturer_name} ` : ""}model do you mean?
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
               Pick your model to see the parts that fit{vehicle.year ? ` a ${vehicle.year}` : ""}.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
+              {"brandLink" in vehicle && vehicle.brandLink && (
+                <Link
+                  href={`/brands/${vehicle.brandLink.slug}`}
+                  className="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm font-bold text-ink transition hover:border-brand hover:bg-brand hover:text-white"
+                >
+                  All {vehicle.brandLink.manufacturer_name} models
+                </Link>
+              )}
               {vehicle.choices.map((m) => (
                 <Link
                   key={m.id}
                   href={
                     vehicle.year
-                      ? `/products/${vehicle.year}/${vehicle.brand.slug}/${m.slug}`
-                      : `/brands/${vehicle.brand.slug}/${m.slug}`
+                      ? `/products/${vehicle.year}/${m.brand.slug}/${m.slug}`
+                      : `/brands/${m.brand.slug}/${m.slug}`
                   }
                   className="rounded-full border border-black/10 bg-white px-5 py-2.5 text-sm font-bold text-ink transition hover:border-brand hover:bg-brand hover:text-white"
                 >
-                  {vehicle.brand.manufacturer_name} {m.model_name}
+                  {m.brand.manufacturer_name} {m.model_name}
                 </Link>
               ))}
             </div>
           </section>
         )}
 
-        {products.length === 0 && !(vehicle && vehicle.choices.length > 1) ? (
+        {products.length === 0 && !pickModel ? (
           <section className="mt-10 rounded-2xl border bg-white p-10 text-center">
             <h2 className="text-xl font-bold text-ink">No products found</h2>
             <p className="mt-2 text-muted-foreground">

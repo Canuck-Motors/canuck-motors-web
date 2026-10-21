@@ -50,6 +50,7 @@ export async function updateSession(request: NextRequest) {
   const publicPaths = [
   "/login",
   "/api/chat",
+  "/api/translate",
   "/api/mcp",
   "/api/stripe/webhook",
   "/api/stripe/reconcile",

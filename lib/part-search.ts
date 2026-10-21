@@ -54,9 +54,9 @@ export async function findProductIds(
       : `interchange_number.ilike.%${text}%`;
 
     const [p, ic, oe] = await Promise.all([
-      supabase.from("products").select("id").eq("is_active", true).eq("is_delete", false).or(direct).limit(50),
-      supabase.from("product_interchanges").select("product_id").or(icOr).limit(100),
-      supabase.from("product_oe_numbers").select("product_id").or(oeOr).limit(100),
+      supabase.from("products").select("id").eq("is_active", true).eq("is_delete", false).or(direct).limit(1000),
+      supabase.from("product_interchanges").select("product_id").or(icOr).limit(1000),
+      supabase.from("product_oe_numbers").select("product_id").or(oeOr).limit(1000),
     ]);
     return { p, ic, oe };
   };

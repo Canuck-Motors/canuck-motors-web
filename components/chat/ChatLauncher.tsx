@@ -117,7 +117,7 @@ export default function ChatLauncher() {
     <>
       {(open || started) && who && (
         <div ref={boxRef} className={open ? "" : "hidden"}>
-          <ChatWindow key={who} storeKey={`${PREFIX}${who}`} name={firstName} onClose={minimize} />
+          <ChatWindow key={who} storeKey={`${PREFIX}${who}`} name={firstName} signedIn={who !== "guest"} onClose={minimize} />
         </div>
       )}
       {!open && (

@@ -7,7 +7,7 @@ export default function ProductGallery({
   images,
   name,
 }: {
-  images: { id: number; url: string }[];
+  images: { id: number; url: string; video?: boolean }[];
   name: string;
 }) {
   const [active, setActive] = useState(0);
@@ -24,15 +24,27 @@ export default function ProductGallery({
   return (
     <div className="w-full" data-product-image>
       <div className="relative mx-auto aspect-square w-full max-w-[520px]">
-        <Image
-          key={images[active].id}
-          src={images[active].url}
-          alt={`${name} - photo ${active + 1}`}
-          fill
-          priority={active === 0}
-          sizes="(min-width: 1024px) 520px, 90vw"
-          className="object-contain"
-        />
+        {images[active].video ? (
+          <video
+            key={images[active].id}
+            src={images[active].url}
+            controls
+            playsInline
+            preload="metadata"
+            className="h-full w-full rounded-xl bg-black object-contain"
+            aria-label={`${name} - video`}
+          />
+        ) : (
+          <Image
+            key={images[active].id}
+            src={images[active].url}
+            alt={`${name} - photo ${active + 1}`}
+            fill
+            priority={active === 0}
+            sizes="(min-width: 1024px) 520px, 90vw"
+            className="object-contain"
+          />
+        )}
       </div>
       {images.length > 1 && (
         <div className="mt-4 flex flex-wrap justify-center gap-2">
@@ -41,13 +53,19 @@ export default function ProductGallery({
               key={img.id}
               type="button"
               onClick={() => setActive(i)}
-              aria-label={`Show photo ${i + 1}`}
+              aria-label={img.video ? "Play video" : `Show photo ${i + 1}`}
               aria-current={i === active}
               className={`relative h-16 w-16 overflow-hidden rounded-xl border bg-white ${
                 i === active ? "border-brand ring-2 ring-brand/30" : "border-border hover:border-brand/50"
               }`}
             >
-              <Image src={img.url} alt="" fill sizes="64px" className="object-contain p-1" />
+              {img.video ? (
+                <span className="flex h-full w-full items-center justify-center bg-ink text-[11px] font-bold text-white">
+                  &#9654; Video
+                </span>
+              ) : (
+                <Image src={img.url} alt="" fill sizes="64px" className="object-contain p-1" />
+              )}
             </button>
           ))}
         </div>

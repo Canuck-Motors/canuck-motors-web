@@ -41,3 +41,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Axel part-finder test data (regenerate with tests/part-finder/export-snapshot.mjs)
+tests/part-finder/data/*.json
+.axel-backup/

@@ -1,5 +1,6 @@
 "use client";
 
+import LanguageSwitch from "@/components/i18n/LanguageSwitch";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, ShoppingCart, UserRound, LogOut, LayoutDashboard, Package, ChevronDown } from "lucide-react";
@@ -239,6 +240,8 @@ export default function Header() {
                 <span className="hidden sm:inline">Login</span>
               </Link>
             ))}
+
+          <LanguageSwitch />
 
           <Link
             href="/cart"

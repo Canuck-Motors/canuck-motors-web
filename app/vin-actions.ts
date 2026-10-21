@@ -14,7 +14,21 @@ export async function lookupVin(raw: string): Promise<Result> {
   const decoded = await decodeVin(raw);
   if (decoded.status !== "ok") return { ok: false, message: decoded.message };
 
-  const label = `${decoded.year} ${decoded.make} ${decoded.model}`;
+  // Full vehicle for messages: year, make, model, trim and engine (e.g.
+  // "2024 Ford F-150 XLT with 2.7L 6-cylinder"). NHTSA sends makes in capitals.
+  const niceMake = (m: string) =>
+    m.length > 3 && m === m.toUpperCase() ? m.charAt(0) + m.slice(1).toLowerCase() : m;
+  const fullLabel = (makeName: string) =>
+    [
+      decoded.year,
+      niceMake(makeName),
+      decoded.model,
+      decoded.trim,
+      decoded.engine_description ? `with ${decoded.engine_description}` : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  let label = fullLabel(decoded.make);
   const supabase = createPublicClient();
 
   const { data: yearRow } = await supabase
@@ -29,6 +43,8 @@ export async function lookupVin(raw: string): Promise<Result> {
   const make = (makeRows ?? []).find(
     (m: any) => norm(m.manufacturer_name) === norm(decoded.make),
   );
+
+  if (make) label = fullLabel(make.manufacturer_name);
 
   if (!yearRow || !make) {
     return { ok: false, message: `We don't have ${label} in our catalog yet.` };

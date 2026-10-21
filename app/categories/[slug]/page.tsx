@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { cacheLife, cacheTag } from "next/cache";
-import { ProductCard } from "@/components/ProductCard";
+import { CategoryProducts } from "@/components/CategoryProducts";
+import { CategoryHero } from "@/components/CategoryHero";
 import { createPublicClient } from "@/lib/supabase/public";
 
 type PageProps = { params: Promise<{ slug: string }> };
@@ -30,9 +30,20 @@ async function getCategory(slug: string) {
     .eq("is_active", true)
     .eq("is_delete", false)
     .order("product_name")
-    .limit(48);
+    .limit(1000); // every part in the category (was 48, which hid most brake pad kits)
 
-  return { category, products: products ?? [] };
+  const list = products ?? [];
+  const { data: pos } = list.length
+    ? await supabase
+        .from("product_specifications")
+        .select("product_id, spec_value")
+        .eq("spec_name", "Position")
+        .in("product_id", list.map((p) => p.id))
+    : { data: [] as { product_id: number; spec_value: string | null }[] };
+  const posById = new Map((pos ?? []).map((r) => [r.product_id, r.spec_value]));
+  const withPos = list.map((p) => ({ ...p, position: posById.get(p.id) ?? null }));
+
+  return { category, products: withPos };
 }
 
 export async function generateStaticParams() {
@@ -67,19 +78,11 @@ export default async function CategoryPage({ params }: PageProps) {
   return (
     <>
       <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_22%,#fafafa_100%)]">
-        <section className="bg-ink text-white">
-          <div className="cm-container py-14 md:py-20">
-            <Link href="/categories" className="text-sm font-bold text-brand hover:underline">
-              All categories
-            </Link>
-            <h1 className="mt-4 text-4xl font-black tracking-[-0.045em] md:text-6xl">
-              {result.category.category_name}
-            </h1>
-            <p className="mt-5 max-w-2xl text-white/65">
-              Browse available parts, then confirm compatibility with your vehicle before ordering.
-            </p>
-          </div>
-        </section>
+        <CategoryHero
+          slug={result.category.slug ?? slug}
+          name={result.category.category_name}
+          count={result.products.length}
+        />
 
         <section className="cm-container py-12 md:py-16">
           {result.products.length === 0 ? (
@@ -89,11 +92,10 @@ export default async function CategoryPage({ params }: PageProps) {
               </p>
             </div>
           ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {result.products.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
+            <CategoryProducts
+              products={result.products}
+              showPosition={result.category.slug === "disc-brake-pad-set"}
+            />
           )}
         </section>
       </main>

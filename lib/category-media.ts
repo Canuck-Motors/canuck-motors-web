@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { cacheLife, cacheTag } from "next/cache";
 import { createPublicClient } from "@/lib/supabase/public";
-import { imageUrl } from "@/lib/product-images";
+import { imageUrl, isVideo } from "@/lib/product-images";
 import { PRODUCT_TYPE_ORDER } from "@/lib/product-order";
 
 export type CategoryMedia = {
@@ -56,7 +56,7 @@ export async function getCategoryMedia(
 
       const { data } = await q;
       const imgs = ((data?.[0] as any)?.product_images ?? []) as { path: string; sort_order: number }[];
-      const main = [...imgs].sort((a, b) => a.sort_order - b.sort_order)[0];
+      const main = imgs.filter((i) => !isVideo(i.path)).sort((a, b) => a.sort_order - b.sort_order)[0];
       if (main) out[name] = { url: imageUrl(main.path), kind: "photo" };
     }),
   );

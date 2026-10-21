@@ -1,10 +1,12 @@
 "use client";
 
+import { getLang } from "@/lib/i18n/lang";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import AxelIcon from "./AxelIcon";
 
-type Choices = { level: string; options: string[]; spec?: string };
+// `send` (optional) is the exact message each option sends, e.g. "Change my answer"
+type Choices = { level: string; options: string[]; spec?: string; send?: string[] };
 type Msg = {
   role: "user" | "assistant";
   content: string;
@@ -219,10 +221,12 @@ export default function ChatWindow({
   onClose,
   storeKey,
   name,
+  signedIn = false,
 }: {
   onClose: () => void;
   storeKey: string; // one saved chat per person (see ChatLauncher)
   name?: string; // first name of the signed-in customer
+  signedIn?: boolean; // signed in: the chat is also saved to the account (any device)
 }) {
   const WELCOME = useMemo(() => makeWelcome(name ?? ""), [name]);
   // ChatWindow only renders in the browser, so localStorage is safe here
@@ -256,16 +260,65 @@ export default function ChatWindow({
   const endRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<unknown>(null); // last search, so spec answers narrow it
 
-  // Save the chat after every change
+  // Signed in: load the chat saved on the account (other device or an earlier visit)
+  // when this browser has nothing newer, and continue the last vehicle search
+  const accountLoaded = useRef(!signedIn);
+  useEffect(() => {
+    if (!signedIn) return;
+    let alive = true;
+    fetch("/api/chat/history")
+      .then((r) => r.json())
+      .then((j: { messages?: { role: "user" | "assistant"; content: string }[]; context?: unknown }) => {
+        if (!alive) return;
+        const remote = (j.messages ?? []).filter((m) => m && m.content);
+        const local = loadChat(storeKey);
+        if (remote.length && (!local || local.messages.length < remote.length)) {
+          setMessages((cur) => {
+            // Keep anything typed before the history arrived
+            const fresh = cur.filter((m) => !m.old && !m.divider && !WELCOME.includes(m));
+            return [
+              ...remote.map((m) => ({ ...m, old: true })),
+              { role: "assistant" as const, content: "New conversation", divider: true, local: true },
+              ...WELCOME,
+              ...fresh,
+            ];
+          });
+        }
+        if (j.context && !ctxRef.current) ctxRef.current = j.context;
+      })
+      .catch(() => {})
+      .finally(() => {
+        accountLoaded.current = true;
+      });
+    return () => {
+      alive = false;
+    };
+  }, [signedIn, storeKey, WELCOME]);
+
+  // Save the chat after every change (browser; and the account when signed in)
   useEffect(() => {
     if (loading) return;
     saveChat(storeKey, messages);
-  }, [messages, loading, storeKey]);
+    if (!signedIn || !accountLoaded.current) return;
+    const real = messages
+      .filter((m) => !m.welcome && !m.divider && !m.local)
+      .map((m) => ({ role: m.role, content: m.content }));
+    if (!real.some((m) => m.role === "user")) return;
+    const t = setTimeout(() => {
+      fetch("/api/chat/history", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: real.slice(-60), context: ctxRef.current }),
+      }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(t);
+  }, [messages, loading, storeKey, signedIn]);
 
   const newChat = () => {
     try {
       localStorage.removeItem(storeKey);
     } catch {}
+    if (signedIn) fetch("/api/chat/history", { method: "DELETE" }).catch(() => {});
     ctxRef.current = null;
     setMessages([...WELCOME]);
     setStage("menu");
@@ -359,6 +412,7 @@ export default function ChatWindow({
           messages: history,
           context: ctxRef.current,
           page: { path: pathname, title: document.title },
+          lang: getLang(),
         }),
       });
       const data = await res.json();
@@ -524,18 +578,24 @@ export default function ChatWindow({
             <p className="mb-2 text-[13px] font-semibold text-muted-foreground">
               {choices.level === "confirm"
                 ? "Is this your vehicle?"
-                : choices.level === "spec"
+                : choices.spec === "more"
+                  ? "Want me to keep going?"
+                  : choices.send?.length
+                  ? "Want to change something?"
+                  : choices.level === "spec"
                   ? "Choose one"
                   : `Choose your ${LEVEL_LABEL[choices.level] ?? "option"}`}
             </p>
             <div className="flex flex-wrap gap-2">
-              {choices.options.map((option) => (
+              {choices.options.map((option, i) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() =>
                     send(
-                      choices.level === "confirm"
+                      choices.send?.[i]
+                        ? choices.send[i]
+                        : choices.level === "confirm"
                         ? option
                         : choices.level === "spec"
                           ? `Spec: ${choices.spec} = ${option}`
@@ -550,15 +610,18 @@ export default function ChatWindow({
                 </button>
               ))}
               {choices.level === "engine" && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    send("I don't know my engine. Help me use my VIN instead.")
-                  }
-                  className="rounded-full border border-ink/20 bg-ink px-3.5 py-2 text-[13px] font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand"
-                >
-                  I don&apos;t know - use my VIN
-                </button>
+                <>
+                  <button type="button" onClick={() => send("Not sure")} className={chip}>
+                    Not sure
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => send("I want to find parts using my VIN")}
+                    className="rounded-full border border-ink/20 bg-ink px-3.5 py-2 text-[13px] font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand"
+                  >
+                    Use my VIN
+                  </button>
+                </>
               )}
             </div>
           </div>

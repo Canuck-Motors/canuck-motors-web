@@ -152,7 +152,10 @@ export async function generateMetadata({
     `View ${product.product_name} from Canuck Motors, including product details and vehicle compatibility information.`;
 
   return {
-    title: product.title_tag?.trim() || product.product_name,
+    // Title tags already end in "| Canuck Motors": don't let the layout add it twice
+    title: /canuck motors/i.test(product.title_tag ?? "")
+      ? { absolute: product.title_tag!.trim() }
+      : product.title_tag?.trim() || product.product_name,
     description,
     alternates: {
       canonical: canonicalPath,
@@ -209,7 +212,7 @@ export default async function ProductDetailPage({
       name: "Canuck Motors",
     },
     category: categoryName || undefined,
-    ...(images.length ? { image: images.map((i) => i.url) } : {}),
+    ...(images.some((i) => !i.video) ? { image: images.filter((i) => !i.video).map((i) => i.url) } : {}),
     ...(specs.length
       ? {
           additionalProperty: specs.map((x) => ({

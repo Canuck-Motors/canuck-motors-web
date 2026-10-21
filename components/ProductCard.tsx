@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { withMaterial } from "@/lib/material";
 import Link from "next/link";
-import { imageUrl } from "@/lib/product-images";
+import { imageUrl, isVideo } from "@/lib/product-images";
 import { ArrowUpRight } from "lucide-react";
 
 type ProductCardProps = {
@@ -22,7 +22,7 @@ export function ProductCard({ product }: ProductCardProps) {
     : `/product/${product.id}`;
 
   // Main photo = lowest sort_order
-  const main = [...(product.product_images ?? [])].sort(
+  const main = (product.product_images ?? []).filter((i) => !isVideo(i.path)).sort(
     (a, b) => a.sort_order - b.sort_order,
   )[0];
 

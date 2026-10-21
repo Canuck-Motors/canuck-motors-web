@@ -8,16 +8,18 @@ import {
   searchCatalog,
   type CatalogProduct,
 } from "@/lib/catalog";
+import { isSpecMessage } from "@/lib/axel-narrow";
 import {
-  addNoteSpecs,
-  getSpecsForProducts,
-  isSpecMessage,
-  narrow,
-  notSureAboutEverything,
-  questionText,
-  readFilters,
-  type SpecFilter,
-} from "@/lib/axel-narrow";
+  findPart,
+  matchPartNumber,
+  readAnswers,
+  interpretText,
+  DEFAULT_MAX_QUESTIONS,
+  NOT_SURE,
+  type Answer,
+  type FinderResult,
+} from "@/lib/part-finder";
+import { getRefs, getSpecs } from "@/lib/part-finder-data";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CHAT_MODEL ?? "claude-haiku-4-5-20251001";
@@ -59,6 +61,9 @@ Other rules:
 - search_catalog does NOT confirm fitment: say so and ask for the vehicle or VIN to confirm.
 - Always pass the customer's part in the "part" field of the vehicle and VIN tools. Never say a part is "in stock" or "available".
 - If the customer asks for a category list, use list_categories.
+- If the customer says a question was repeated or asks what fits their vehicle, say sorry in one short sentence and call find_parts_for_vehicle again with the details of the active search (given below when there is one). Never claim a part fits or is shown unless a tool result returned it.
+- Whenever you mention the customer's vehicle, give it in full: year, make, model, trim and engine (litres and cylinders) when known, e.g. "2024 Ford F-150 XLT with the 2.7L 6-cylinder".
+- If the customer sends a VIN before saying which part they need, say what it decodes to (in full) and ask which part they need. Never say whether we have parts for the vehicle until a find_parts tool with the part has returned.
 - Politely decline unrelated topics.`;
 
 const tools: Anthropic.ToolUnion[] = [
@@ -132,11 +137,18 @@ const tools: Anthropic.ToolUnion[] = [
   },
 ];
 
+const realPart = (part: unknown) => {
+  const p = String(part ?? "").trim();
+  return !!p && !/^<.*>$/.test(p) && !/^(unknown|n\/?a|none|any|all|part|parts|null|undefined|\?+)$/i.test(p);
+};
+
 async function runTool(name: string, input: any) {
   try {
+    // No real part yet (empty, or a placeholder the model filled in such as "<unknown>"):
+    // ask the customer instead of searching
     if (
       (name === "find_parts_for_vehicle" || name === "find_parts_by_vin") &&
-      !String(input.part ?? "").trim()
+      !realPart(input.part)
     ) {
       return {
         status: "need_part",
@@ -203,6 +215,7 @@ function formatProducts(
   total: number,
   heading: string | null,
   vehicleUrl: string | null,
+  detailLines?: Map<number, string[]>,
 ) {
   const lines = items.map((p) => {
     const label = linkLabel(
@@ -216,8 +229,9 @@ function formatProducts(
     // When there are several parts, show what makes each one different.
     // Pieces that only repeat the vehicle (trim codes like STX, fuel like FLEX) are dropped.
     const repeated = /^(all|gas|flex|flexfuel|ffv|e85|cng|lpg|propane|diesel|hybrid|electric|alltypes|none)$/i;
-    const details =
-      items.length > 1 && p.notes?.length
+    const details = detailLines
+      ? (detailLines.get(p.id) ?? [])
+      : items.length > 1 && p.notes?.length
         ? Array.from(
             new Set(
               p.notes[0]
@@ -233,7 +247,7 @@ function formatProducts(
   const out: string[] = [];
   if (heading) out.push(heading);
   out.push(...lines);
-  if (items.length > 1 && lines.some((l) => l.includes("\n"))) {
+  if (!detailLines && items.length > 1 && lines.some((l) => l.includes("\n"))) {
     out.push("Compare the details above with your old part, then tap the one that matches.");
   }
 
@@ -246,69 +260,175 @@ function formatProducts(
 
 type Ctx = { tool: "find_parts_for_vehicle" | "find_parts_by_vin"; input: any };
 
-// Narrows a vehicle result with the customer's spec answers.
-// The reply text for questions and single matches is written by the server,
+// Narrows a vehicle result with the customer's answers (lib/part-finder.ts).
+// Questions, answer options and the recommendation are built from the real data of
+// the parts that are still possible, and the reply text is written by the server,
 // so Axel can never claim a part fits when the data does not say so.
-async function present(out: any, filters: SpecFilter[]) {
+type Presented = {
+  shown: CatalogProduct[];
+  total: number;
+  choices: null | { level: string; options: string[]; spec?: string; send?: string[] };
+  heading: string | null;
+  override: string | null;
+  lines?: Map<number, string[]>;
+};
+
+// Answers that are already known from the search itself
+function presetAnswers(input: any, answers: Answer[]): Answer[] {
+  const out = [...answers];
+  // Customer said they don't know the engine: never ask for it again
+  if (input?.any_engine && !out.some((a) => a.name === "Engine")) out.unshift({ name: "Engine", value: null });
+  return out;
+}
+
+async function narrowResult(out: any, answers: Answer[], input?: any, maxQuestions?: number) {
   const all: CatalogProduct[] = out.products ?? [];
-  const specs = await getSpecsForProducts(all.map((p) => p.id));
-  addNoteSpecs(specs, all); // Position, vehicle details + facts from the fitment notes
-  let { candidates, question } = narrow(all, specs, filters);
-  let note: string | null = null;
+  const ids = all.map((p) => p.id);
+  const [specs, refs] = await Promise.all([getSpecs(ids), getRefs(ids)]);
+  const r = findPart(all, specs, presetAnswers(input, answers), { refs, vehicle: out.vehicle, maxQuestions });
+  if (r.issues.length) console.warn("Fitment data issues:", JSON.stringify(r.issues).slice(0, 600));
+  return { r, specs, refs, all };
+}
 
-  if (candidates.length === 0) {
-    candidates = all;
-    ({ question } = narrow(all, specs, []));
-    note = "No part matched that answer exactly, so here is everything that fits your vehicle.";
+// The detail lines under each part: why it matches, what sets it apart, what to check
+function detailLines(r: FinderResult): Map<number, string[]> {
+  const map = new Map<number, string[]>();
+  for (const p of r.candidates) {
+    const d = r.details.get(p.id);
+    if (!d) continue;
+    const lines: string[] = [];
+    if (r.candidates.length > 1) lines.push(...d.differences.slice(0, 5));
+    else lines.push(...d.differences.filter((x) => !/^Position:/.test(x)).slice(0, 4));
+    if (d.unconfirmed.length) lines.push(`Not confirmed by our data: ${d.unconfirmed.join("; ")}`);
+    if (d.refs.length && r.status === "ambiguous") lines.push(`OE: ${d.refs.join(", ")}`);
+    map.set(p.id, lines);
   }
+  return map;
+}
 
+// After DEFAULT_MAX_QUESTIONS questions Axel shows the result; the customer can ask it to
+// keep going (button or typed), which allows that many more questions each time.
+const MORE_TEXT = "Keep asking me questions to find the exact part";
+const MORE =
+  /\b(keep asking|ask (me )?more|more questions|(more|most) accurate|exact (part|product|one|pump)|narrow (it )?down)\b/i;
+
+function questionLimit(history: { role: string; content: string }[]) {
+  let extra = 0;
+  for (const m of history) {
+    if (m.role !== "user") continue;
+    const t = m.content.trim();
+    const compact = t.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (/^(Make|Model|Engine|Trim):/i.test(t) || /\b(19[5-9]\d|20[0-4]\d)\b/.test(t) || /^[A-HJ-NPR-Z0-9]{17}$/.test(compact)) extra = 0;
+    else if (MORE.test(t)) extra++;
+  }
+  return DEFAULT_MAX_QUESTIONS * (1 + extra);
+}
+
+async function present(out: any, answers: Answer[], input?: any, maxQuestions?: number): Promise<Presented> {
+  const { r } = await narrowResult(out, answers, input, maxQuestions);
   const vehicle = out.vehicle as string | undefined;
-  const base = {
-    shown: candidates.slice(0, 8),
-    total: candidates.length,
-    choices: null as null | { level: string; options: string[]; spec?: string },
-    heading: vehicle ? `Matched to your ${vehicle}:` : null,
-    override: note,
+  const base: Presented = {
+    shown: r.candidates.slice(0, 8) as CatalogProduct[],
+    total: r.candidates.length,
+    choices: null,
+    heading: null,
+    override: r.message,
+    lines: detailLines(r),
   };
 
-  if (candidates.length === 1) {
-    base.heading = vehicle ? `Best match for your ${vehicle}:` : "Best match:";
-    base.override = "This is the part that fits.";
-  } else if (question) {
-    // A question is waiting: show only the question and its buttons,
-    // the parts appear once the customer has answered.
-    base.shown = [];
-    base.heading = null;
-    base.override = questionText(question, candidates.length);
-    base.choices = {
-      level: "spec",
-      spec: question.name,
-      options:
-        question.name === "Position"
-          ? question.options.some((o) => /front\s*(and|&)\s*rear/i.test(o))
-            ? question.options.slice(0, 10) // the kit option already covers front + rear
-            : [...question.options.slice(0, 10), "All"] // All = show every part
-          : [...question.options.slice(0, 10), "Not sure"],
-    };
+  // Limit reached and more could be asked: offer to keep going
+  if (r.moreQuestions) {
+    base.choices = { level: "spec", spec: "more", options: ["Yes, keep asking"], send: [MORE_TEXT] };
   }
-  // Several parts left, and "Not sure" to every question: do not guess.
-  if (candidates.length > 1 && !question && notSureAboutEverything(filters)) {
-    base.override =
-      "I could not narrow it down because you are not sure about the details. To get the exact part, please check your brake code with your vehicle's dealership (or paste your VIN here) and I will pick the right one. These are the parts that could fit:";
-  }
-  // Several parts are still possible and nothing more can be asked: say so plainly
-  if (candidates.length > 1 && !question && filters.length > 0 && !notSureAboutEverything(filters)) {
-    const anyNotSure = filters.some((f) => f.value === null);
-    base.override = anyNotSure
-      ? "I can't confirm which of these fits with the details available, so I won't pick one for you. Please check the fitment table on each part's page, or paste your VIN or call us and we'll verify it. These parts could fit:"
-      : `All ${candidates.length} of these fit your vehicle. They are different builds of the same part, so go by the details below and your budget:`;
-    base.shown = [...candidates].sort((a, b) => Number(a.price ?? 0) - Number(b.price ?? 0)).slice(0, 8);
-    base.heading = null;
+
+  switch (r.status) {
+    case "question":
+      // Only the question and its buttons; the parts appear once it is answered
+      base.shown = [];
+      base.choices = { level: "spec", spec: r.question!.name, options: r.question!.options };
+      break;
+    case "match":
+      base.heading = vehicle ? `Best match for your ${vehicle}:` : "Best match:";
+      break;
+    case "likely":
+      base.heading = r.candidates.length > 1 ? "Best supported first:" : "Most likely part (please verify):";
+      break;
+    case "equivalent":
+      base.shown = [...base.shown].sort((a, b) => Number(a.price ?? 0) - Number(b.price ?? 0));
+      base.heading = "These all fit, based on your answers:";
+      break;
+    case "ambiguous":
+      base.heading = "Possible parts (not confirmed):";
+      break;
+    case "none": {
+      base.shown = [];
+      // Let the customer take back the last answer ("Not sure" replaces it)
+      const last = [...r.answers].reverse().find((a) => a.value !== null && a.name !== "Engine");
+      if (last) {
+        base.choices = {
+          level: "spec",
+          spec: last.name,
+          options: [`Change my answer to "${last.name}"`],
+          send: [`Spec: ${last.name} = ${NOT_SURE}`],
+        };
+      }
+      break;
+    }
   }
   return base;
 }
 
-type Choices = { level: string; options: string[]; spec?: string } | null;
+// Customer typed a number from the old part in the middle of a vehicle search:
+// check it against the OE / interchange numbers of the parts that fit the vehicle.
+async function presentPartNumber(out: any, answers: Answer[], text: string, input?: any): Promise<Presented | null> {
+  const { r, specs, refs, all } = await narrowResult(out, answers, input);
+  const hits = matchPartNumber(all, specs, refs, text);
+  if (!hits.length) return null;
+  const vehicle = out.vehicle ? ` your ${out.vehicle}` : " your vehicle";
+  const stillOk = hits.filter((h) => r.candidates.some((c) => c.id === h.product.id));
+  if (hits.length === 1) {
+    const h = hits[0];
+    return {
+      shown: [h.product as CatalogProduct],
+      total: 1,
+      choices: null,
+      heading: "Matched by your part number:",
+      override: stillOk.length
+        ? `That number matches ${h.via}, and this part is listed for${vehicle}.`
+        : `That number matches ${h.via}. This part is listed for${vehicle}, but it does not agree with one of your earlier answers, so please double-check those details before ordering.`,
+    };
+  }
+  return {
+    shown: hits.map((h) => h.product as CatalogProduct),
+    total: hits.length,
+    choices: null,
+    heading: "These parts carry that number:",
+    override: `That number is listed on ${hits.length} of our parts for${vehicle}, so it does not settle it on its own.`,
+    lines: new Map(hits.map((h) => [h.product.id, [`matches ${h.via}`]])),
+  };
+}
+
+// A number from the old part: 5+ characters with digits, and not a year/vehicle or VIN
+function looksLikePartNumber(text: string) {
+  const t = text.trim();
+  if (isSpecMessage(t) || /^(Make|Model|Engine|Trim):/i.test(t)) return false;
+  const compact = t.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (/^[A-HJ-NPR-Z0-9]{17}$/.test(compact)) return false;
+  return t.split(/[\s,;/]+/).some((w) => {
+    const n = w.replace(/[^A-Za-z0-9]/g, "");
+    return n.length >= 5 && /\d/.test(n) && !/^(19|20)\d\d$/.test(n);
+  });
+}
+
+type Choices = { level: string; options: string[]; spec?: string; send?: string[] } | null;
+
+// Customer asks again for the result of the current search ("what fits my vehicle?")
+// or complains about a repeated question. Answered by the server from the saved search.
+const RECAP =
+  /\b(what\s+(fits|fit|parts)|show\s+(me\s+)?(the\s+)?(parts|results|options|them)|same\s+question|asked?\s+(me\s+)?(that\s+)?(twice|again)|already\s+(told|answered|said)|repeat(ed|ing)?)\b/i;
+const COMPLAINT = /\b(same|twice|again|already|repeat(ed|ing)?)\b/i;
+const samePart = (a?: string, b?: string) =>
+  !a || !b || a.toLowerCase().replace(/[^a-z]/g, "") === b.toLowerCase().replace(/[^a-z]/g, "");
 
 export async function POST(req: Request) {
   const declaredLength = Number(req.headers.get("content-length") || 0);
@@ -341,6 +461,30 @@ export async function POST(req: Request) {
       }. If they ask where they are, describe the page in plain words (for example "the product page for ...", "your cart", "the Brands page", "the home page"). If they are on /product/<slug>, the slug is usually the part number, so you can look it up with search_catalog when they ask about "this part". Never say a part fits their vehicle from the page alone.`
     : "";
 
+  // Tell the model which search is running and what the customer already answered, so a
+  // free-text message in the middle of the flow does not lose the vehicle.
+  const rawHistory = body.messages.map((m: any) => ({
+    role: String(m?.role),
+    content: String(m?.content ?? "").slice(0, 1000),
+  }));
+  let answeredSoFar = readAnswers(rawHistory);
+  const activeNote =
+    body.context?.input && typeof body.context.input === "object"
+      ? `\n\nActive search (do not ask for these details again): ${JSON.stringify(body.context.input).slice(0, 400)}${
+          answeredSoFar.length
+            ? `. Questions the customer already answered: ${answeredSoFar
+                .map((f) => `${f.name} = ${f.value ?? "not sure"}`)
+                .join("; ")}`
+            : ""
+        }.`
+      : "";
+
+  // French site: Axel answers in French (the customer may also write in French)
+  const langNote =
+    body.lang === "fr"
+      ? "\n\nThe customer is using the French version of the site. Always reply in Canadian French (Quebec). Keep part numbers, brand and model names, VINs and links unchanged. Tool inputs (part names, vehicle names, spec answers) stay in English as the catalog expects. The customer may write in French: understand it."
+      : "";
+
   // Keep only the last 12 messages, trimmed, to limit cost and abuse
   const messages: Anthropic.MessageParam[] = body.messages
     .slice(-12)
@@ -368,24 +512,59 @@ export async function POST(req: Request) {
       : null;
   const lastText = String(messages[messages.length - 1].content);
 
-  if (ctx && isSpecMessage(lastText)) {
-    const out: any = await runTool(ctx.tool, ctx.input);
+  const partNumberTyped = !!ctx && looksLikePartNumber(lastText);
+
+  // A typed answer in the middle of a search ("if I said no pulley?", "it's chain driven")
+  // counts like a button: it is matched against the real values of the vehicle's parts.
+  let typedAnswer: Answer | null = null;
+  let ctxOut: any = null;
+  const compactLast = lastText.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (
+    ctx &&
+    !isSpecMessage(lastText) &&
+    !partNumberTyped &&
+    !/^(Make|Model|Engine|Trim):/i.test(lastText) &&
+    !/\b(19[5-9]\d|20[0-4]\d)\b/.test(lastText) &&
+    !/^[A-HJ-NPR-Z0-9]{17}$/.test(compactLast)
+  ) {
+    const o: any = await runTool(ctx.tool, ctx.input);
+    if (o?.status === "ok") {
+      const products = o.products ?? [];
+      const specs = await getSpecs(products.map((p: any) => p.id));
+      const interpret = (t: string) => interpretText(products, specs, t);
+      answeredSoFar = readAnswers(rawHistory, interpret);
+      typedAnswer = interpret(lastText);
+      ctxOut = o;
+    }
+  }
+
+  const maxQuestions = questionLimit(rawHistory);
+  if (ctx && (isSpecMessage(lastText) || RECAP.test(lastText) || partNumberTyped || typedAnswer || MORE.test(lastText))) {
+    const out: any = ctxOut ?? (await runTool(ctx.tool, ctx.input));
     if (out?.status === "ok") {
-      const filters = readFilters(
-        body.messages.map((m: any) => ({
-          role: String(m?.role),
-          content: String(m?.content ?? "").slice(0, 1000),
-        })),
-      );
-      const r = await present(out, filters);
-      return NextResponse.json({
-        reply: [r.override, formatProducts(r.shown, r.total, r.heading, null)]
-          .filter(Boolean)
-          .join("\n\n"),
-        products: r.shown,
-        choices: r.choices,
-        context: ctx,
-      });
+      // A number from the old part settles it when one of the vehicle's parts carries it;
+      // otherwise the message goes on to Axel (catalog / web search) as before.
+      const r = partNumberTyped
+        ? await presentPartNumber(out, answeredSoFar, lastText, ctx.input)
+        : await present(out, answeredSoFar, ctx.input, maxQuestions);
+      if (r) {
+        const sorry = typedAnswer
+          ? `Got it: ${typedAnswer.name.replace(/^Has: /, "")} = ${typedAnswer.value}. `
+          : !isSpecMessage(lastText) && !partNumberTyped && COMPLAINT.test(lastText)
+            ? "Sorry about that. "
+            : "";
+        return NextResponse.json({
+          reply: [
+            r.override ? sorry + r.override : sorry.trim() || null,
+            formatProducts(r.shown, r.total, r.heading, null, r.lines),
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          products: r.shown,
+          choices: r.choices,
+          context: ctx,
+        });
+      }
     }
   }
 
@@ -421,7 +600,7 @@ export async function POST(req: Request) {
       const res = await client.messages.create({
         model: MODEL,
         max_tokens: 1200,
-        system: SYSTEM + pageNote,
+        system: SYSTEM + pageNote + activeNote + langNote,
         tools,
         messages,
         // First step only: a vehicle answer MUST go through the lookup, so
@@ -452,18 +631,26 @@ export async function POST(req: Request) {
         let outShown = shown;
         let outTotal = shownTotal;
         let outHeading = heading;
+        let outLines: Map<number, string[]> | undefined;
 
         if (lastOut) {
-          const r = await present(lastOut, []);
+          // Keep the customer's earlier answers when this is the same search
+          const sameSearch = samePart(lastCtx?.input?.part, ctx?.input?.part);
+          const r = await present(lastOut, sameSearch ? answeredSoFar : [], lastCtx?.input, maxQuestions);
           outShown = r.shown;
           outTotal = r.total;
           outHeading = r.heading;
+          outLines = r.lines;
           if (r.choices) choices = r.choices;
-          if (r.override) replyText = r.override;
+          if (r.override) {
+            // Keep what the VIN decoded to (with the trim), then the server-written result
+            const vin = lastOut.vin_summary ? `Your VIN reads as a ${lastOut.vin_summary}. ` : "";
+            replyText = vin + r.override;
+          }
         }
 
         const list = outShown.length
-          ? "\n\n" + formatProducts(outShown, outTotal, outHeading, vehicleUrl)
+          ? "\n\n" + formatProducts(outShown, outTotal, outHeading, vehicleUrl, outLines)
           : "";
 
         return NextResponse.json({
@@ -484,7 +671,7 @@ export async function POST(req: Request) {
           const toolInput: any = { ...(block.input as any) };
           const isVehicleTool =
             block.name === "find_parts_for_vehicle" || block.name === "find_parts_by_vin";
-          if (isVehicleTool && !String(toolInput.part ?? "").trim()) {
+          if (isVehicleTool && !realPart(toolInput.part)) {
             const before = lastCtx?.input?.part ?? ctx?.input?.part;
             if (before) toolInput.part = before;
           }
@@ -521,7 +708,7 @@ export async function POST(req: Request) {
           }
 
           const out: any = await runTool(block.name, toolInput);
-          if (isVehicleTool && String(toolInput.part ?? "").trim()) {
+          if (isVehicleTool && realPart(toolInput.part)) {
             // Remember the search (also while we are still asking for the engine)
             lastCtx = { tool: block.name as Ctx["tool"], input: toolInput };
           }
@@ -567,12 +754,30 @@ export async function POST(req: Request) {
                       ? `Which model is your ${toolInput.year ?? ""} ${toolInput.make ?? ""}?`.replace(/\s+/g, " ")
                       : "Which make is it?";
             }
+            // Nothing in the catalog for this vehicle: the server words the reply, always with
+            // the full vehicle (VIN: year, make, model, trim, engine) and the part asked for.
+            const noParts =
+              out?.status === "no_products" ||
+              (out?.status === "not_found" && (out.level === "year" || out.level === "model"));
+            if (noParts && realPart(toolInput.part)) {
+              const partName = String(toolInput.part ?? "part").trim().toLowerCase() || "part";
+              const typed = [toolInput.year, toolInput.make, toolInput.model, toolInput.engine, toolInput.trim]
+                .filter(Boolean)
+                .join(" ");
+              const veh = out.vin_summary || typed || "this vehicle";
+              forcedReply =
+                (out.vin_summary ? `Your VIN decodes to a ${out.vin_summary}. ` : "") +
+                `We don't have a ${partName} for the ${veh} in our catalog yet, so I can't recommend one. ` +
+                `Our team can check if one is coming or find an alternative for you.`;
+            }
             if (
               Array.isArray(out?.options) &&
               out.options.length > 0 &&
               optionLevels.includes(out.level) &&
               (out.status === "choose" ||
-                (out.status === "not_found" && out.level !== "make"))
+                // Not found: buttons only for a mistyped engine or trim. Other models of the
+                // same make are not offered: they may not have this part either.
+                (out.status === "not_found" && out.level !== "make" && out.level !== "model"))
             ) {
               choices = { level: out.level, options: out.options.slice(0, 12) };
             }

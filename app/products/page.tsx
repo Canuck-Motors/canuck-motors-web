@@ -25,11 +25,12 @@ async function getProducts() {
     .eq("is_active", true)
     .eq("is_delete", false)
     .order("product_name")
-    .limit(300);
+    .limit(1000);
 
   if (error) throw new Error("Unable to load products.");
   // Water pumps first, then brake pads, timing belt kits, brake shoes
-  return sortByTypeOrder(data ?? []).slice(0, 48);
+  // Every live part (it used to stop at 48, hiding most of the catalog)
+  return sortByTypeOrder(data ?? []);
 }
 
 export default async function ProductsPage() {
