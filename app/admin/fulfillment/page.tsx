@@ -19,17 +19,8 @@ export default async function FulfillmentAdminPage() {
 
   const admin = createAdminClient();
 
-  const [settingsRes, productsRes, mappingsRes, jobsRes] = await Promise.all([
+  const [settingsRes, jobsRes] = await Promise.all([
     admin.from("fulfillment_settings").select("*").eq("id", 1).single(),
-    admin
-      .from("products")
-      .select("id, sku, product_name, is_active")
-      .eq("is_delete", false)
-      .order("sku")
-      .limit(2000),
-    admin
-      .from("product_fulfillment_settings")
-      .select("product_id, amazon_sku, amazon_mcf_eligible"),
     admin
       .from("fulfillment_jobs")
       .select("id, order_id, provider, status, attempts, last_error, updated_on, orders(order_number)")
@@ -38,22 +29,6 @@ export default async function FulfillmentAdminPage() {
   ]);
 
   if (settingsRes.error) throw new Error("Unable to load fulfillment settings.");
-
-  const mappings = new Map(
-    (mappingsRes.data ?? []).map((row) => [Number(row.product_id), row])
-  );
-
-  const products = (productsRes.data ?? []).map((product) => {
-    const mapping = mappings.get(Number(product.id));
-    return {
-      id: Number(product.id),
-      sku: String(product.sku ?? ""),
-      name: String(product.product_name ?? ""),
-      active: Boolean(product.is_active),
-      amazonSku: String(mapping?.amazon_sku ?? ""),
-      amazonMcfEligible: Boolean(mapping?.amazon_mcf_eligible),
-    };
-  });
 
   const jobs = (jobsRes.data ?? []).map((job) => {
     const order = Array.isArray(job.orders) ? job.orders[0] : job.orders;
@@ -101,7 +76,6 @@ export default async function FulfillmentAdminPage() {
               process.env.AMAZON_SP_API_CLIENT_SECRET &&
               process.env.AMAZON_SP_API_REFRESH_TOKEN
           )}
-          products={products}
           jobs={jobs}
         />
       </div>

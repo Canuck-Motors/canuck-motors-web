@@ -2,26 +2,17 @@
 
 import { useState, useTransition } from "react";
 import {
+  importAmazonTrackingSheet,
   processAmazonMcfQueueNow,
   saveFulfillmentSettings,
-  saveProductFulfillment,
 } from "@/app/admin/fulfillment/actions";
 
 type Provider = "amazon_mcf" | "delivery_partner";
 type Speed = "Standard" | "Expedited" | "Priority";
 
-type Product = {
-  id: number;
-  sku: string;
-  name: string;
-  amazonSku: string;
-  amazonMcfEligible: boolean;
-};
-
 export default function FulfillmentSettings({
   initialSettings,
   amazonConfigured,
-  products: initialProducts,
 }: {
   initialSettings: {
     amazonMcfEnabled: boolean;
@@ -30,11 +21,9 @@ export default function FulfillmentSettings({
     amazonShippingSpeed: Speed;
   };
   amazonConfigured: boolean;
-  products: Product[];
   jobs: unknown[];
 }) {
   const [settings, setSettings] = useState(initialSettings);
-  const [products, setProducts] = useState(initialProducts);
   const [message, setMessage] = useState("");
   const [pending, start] = useTransition();
 
@@ -57,7 +46,7 @@ export default function FulfillmentSettings({
           description="Route eligible paid orders to Amazon Multi-Channel Fulfillment."
           checked={settings.amazonMcfEnabled}
           onChange={(v) => setSettings((s) => ({ ...s, amazonMcfEnabled: v }))}
-          detail={amazonConfigured ? "Amazon API configured" : "Amazon API credentials required"}
+          detail={amazonConfigured ? "Amazon API configured" : "Amazon tracking can also be imported by spreadsheet"}
         />
         <ProviderCard
           title="Delivery Partner"
@@ -107,45 +96,77 @@ export default function FulfillmentSettings({
           >
             Save settings
           </button>
-          <button
-            type="button"
-            disabled={pending || !amazonConfigured}
-            onClick={() =>
-              start(async () => {
-                try {
-                  const result = await processAmazonMcfQueueNow();
-                  setMessage(
-                    `MCF queue processed: ${result.succeeded} succeeded, ${result.failed} failed or retried.`
-                  );
-                } catch (e) {
-                  setMessage(e instanceof Error ? e.message : "Unable to process MCF queue.");
-                }
-              })
-            }
-            className="rounded-full bg-ink px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
-          >
-            Process MCF queue now
-          </button>
+          {amazonConfigured && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  try {
+                    const result = await processAmazonMcfQueueNow();
+                    setMessage(
+                      `MCF queue processed: ${result.succeeded} succeeded, ${result.failed} failed or retried.`
+                    );
+                  } catch (e) {
+                    setMessage(e instanceof Error ? e.message : "Unable to process MCF queue.");
+                  }
+                })
+              }
+              className="rounded-full bg-ink px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
+            >
+              Process MCF queue now
+            </button>
+          )}
         </div>
         {message && <p className="mt-3 text-sm">{message}</p>}
       </section>
 
       <section className="rounded-[26px] border bg-white p-6">
-        <h2 className="text-lg font-black">Amazon SKU mapping</h2>
-        <div className="mt-4 space-y-3">
-          {products.map((product) => (
-            <ProductRow
-              key={product.id}
-              product={product}
-              disabled={pending}
-              onChange={(next) =>
-                setProducts((rows) => rows.map((p) => (p.id === next.id ? next : p)))
+        <h2 className="text-lg font-black">Amazon MCF tracking import</h2>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+          Upload the tracking file received from Amazon. We match each row to the Canuck Motors
+          order number, save the carrier/tracking details and email the customer using the email
+          already stored on their order.
+        </p>
+        <p className="mt-2 text-xs font-semibold text-muted-foreground">
+          Required columns: Order Number and Tracking Number. Optional: Tracking URL, Carrier,
+          Service Level and Estimated Delivery. Accepted formats: .xlsx and .csv.
+        </p>
+        <form
+          action={(formData) =>
+            start(async () => {
+              try {
+                const result = await importAmazonTrackingSheet(formData);
+                const suffix = result.errors.length
+                  ? ` ${result.errors.slice(0, 3).join(" | ")}`
+                  : "";
+                setMessage(
+                  `Tracking import complete: ${result.imported} new shipment(s), ${result.emailed} customer email(s), ${result.skipped} skipped.${suffix}`
+                );
+              } catch (e) {
+                setMessage(e instanceof Error ? e.message : "Unable to import tracking spreadsheet.");
               }
-              onSaved={(text) => setMessage(text)}
-            />
-          ))}
-        </div>
+            })
+          }
+          className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center"
+        >
+          <input
+            name="file"
+            type="file"
+            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+            required
+            className="min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm"
+          />
+          <button
+            type="submit"
+            disabled={pending}
+            className="cm-button-primary shrink-0 disabled:opacity-60"
+          >
+            {pending ? "Importing..." : "Upload tracking file"}
+          </button>
+        </form>
       </section>
+
     </div>
   );
 }
@@ -183,58 +204,6 @@ function ProviderCard({
           {checked ? "ON" : "OFF"}
         </button>
       </div>
-    </div>
-  );
-}
-
-function ProductRow({
-  product,
-  disabled,
-  onChange,
-  onSaved,
-}: {
-  product: Product;
-  disabled: boolean;
-  onChange: (value: Product) => void;
-  onSaved: (message: string) => void;
-}) {
-  return (
-    <div className="grid gap-3 rounded-2xl border p-4 md:grid-cols-[160px_1fr_1fr_auto_auto] md:items-center">
-      <strong>{product.sku}</strong>
-      <span className="text-sm">{product.name}</span>
-      <input
-        value={product.amazonSku}
-        onChange={(e) => onChange({ ...product, amazonSku: e.target.value })}
-        placeholder="Amazon Seller SKU"
-        className="rounded-xl border px-3 py-2"
-      />
-      <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
-          checked={product.amazonMcfEligible}
-          onChange={(e) => onChange({ ...product, amazonMcfEligible: e.target.checked })}
-        />
-        MCF
-      </label>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={async () => {
-          try {
-            await saveProductFulfillment({
-              productId: product.id,
-              amazonSku: product.amazonSku,
-              amazonMcfEligible: product.amazonMcfEligible,
-            });
-            onSaved(`${product.sku} saved.`);
-          } catch (e) {
-            onSaved(e instanceof Error ? e.message : "Unable to save product.");
-          }
-        }}
-        className="rounded-full bg-ink px-4 py-2 text-xs font-bold text-white disabled:opacity-60"
-      >
-        Save
-      </button>
     </div>
   );
 }

@@ -11,6 +11,7 @@ import {
   setOrderNote,
   updateOrderStatus,
 } from "@/app/admin/actions";
+import { importAmazonTrackingSheet } from "@/app/admin/fulfillment/actions";
 import { nextStatus, TO_SHIP_STATUSES } from "@/lib/order-flow";
 
 export type OrderRow = {
@@ -19,6 +20,9 @@ export type OrderRow = {
   status: string;
   fulfillment: string;
   payment: string;
+  provider: string;
+  routingStatus: string;
+  fulfillmentError: string;
   total: number;
   currency: string;
   email: string;
@@ -96,7 +100,15 @@ function csvCell(v: string | number) {
   return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
 }
 
-export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
+export default function OrdersManager({
+  initial,
+  amazonMcfEnabled,
+  deliveryPartnerEnabled,
+}: {
+  initial: OrderRow[];
+  amazonMcfEnabled: boolean;
+  deliveryPartnerEnabled: boolean;
+}) {
   const router = useRouter();
   // Live updates: re-read the orders every 10 seconds while this tab is open
   useEffect(() => {
@@ -208,6 +220,62 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
 
   return (
     <div className="mt-8">
+      {amazonMcfEnabled && (
+        <section className="mb-6 rounded-[24px] border border-orange-200 bg-orange-50 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="font-black text-ink">Amazon MCF tracking import</p>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                Upload the Amazon tracking spreadsheet here. The system matches each row using
+                the Canuck Motors order number, saves the tracking details and emails the customer.
+              </p>
+              <p className="mt-1 text-xs font-semibold text-muted-foreground">
+                Required: Order Number and Tracking Number. Optional: Tracking URL, Carrier,
+                Service Level and Estimated Delivery. Supports .xlsx and .csv.
+              </p>
+            </div>
+            <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-bold text-orange-900">
+              Amazon MCF ON
+            </span>
+          </div>
+
+          <form
+            action={(formData) =>
+              run(async () => {
+                const result = await importAmazonTrackingSheet(formData);
+                const extra = result.errors.length
+                  ? ` ${result.errors.slice(0, 3).join(" | ")}`
+                  : "";
+                router.refresh();
+                return `Amazon tracking imported: ${result.imported} new shipment(s), ${result.emailed} customer email(s), ${result.skipped} skipped.${extra}`;
+              })
+            }
+            className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center"
+          >
+            <input
+              name="file"
+              type="file"
+              accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
+              required
+              className="min-w-0 flex-1 rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm"
+            />
+            <button
+              type="submit"
+              disabled={pending}
+              className="cm-button-primary shrink-0 disabled:opacity-60"
+            >
+              {pending ? "Importing..." : "Upload Amazon tracking"}
+            </button>
+          </form>
+        </section>
+      )}
+
+      {!deliveryPartnerEnabled && (
+        <div className="mb-6 rounded-2xl border border-black/10 bg-white p-4 text-sm text-muted-foreground">
+          <span className="font-bold text-ink">Delivery Partner is OFF.</span>{" "}
+          Manual carrier, tracking and shipment controls are hidden.
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex min-w-[260px] flex-1 items-center rounded-full border border-black/10 bg-white px-4 shadow-sm focus-within:border-brand/60 focus-within:ring-4 focus-within:ring-brand/10">
           <Search className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
@@ -393,7 +461,7 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
                               </ul>
 
                               <div className="mt-4 flex flex-wrap gap-2">
-                                {next && (
+                                {next && deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
                                   <button
                                     type="button"
                                     disabled={pending}
@@ -408,13 +476,15 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
                                     {NEXT_BUTTON[o.status] ?? `Mark ${label(next)}`}
                                   </button>
                                 )}
-                                <Link
-                                  href={`/admin/orders/${o.id}/packing-slip`}
-                                  target="_blank"
-                                  className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:border-brand hover:text-brand"
-                                >
-                                  <Printer className="h-4 w-4" aria-hidden="true" /> Packing slip
-                                </Link>
+                                {deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
+                                  <Link
+                                    href={`/admin/orders/${o.id}/packing-slip`}
+                                    target="_blank"
+                                    className="inline-flex items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:border-brand hover:text-brand"
+                                  >
+                                    <Printer className="h-4 w-4" aria-hidden="true" /> Packing slip
+                                  </Link>
+                                )}
                               </div>
 
                               {(o.cancelReason || o.cancelledItems.length > 0) && (
@@ -494,31 +564,49 @@ export default function OrdersManager({ initial }: { initial: OrderRow[] }) {
                                   This order is {o.status.replaceAll("_", " ")}, so there is nothing to ship.
                                 </p>
                               </div>
+                            ) : !deliveryPartnerEnabled || o.provider === "amazon_mcf" ? (
+                              <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm">
+                                <p className="font-bold text-ink">
+                                  {o.provider === "amazon_mcf"
+                                    ? "Amazon MCF shipment"
+                                    : "Manual shipment disabled"}
+                                </p>
+                                <p className="mt-2 leading-6 text-muted-foreground">
+                                  {o.provider === "amazon_mcf"
+                                    ? "Amazon handles packing and delivery for this order. Upload the Amazon tracking spreadsheet at the top of this Orders page; tracking will be saved and emailed to the customer automatically."
+                                    : "Delivery Partner is switched off, so manual carrier and tracking entry is disabled for this order."}
+                                </p>
+                                {o.shipment?.tracking && (
+                                  <p className="mt-3 font-semibold text-ink">
+                                    Tracking: {o.shipment.tracking}
+                                  </p>
+                                )}
+                              </div>
                             ) : (
-                            <form
-                              action={(fd) =>
-                                run(async () => {
-                                  const emailNote = await createShipment(
-                                    o.id,
-                                    String(fd.get("carrier") || ""),
-                                    String(fd.get("tracking_number") || ""),
-                                    String(fd.get("tracking_url") || ""),
-                                    String(fd.get("service_level") || ""),
-                                    String(fd.get("estimated_delivery") || "")
-                                  );
-                                  return `Shipment saved for ${o.number}. ${emailNote ?? ""}`.trim();
-                                })
-                              }
-                              className="rounded-2xl border border-black/5 bg-white p-4"
-                            >
-                              <p className="font-bold text-ink">Create / update shipment</p>
-                              <input name="carrier" defaultValue={o.shipment?.carrier ?? ""} placeholder="Carrier" required className={input} />
-                              <input name="tracking_number" defaultValue={o.shipment?.tracking ?? ""} placeholder="Tracking number" required className={input} />
-                              <input name="tracking_url" defaultValue={o.shipment?.url ?? ""} placeholder="Carrier tracking URL" className={input} />
-                              <input name="service_level" placeholder="Service level, e.g. Ground" className={input} />
-                              <input name="estimated_delivery" type="datetime-local" className={input} />
-                              <button className="cm-button-primary mt-3 w-full">Save shipment</button>
-                            </form>
+                              <form
+                                action={(fd) =>
+                                  run(async () => {
+                                    const emailNote = await createShipment(
+                                      o.id,
+                                      String(fd.get("carrier") || ""),
+                                      String(fd.get("tracking_number") || ""),
+                                      String(fd.get("tracking_url") || ""),
+                                      String(fd.get("service_level") || ""),
+                                      String(fd.get("estimated_delivery") || "")
+                                    );
+                                    return `Shipment saved for ${o.number}. ${emailNote ?? ""}`.trim();
+                                  })
+                                }
+                                className="rounded-2xl border border-black/5 bg-white p-4"
+                              >
+                                <p className="font-bold text-ink">Create / update shipment</p>
+                                <input name="carrier" defaultValue={o.shipment?.carrier ?? ""} placeholder="Carrier" required className={input} />
+                                <input name="tracking_number" defaultValue={o.shipment?.tracking ?? ""} placeholder="Tracking number" required className={input} />
+                                <input name="tracking_url" defaultValue={o.shipment?.url ?? ""} placeholder="Carrier tracking URL" className={input} />
+                                <input name="service_level" placeholder="Service level, e.g. Ground" className={input} />
+                                <input name="estimated_delivery" type="datetime-local" className={input} />
+                                <button className="cm-button-primary mt-3 w-full">Save shipment</button>
+                              </form>
                             )}
                           </div>
                         </td>

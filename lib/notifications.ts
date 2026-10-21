@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendAppEmail } from "@/lib/email";
 
 type OutboxRow = {
   id: string;
@@ -79,37 +80,12 @@ function messageFor(row: OutboxRow) {
 }
 
 async function sendEmail(row: OutboxRow) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
-
-  if (!apiKey || !from) {
-    throw new Error("Email provider is not configured.");
-  }
-
   const message = messageFor(row);
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "Idempotency-Key": `notification-${row.id}`,
-    },
-    body: JSON.stringify({
-      from,
-      to: [row.recipient],
-      subject: message.subject,
-      text: message.text,
-    }),
-    cache: "no-store",
+  return sendAppEmail({
+    to: row.recipient,
+    subject: message.subject,
+    text: message.text,
   });
-
-  const payload = await response.json();
-
-  if (!response.ok) {
-    throw new Error(payload?.message || "Email send failed.");
-  }
-
-  return String(payload?.id || "");
 }
 
 async function sendWhatsApp(row: OutboxRow) {

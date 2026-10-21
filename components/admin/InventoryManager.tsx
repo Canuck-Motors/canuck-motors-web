@@ -9,7 +9,6 @@ import {
   setProductsVisibility,
   updateProduct,
 } from "@/app/admin/actions";
-import { setProductsCategory } from "@/app/admin/category-actions";
 import { imageUrl } from "@/lib/product-images";
 
 export type InventoryRow = {
@@ -52,7 +51,6 @@ export default function InventoryManager({
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
   const [limit, setLimit] = useState(PAGE);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [moveTo, setMoveTo] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -146,21 +144,6 @@ export default function InventoryManager({
         throw e;
       }
     }, `${ids.length} product${ids.length === 1 ? "" : "s"} ${hide ? "hidden from" : "shown on"} the website.`);
-  };
-
-  const applyMove = () => {
-    const ids = [...selected];
-    if (!ids.length || !moveTo) {
-      setMsg("Pick a category to move the selected products to.");
-      return;
-    }
-    const cat = moveTo === "none" ? null : Number(moveTo);
-    run(async () => {
-      await setProductsCategory(ids, cat);
-      setRows((rs) => rs.map((r) => (selected.has(r.id) ? { ...r, categoryId: cat } : r)));
-      setSelected(new Set());
-      setMoveTo("");
-    }, `${ids.length} product${ids.length === 1 ? "" : "s"} moved.`);
   };
 
   const downloadCsv = () => {
@@ -288,31 +271,6 @@ export default function InventoryManager({
           >
             Show
           </button>
-
-          <span className="flex items-center gap-1.5">
-            <select
-              value={moveTo}
-              onChange={(e) => setMoveTo(e.target.value)}
-              aria-label="Move selected to category"
-              className="rounded-lg px-2 py-1.5 text-ink"
-            >
-              <option value="">Move to category...</option>
-              <option value="none">(no category)</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              disabled={pending}
-              onClick={applyMove}
-              className="rounded-full bg-white px-3 py-1.5 font-bold text-ink disabled:opacity-60"
-            >
-              Move
-            </button>
-          </span>
 
           <button type="button" onClick={() => setSelected(new Set())} className="ml-auto underline">
             Clear

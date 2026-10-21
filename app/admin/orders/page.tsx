@@ -73,6 +73,13 @@ export default async function OrdersAdminPage() {
     console.error("Address backfill failed:", error);
   }
 
+  const adminForSettings = createAdminClient();
+  const { data: fulfillmentSettings } = await adminForSettings
+    .from("fulfillment_settings")
+    .select("amazon_mcf_enabled, delivery_partner_enabled")
+    .eq("id", 1)
+    .single();
+
   const orders: OrderRow[] = ((res.data ?? []) as unknown as Record<string, unknown>[]).map((o) => {
     const ship = Array.isArray(o.shipments) ? o.shipments[0] : o.shipments;
     return {
@@ -137,7 +144,11 @@ export default async function OrdersAdminPage() {
           <p className="text-sm text-muted-foreground">Signed in as {role}</p>
         </div>
 
-        <OrdersManager initial={orders} />
+        <OrdersManager
+          initial={orders}
+          amazonMcfEnabled={Boolean(fulfillmentSettings?.amazon_mcf_enabled)}
+          deliveryPartnerEnabled={Boolean(fulfillmentSettings?.delivery_partner_enabled)}
+        />
       </div>
     </main>
   );

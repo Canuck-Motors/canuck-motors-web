@@ -28,7 +28,7 @@ const money = (n: number) =>
 const dayKey = (d: Date | string) =>
   new Date(d).toLocaleDateString("en-CA", { timeZone: TZ });
 
-const TO_SHIP = ["processing", "packed", "ready_to_ship"];
+const TO_SHIP = ["paid", "processing", "packed", "ready_to_ship"];
 const RETURN_CLOSED = ["completed", "closed", "rejected", "cancelled", "canceled", "refunded", "denied", "exchanged", "exchange_completed", "resolved"];
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
