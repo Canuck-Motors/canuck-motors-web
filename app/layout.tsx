@@ -1,20 +1,67 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
-import { ThemeProvider } from "next-themes";
+import { Suspense } from "react";
+import Script from "next/script";
+import Header from "@/components/Header";
+import Navbar from "@/components/Navbar";
+import { Outfit } from "next/font/google";
+import ChatLauncher from "@/components/chat/ChatLauncher";
+import FrenchRuntime from "@/components/i18n/FrenchRuntime";
+import { LANG_BOOT_SCRIPT } from "@/lib/i18n/lang";
 import "./globals.css";
 
-const defaultUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+const defaultUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+// Tells Google and AI tools who we are, and how the site search works.
+const siteJsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": `${defaultUrl}/#organization`,
+      name: "Canuck Motors",
+      url: defaultUrl,
+      logo: `${defaultUrl}/logo/Canuck-Motors.png`,
+      email: "contactus@canuckmotors.ca",
+      description:
+        "Canadian aftermarket auto parts brand: ceramic brake pads, water pumps and timing belt kits made to OE fit.",
+      areaServed: "CA",
+    },
+    {
+      "@type": "WebSite",
+      "@id": `${defaultUrl}/#website`,
+      url: defaultUrl,
+      name: "Canuck Motors",
+      publisher: { "@id": `${defaultUrl}/#organization` },
+      potentialAction: {
+        "@type": "SearchAction",
+        target: { "@type": "EntryPoint", urlTemplate: `${defaultUrl}/products/search/{search_term_string}` },
+        "query-input": "required name=search_term_string",
+      },
+    },
+  ],
+};
 
 export const metadata: Metadata = {
   metadataBase: new URL(defaultUrl),
-  title: "Next.js and Supabase Starter Kit",
-  description: "The fastest way to build apps with Next.js and Supabase",
+
+  title: {
+    default: "Canuck Motors | North America's Automotive Parts Experts",
+    template: "%s | Canuck Motors",
+  },
+
+  description:
+    "Find compatible automotive parts by year, manufacturer, model, engine, and trim at Canuck Motors.",
+
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfit = Outfit({
+  variable: "--font-sans",
   display: "swap",
   subsets: ["latin"],
 });
@@ -26,16 +73,21 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.className} antialiased`}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
-      </body>
+      <head>
+        {/* French visitors: set lang and hide the page until it is translated (max 1.5 s) */}
+        <Script id="lang-boot" strategy="beforeInteractive">{LANG_BOOT_SCRIPT}</Script>
+      </head>
+      <body className={`${outfit.variable} ${outfit.className} antialiased`}>
+  {/* Header reads the current path (usePathname), so it must stream in */}
+  <Suspense fallback={<div className="h-20" aria-hidden="true" />}>
+    <Header />
+  </Suspense>
+  <Navbar />
+  {children}
+  <ChatLauncher />
+  <FrenchRuntime />
+  <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }} />
+</body>
     </html>
   );
 }

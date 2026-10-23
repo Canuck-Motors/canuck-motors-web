@@ -47,17 +47,44 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const user = data?.claims;
 
-  if (
-    request.nextUrl.pathname !== "/" &&
-    !user &&
-    !request.nextUrl.pathname.startsWith("/login") &&
-    !request.nextUrl.pathname.startsWith("/auth")
-  ) {
-    // no user, potentially respond by redirecting the user to the login page
-    const url = request.nextUrl.clone();
-    url.pathname = "/auth/login";
-    return NextResponse.redirect(url);
-  }
+  const publicPaths = [
+  "/login",
+  "/api/chat",
+  "/api/translate",
+  "/api/mcp",
+  "/api/stripe/webhook",
+  "/api/stripe/reconcile",
+  "/api/notifications/process",
+  "/api/shipping/webhook",
+  "/register",
+  "/auth",
+  "/products",
+  "/product",
+  "/categories",
+  "/brands",
+  "/deals",
+  "/about",
+  "/contact",
+  "/blogs",
+  "/blog",
+  "/llms.txt",
+  "/sitemap.xml",
+  "/robots.txt",
+  "/api/blog/generate",
+  "/api/fulfillment/process",
+  "/api/auth/email-exists",
+  "/manufacturers",
+];
+
+const path = request.nextUrl.pathname;
+const isPublic =
+  path === "/" || publicPaths.some((p) => path.startsWith(p));
+
+if (!user && !isPublic) {
+  const url = request.nextUrl.clone();
+  url.pathname = "/login";
+  return NextResponse.redirect(url);
+}
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is.
   // If you're creating a new response object with NextResponse.next() make sure to:

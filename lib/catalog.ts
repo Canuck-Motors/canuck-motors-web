@@ -1,0 +1,853 @@
+import { findProductIds } from "@/lib/part-search";
+import { withMaterial } from "@/lib/material";
+import { createPublicClient } from "@/lib/supabase/public";
+
+/**
+ * Shared catalog logic. Same rules as the website:
+ *  - searchCatalog        -> /products/search/[query]  (name, SKU, OE, interchange)
+ *  - findPartsForVehicle  -> /products/[year]/[make]/[model]/[engine]/[trim]
+ * The chatbot can only show products returned by these functions.
+ */
+
+// Filler words that should not have to appear in a product name
+const STOP_WORDS = new Set(["with", "and", "for", "the", "set", "of"]);
+
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// Engine names look like "4.2L | V6 | GAS". The last part is the fuel type.
+// The customer thinks of "4.2L V6" as ONE engine, so we group by that part.
+const FUELS = new Set([
+  "all", "gas", "electric", "diesel", "hybrid",
+  "flex", "flexfuel", "e85", "ffv", "cng", "lpg", "propane", "phev", "bev",
+]);
+
+function engineParts(name: string) {
+  return name
+    .split("|")
+    .map((x) => x.trim())
+    .filter(Boolean);
+}
+
+function engineFuel(name: string) {
+  const parts = engineParts(name);
+  const last = norm(parts[parts.length - 1] ?? "");
+  return parts.length > 1 && FUELS.has(last) ? last : "";
+}
+
+function engineBase(name: string) {
+  const parts = engineParts(name);
+  if (parts.length > 1 && FUELS.has(norm(parts[parts.length - 1]))) {
+    parts.pop();
+  }
+  return parts.join(" ");
+}
+
+const clean = (s: string) =>
+  s.replace(/[%,()]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+
+export type CatalogProduct = {
+  id: number;
+  product_name: string;
+  sku: string | null;
+  price: number | null;
+  position: string | null;
+  url: string;
+  // How the typed number matched: exact = same number after ignoring case,
+  // dashes and spaces; partial = only similar, NOT verified.
+  match?: { exact: boolean; via: string };
+  availability?: "in_stock" | "low_stock" | "out_of_stock" | "unknown";
+  // Fitment notes for the chosen vehicle (the old site's "Comment" column)
+  notes?: string[];
+  // Every fitment row of this part for the chosen vehicle (used to tell parts apart)
+  // `comment` is that row's fitment comment, so Axel can read it per row
+  fits?: { trim: string; engine: string; fuel: string; body: string; comment?: string }[];
+};
+
+type Named = { id: number; name: string; slug: string };
+
+const toProduct = (p: any): CatalogProduct => ({
+  id: p.id,
+  product_name: withMaterial(p.product_name, p.sku),
+  sku: p.sku ?? null,
+  price: p.price ?? null,
+  position: p.position ?? null,
+  url: `/product/${p.slug || p.id}`,
+});
+
+const names = (items: Named[], limit = 40) =>
+  items.slice(0, limit).map((i) => i.name);
+
+// Finds the one item the customer meant, or returns candidates.
+function pick(items: Named[], wanted: string): { item?: Named; options: Named[] } {
+  const w = norm(wanted);
+  if (!w) return { options: [] };
+
+  const exact = items.filter((i) => norm(i.name) === w || norm(i.slug) === w);
+  if (exact.length > 0) return { item: exact[0], options: [] };
+
+  if (w.length >= 2) {
+    const partial = items.filter((i) => norm(i.name).includes(w));
+    if (partial.length === 1) return { item: partial[0], options: [] };
+    if (partial.length > 1) return { options: partial };
+  }
+  return { options: [] };
+}
+
+function unresolved(level: string, matches: Named[], all: Named[]) {
+  if (matches.length > 1) {
+    return { status: "choose", level, options: names(matches) };
+  }
+  return {
+    status: "not_found",
+    level,
+    message: `We couldn't find that ${level} in our catalog.`,
+    options: names(all),
+  };
+}
+
+// Lists the models / engines / trims that really exist in vehicle_fitments
+async function fitmentOptions(
+  supabase: any,
+  relation: "models" | "engine_sizes" | "trim",
+  nameColumn: string,
+  filters: Record<string, number | number[]>,
+): Promise<Named[]> {
+  // Supabase returns at most 1000 rows per request: read every page
+  const data: any[] = [];
+  for (let from = 0; from < 100000; from += 1000) {
+    let query = supabase
+      .from("vehicle_fitments")
+      .select(`${relation} ( id, ${nameColumn}, slug )`);
+
+    for (const [column, value] of Object.entries(filters)) {
+      query = Array.isArray(value)
+        ? query.in(column, value)
+        : query.eq(column, value);
+    }
+
+    const res = await query.order("id").range(from, from + 999);
+    if (res.error) {
+      console.error(`Fitment ${relation} lookup failed:`, res.error.message);
+      return [];
+    }
+    data.push(...(res.data ?? []));
+    if ((res.data ?? []).length < 1000) break;
+  }
+
+  const unique = new Map<number, Named>();
+  for (const row of (data ?? []) as any[]) {
+    const rel = row[relation];
+    if (rel) {
+      unique.set(rel.id, { id: rel.id, name: rel[nameColumn], slug: rel.slug });
+    }
+  }
+
+  return Array.from(unique.values()).sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+}
+
+// ---------------------------------------------------------------
+// 1. Search by name / part number / OE / interchange
+// ---------------------------------------------------------------
+
+export async function searchCatalog(
+  query: string,
+  limit = 8,
+): Promise<CatalogProduct[]> {
+  const term = clean(query);
+  if (term.length < 2) return [];
+
+  const supabase = createPublicClient();
+  const ids = await findProductIds(supabase, term);
+
+  if (ids.size === 0) return [];
+
+  const { data, error } = await supabase
+    .from("products")
+    .select("id, product_name, price, sku, slug, position")
+    .in("id", Array.from(ids))
+    .eq("is_active", true)
+    .eq("is_delete", false)
+    .limit(50);
+
+  if (error) {
+    console.error("Catalog search lookup failed:", error.message);
+    return [];
+  }
+
+  const wanted = norm(term);
+  const wantedTokens = new Set(
+    term.split(/\s+/).map(norm).filter((t) => t.length >= 4 && /\d/.test(t)),
+  );
+  wantedTokens.add(wanted);
+  const isWanted = (n: string | null | undefined) =>
+    !!n && wantedTokens.has(norm(n));
+
+  // Which of our numbers (or other brands' numbers) matched exactly?
+  const productIds = (data ?? []).map((p: any) => p.id);
+  const [{ data: oeRows }, { data: icRows }, { data: invRows }] = await Promise.all([
+    supabase.from("product_oe_numbers").select("product_id, oe_brand, oe_number").in("product_id", productIds),
+    supabase.from("product_interchanges").select("product_id, interchange_brand, interchange_number").in("product_id", productIds),
+    supabase.from("inventory").select("product_id, quantity, reserved_quantity, low_stock_threshold").in("product_id", productIds),
+  ]);
+
+  const via = new Map<number, string>();
+  for (const p of data ?? []) {
+    if (isWanted((p as any).sku)) via.set((p as any).id, "Canuck Motors part number");
+  }
+  for (const r of (oeRows ?? []) as any[]) {
+    if (isWanted(r.oe_number) && !via.has(r.product_id)) {
+      via.set(r.product_id, `OE number ${r.oe_brand ?? ""} ${r.oe_number}`.replace(/\s+/g, " "));
+    }
+  }
+  for (const r of (icRows ?? []) as any[]) {
+    if (isWanted(r.interchange_number) && !via.has(r.product_id)) {
+      via.set(r.product_id, `interchange number ${r.interchange_brand ?? ""} ${r.interchange_number}`.replace(/\s+/g, " "));
+    }
+  }
+
+  const stock = new Map<number, CatalogProduct["availability"]>();
+  for (const r of (invRows ?? []) as any[]) {
+    const avail = (r.quantity ?? 0) - (r.reserved_quantity ?? 0);
+    stock.set(
+      r.product_id,
+      avail <= 0 ? "out_of_stock" : avail <= (r.low_stock_threshold ?? 5) ? "low_stock" : "in_stock",
+    );
+  }
+
+  return (data ?? [])
+    .sort(
+      (a: any, b: any) =>
+        Number(via.has(b.id)) - Number(via.has(a.id)) ||
+        a.product_name.localeCompare(b.product_name),
+    )
+    .slice(0, limit)
+    .map((p: any) => ({
+      ...toProduct(p),
+      match: via.has(p.id)
+        ? { exact: true, via: via.get(p.id)! }
+        : { exact: false, via: "similar text or number only, not verified" },
+      availability: stock.get(p.id) ?? "unknown",
+    }));
+}
+
+// ---------------------------------------------------------------
+// 2. Parts that fit a vehicle (year > make > model > engine > trim)
+// ---------------------------------------------------------------
+
+export async function findPartsForVehicle(params: {
+  year: number;
+  make: string;
+  model?: string;
+  engine?: string;
+  trim?: string;
+  part?: string;
+  anyEngine?: boolean; // customer does not know the engine: show parts for every engine
+}) {
+  const supabase = createPublicClient();
+
+  // YEAR
+  const { data: yearRow } = await supabase
+    .from("year")
+    .select("id, year")
+    .eq("year", params.year)
+    .maybeSingle();
+
+  if (!yearRow) {
+    return {
+      status: "not_found",
+      level: "year",
+      message: `We have no ${params.year} vehicles in our catalog.`,
+    };
+  }
+
+  // MAKE
+  const { data: makeRows } = await supabase
+    .from("manufacturer")
+    .select("id, manufacturer_name, slug");
+
+  const makes: Named[] = (makeRows ?? []).map((m: any) => ({
+    id: m.id,
+    name: m.manufacturer_name,
+    slug: m.slug,
+  }));
+
+  const makePick = pick(makes, params.make);
+  if (!makePick.item) return unresolved("make", makePick.options, makes);
+  const make = makePick.item;
+
+  // MODEL
+  const models = await fitmentOptions(supabase, "models", "model_name", {
+    year_id: yearRow.id,
+    manufacturer_id: make.id,
+  });
+
+  if (models.length === 0) {
+    return {
+      status: "not_found",
+      level: "model",
+      message: `We have no ${yearRow.year} ${make.name} vehicles in our catalog.`,
+    };
+  }
+  if (!params.model) {
+    return { status: "choose", level: "model", options: names(models) };
+  }
+
+  const modelPick = pick(models, params.model);
+  if (!modelPick.item) return unresolved("model", modelPick.options, models);
+  const model = modelPick.item;
+
+  // ENGINES for this vehicle
+  const engines = await fitmentOptions(supabase, "engine_sizes", "engine_name", {
+    year_id: yearRow.id,
+    manufacturer_id: make.id,
+    model_id: model.id,
+  });
+
+  if (engines.length === 0) {
+    return {
+      status: "not_found",
+      level: "engine",
+      message: `No engine data for the ${yearRow.year} ${make.name} ${model.name}.`,
+    };
+  }
+
+  const rawTokens = (params.part ?? "")
+    .split(/\s+/)
+    .map((w) => norm(w).replace(/s$/, ""))
+    .filter((w) => w.length > 1 && !STOP_WORDS.has(w));
+
+  // "front", "rear" and "front and rear kit" describe the POSITION, not the
+  // product name ("Disc Brake Pad Set"), so they filter by position instead.
+  const has = (w: string) => rawTokens.includes(w);
+  const isBrake = ["brake", "pad", "shoe", "rotor", "disc", "drum"].some(has);
+  const brakeKit = has("kit") && isBrake && !has("timing") && !has("belt");
+  let positionWanted: "Front" | "Rear" | "Front and Rear" | null = null;
+  if ((has("front") && has("rear")) || has("both") || brakeKit) positionWanted = "Front and Rear";
+  else if (has("front")) positionWanted = "Front";
+  else if (has("rear")) positionWanted = "Rear";
+
+  const partTokens = rawTokens.filter(
+    (w) => !["front", "rear", "both"].includes(w) && !(brakeKit && w === "kit"),
+  );
+
+  // Products for the given engines (and trim), using the website's rules
+  const fetchMatches = async (
+    engineIds: number[],
+    trimIds?: number[],
+  ): Promise<any[] | null> => {
+    const run = (level: 0 | 1 | 2) => {
+      let q = supabase
+        .from("products")
+        .select(
+          `
+        id,
+        product_name,
+        price,
+        sku,
+        slug,
+        position,
+        product_fitments!inner (
+          ${level >= 1 ? "comment," : ""}
+          ${level >= 2 ? "body_type," : ""}
+          vehicle_fitments!inner ( id${level >= 2 ? ", trim ( trim_name ), engine_sizes ( engine_name )" : ""} )
+        )
+      `,
+        )
+        .eq("is_active", true)
+        .eq("is_delete", false)
+        .eq("product_fitments.vehicle_fitments.year_id", yearRow.id)
+        .eq("product_fitments.vehicle_fitments.manufacturer_id", make.id)
+        .eq("product_fitments.vehicle_fitments.model_id", model.id)
+        .in("product_fitments.vehicle_fitments.engine_size_id", engineIds);
+
+      if (trimIds?.length) {
+        q = q.in("product_fitments.vehicle_fitments.trim_id", trimIds);
+      }
+      return q.order("product_name");
+    };
+
+    let { data, error } = await run(2);
+    // Extra fitment details not available: fall back to notes only, then to nothing
+    if (error) ({ data, error } = await run(1));
+    if (error) ({ data, error } = await run(0));
+
+    if (error) {
+      console.error("Vehicle products lookup failed:", error.message);
+      return null;
+    }
+
+    // Optional part filter (ignores spaces and plurals: "brake pads" = "Brake Pad")
+    const all = data ?? [];
+    const strict = all.filter((p: any) =>
+      partTokens.every((t) => norm(p.product_name).includes(t)),
+    );
+    if (strict.length > 0) return strict;
+
+    // "engine water pump" should still find a product named just "Water Pump":
+    // retry without generic words like "engine" when other words remain
+    const GENERIC = new Set(["engine", "auto", "automotive", "car", "part", "parts"]);
+    const core = partTokens.filter((t) => !GENERIC.has(t));
+    if (core.length > 0 && core.length < partTokens.length) {
+      return all.filter((p: any) => core.every((t) => norm(p.product_name).includes(t)));
+    }
+    return strict;
+  };
+
+  // Group the fuel variants of one engine ("4.2L | V6 | ALL / GAS / ELECTRIC").
+  // Electric variants are left out unless the customer asks for electric.
+  type EngineGroup = { name: string; key: string; engines: Named[] };
+
+  const groupMap = new Map<string, EngineGroup>();
+  for (const e of engines) {
+    const base = engineBase(e.name);
+    const key = norm(base);
+    const group = groupMap.get(key) ?? { name: base, key, engines: [] };
+    group.engines.push(e);
+    groupMap.set(key, group);
+  }
+  const groups = Array.from(groupMap.values());
+
+  const wantsElectric = norm(params.engine ?? "").includes("electric");
+  const usable = (g: EngineGroup) =>
+    g.engines.filter((e) => wantsElectric || engineFuel(e.name) !== "electric");
+  const groupsAsNamed: Named[] = groups.map((g, i) => ({
+    id: i,
+    name: g.name,
+    slug: g.key,
+  }));
+
+  // Decide which engine(s) to use. The customer is only asked when the
+  // answer changes which parts fit.
+  let engineLabel: string | null = null;
+  let engineIds: number[];
+  let engineUnknown = false;
+
+  if (params.engine) {
+    const wanted = norm(params.engine).replace(
+      /(all|gas|electric|diesel|hybrid)$/,
+      "",
+    );
+
+    let matched = groups.filter((g) => g.key === wanted);
+    if (!matched.length && wanted.length >= 2) {
+      matched = groups.filter((g) => g.key.includes(wanted));
+    }
+
+    if (matched.length === 0) {
+      return unresolved("engine", [], groupsAsNamed);
+    }
+    if (matched.length > 1) {
+      return {
+        status: "choose",
+        level: "engine",
+        options: matched.map((g) => g.name),
+      };
+    }
+
+    engineLabel = matched[0].name;
+    engineIds = usable(matched[0]).map((e) => e.id);
+  } else if (groups.length === 1) {
+    engineIds = usable(groups[0]).map((e) => e.id);
+  } else {
+    const perGroup = await Promise.all(
+      groups.map(async (g) => {
+        const ids = usable(g).map((e) => e.id);
+        return {
+          group: g,
+          ids,
+          matches: ids.length ? ((await fetchMatches(ids)) ?? []) : [],
+        };
+      }),
+    );
+
+    const withParts = perGroup.filter((g) => g.matches.length > 0);
+
+    if (withParts.length === 0) {
+      engineIds = engines.map((e) => e.id);
+    } else if (withParts.length === 1) {
+      // Only one engine has a part in our catalog. For engine-dependent parts we
+      // still ask which engine the vehicle has: a customer with another engine
+      // must NOT be told this part fits.
+      const engineDependent = /water|timing|thermostat|oil pump|fuel pump|spark|gasket|valve cover|camshaft|crankshaft/i.test(
+        params.part ?? "",
+      );
+      if (engineDependent && !params.anyEngine) {
+        return {
+          status: "choose",
+          level: "engine",
+          options: perGroup.map((g) => g.group.name),
+        };
+      }
+      engineIds = withParts[0].ids;
+    } else {
+      const key = (m: any[]) =>
+        m
+          .map((p) => p.id)
+          .sort((a, b) => a - b)
+          .join(",");
+      const first = key(withParts[0].matches);
+
+      // Engine-dependent parts (water pump, timing belt, ...) always get the
+      // engine question, even when the catalog lists the same part for every engine.
+      const engineSensitive = /water|timing|thermostat|oil pump|fuel pump|spark|gasket|valve cover|camshaft|crankshaft/i.test(
+        params.part ?? "",
+      );
+      if (!engineSensitive && withParts.every((g) => key(g.matches) === first)) {
+        // Every engine gets the same parts, so there is nothing to ask
+        engineIds = withParts.flatMap((g) => g.ids);
+      } else if (params.anyEngine) {
+        // Customer does not know the engine: do not ask again, show every engine's parts
+        engineIds = withParts.flatMap((g) => g.ids);
+        engineUnknown = true;
+      } else {
+        return {
+          status: "choose",
+          level: "engine",
+          options: withParts.map((g) => g.group.name),
+        };
+      }
+    }
+  }
+
+  // TRIM (optional, same as the website)
+  const trims = (
+    await fitmentOptions(supabase, "trim", "trim_name", {
+      year_id: yearRow.id,
+      manufacturer_id: make.id,
+      model_id: model.id,
+      engine_size_id: engineIds,
+    })
+  ).filter((t) => t.name !== "Unknown");
+
+  let trim: Named | null = null;
+  // Some vehicles are not split by trim in the catalog (only "Unknown").
+  // Then trim doesn't change the result, so we don't block on it.
+  const trimNotTracked = trims.length === 0;
+  if (params.trim && !trimNotTracked) {
+    const trimPick = pick(trims, params.trim);
+    if (!trimPick.item) return unresolved("trim", trimPick.options, trims);
+    trim = trimPick.item;
+  }
+
+  // The catalog can hold several trim records with the same name (one per
+  // engine variant), so use all of them
+  const trimIds = trim
+    ? trims.filter((t) => norm(t.name) === norm(trim!.name)).map((t) => t.id)
+    : undefined;
+
+  let matches = await fetchMatches(engineIds, trimIds);
+
+  if (matches === null) {
+    return { status: "error", message: "Lookup failed. Please try again." };
+  }
+
+  // Keep only the position the customer asked for (if any part has it)
+  if (positionWanted) {
+    const atPosition = matches.filter(
+      (p: any) => norm(p.position ?? "") === norm(positionWanted!),
+    );
+    if (atPosition.length > 0) matches = atPosition;
+  }
+
+  const vehicle = [yearRow.year, make.name, model.name, engineLabel, trim?.name]
+    .filter(Boolean)
+    .join(" ");
+
+  return {
+    status: matches.length > 0 ? "ok" : "no_products",
+    vehicle,
+    vehicle_page_url: null,
+    total_matches: matches.length,
+    products: matches.slice(0, 40).map((p: any) => ({
+      ...toProduct(p),
+      notes: Array.from(
+        new Set(
+          (p.product_fitments ?? [])
+            .map((f: any) => String(f.comment ?? "").trim())
+            .filter((c: string) => c && c.toLowerCase() !== "none"),
+        ),
+      ) as string[],
+      fits: (p.product_fitments ?? [])
+        .map((f: any) => {
+          const vf = Array.isArray(f.vehicle_fitments) ? f.vehicle_fitments[0] : f.vehicle_fitments;
+          const eng = Array.isArray(vf?.engine_sizes) ? vf?.engine_sizes[0] : vf?.engine_sizes;
+          const tr = Array.isArray(vf?.trim) ? vf?.trim[0] : vf?.trim;
+          const engineName = String(eng?.engine_name ?? "");
+          return {
+            trim: String(tr?.trim_name ?? "").trim(),
+            engine: engineName ? engineBase(engineName) : "",
+            fuel: engineName ? engineFuel(engineName) : "",
+            body: String(f.body_type ?? "").trim(),
+            comment: String(f.comment ?? "").trim(),
+          };
+        })
+        .filter((x: any) => x.trim || x.engine || x.fuel || x.body || x.comment),
+    })),
+    positions: Array.from(
+      new Set(matches.map((p: any) => p.position).filter(Boolean)),
+    ),
+    available_trims: trim ? [] : names(trims),
+    ...(engineUnknown
+      ? {
+          engine_note:
+            "The customer does not know the engine, so these parts cover every engine for this vehicle. Tell them in one short sentence that a VIN gives the exact match.",
+        }
+      : {}),
+    ...(params.trim && trimNotTracked
+      ? {
+          trim_note:
+            "Our catalog does not separate this vehicle by trim. These results apply to every trim of this vehicle.",
+        }
+      : {}),
+  };
+}
+
+
+// ---------------------------------------------------------------
+// 3. VIN decoding (US/Canada vehicles, free NHTSA vPIC service)
+// ---------------------------------------------------------------
+
+const VIN_VALUES: Record<string, number> = {
+  A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8,
+  J: 1, K: 2, L: 3, M: 4, N: 5, P: 7, R: 9,
+  S: 2, T: 3, U: 4, V: 5, W: 6, X: 7, Y: 8, Z: 9,
+};
+const VIN_WEIGHTS = [8, 7, 6, 5, 4, 3, 2, 10, 0, 9, 8, 7, 6, 5, 4, 3, 2];
+
+export function checkVin(raw: string): {
+  valid: boolean;
+  formatOk: boolean;
+  vin: string;
+  reason?: string;
+} {
+  const vin = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+  if (!/^[A-HJ-NPR-Z0-9]{17}$/.test(vin)) {
+    return {
+      valid: false,
+      formatOk: false,
+      vin,
+      reason: "A VIN has exactly 17 letters and numbers, and never uses I, O or Q.",
+    };
+  }
+
+  let sum = 0;
+  for (let i = 0; i < 17; i++) {
+    const c = vin[i];
+    const value = /\d/.test(c) ? Number(c) : VIN_VALUES[c];
+    sum += value * VIN_WEIGHTS[i];
+  }
+  const remainder = sum % 11;
+  const expected = remainder === 10 ? "X" : String(remainder);
+
+  if (vin[8] !== expected) {
+    return {
+      valid: false,
+      formatOk: true,
+      vin,
+      reason:
+        "This VIN fails the built-in check-digit test, so at least one character is probably wrong.",
+    };
+  }
+
+  return { valid: true, formatOk: true, vin };
+}
+
+type VinDecoded = {
+  status: "ok";
+  vin: string;
+  check_digit_ok: boolean;
+  year: number;
+  make: string;
+  model: string;
+  trim?: string;
+  series?: string;
+  drive?: string;
+  engine_liters?: string;
+  engine_description: string;
+  body?: string;
+};
+
+type VinFailure = {
+  status: "invalid_vin" | "not_decoded" | "error";
+  message: string;
+};
+
+export async function decodeVin(raw: string): Promise<VinDecoded | VinFailure> {
+  const check = checkVin(raw);
+  // Only a wrong length or forbidden letters stops us. A bad check digit
+  // still decodes, but the customer must confirm the vehicle (see below).
+  if (!check.formatOk) {
+    return { status: "invalid_vin", message: check.reason ?? "Invalid VIN." };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 7000);
+
+    const res = await fetch(
+      `https://vpic.nhtsa.dot.gov/api/vehicles/DecodeVinValues/${check.vin}?format=json`,
+      { signal: controller.signal, cache: "no-store" },
+    );
+    clearTimeout(timer);
+
+    if (!res.ok) throw new Error(`NHTSA responded ${res.status}`);
+
+    const json = await res.json();
+    const r = json?.Results?.[0];
+
+    const year = Number(r?.ModelYear);
+    // NHTSA sends makes in capitals ("VOLKSWAGEN"): show "Volkswagen" (short ones like BMW stay)
+    const rawMake = String(r?.Make ?? "").trim();
+    const make =
+      rawMake.length > 3 && rawMake === rawMake.toUpperCase()
+        ? rawMake.toLowerCase().replace(/(^|[\s-])([a-z])/g, (m) => m.toUpperCase())
+        : rawMake;
+    const model = String(r?.Model ?? "").trim();
+
+    if (!r || !year || !make || !model) {
+      return {
+        status: "not_decoded",
+        message: "We couldn't read the vehicle details from this VIN.",
+      };
+    }
+
+    const displacement = parseFloat(r.DisplacementL);
+    const liters = Number.isFinite(displacement)
+      ? displacement.toFixed(1)
+      : undefined;
+    const cylinders = String(r.EngineCylinders ?? "").trim();
+
+    return {
+      status: "ok",
+      vin: check.vin,
+      check_digit_ok: check.valid,
+      year,
+      make,
+      model,
+      // NHTSA often leaves Trim empty and puts the trim in Series / Trim2
+      trim:
+        [r.Trim, r.Trim2].map((v) => String(v ?? "").trim()).filter(Boolean).join(" ") ||
+        String(r.Series ?? "").trim() ||
+        undefined,
+      series: String(r.Series ?? "").trim() || undefined,
+      drive: String(r.DriveType ?? "").trim() || undefined,
+      engine_liters: liters,
+      engine_description: [
+        liters ? `${liters}L` : null,
+        cylinders ? `${cylinders}-cylinder` : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+      body: String(r.BodyClass ?? "").trim() || undefined,
+    };
+  } catch (error) {
+    console.error("VIN decode failed:", error);
+    return {
+      status: "error",
+      message: "VIN lookup is unavailable right now.",
+    };
+  }
+}
+
+// Decode the VIN, then run the same fitment rules as a manual search.
+export async function findPartsByVin(vin: string, part?: string) {
+  const decoded = await decodeVin(vin);
+  if (decoded.status !== "ok") return decoded;
+
+  // Possible typo in the VIN: the decoded year or engine may be wrong, so
+  // show the customer what it decoded to and let them confirm first.
+  if (!decoded.check_digit_ok) {
+    return {
+      status: "confirm_vehicle" as const,
+      message:
+        "This VIN fails the check-digit test, so it may contain a typo and the decoded details may be wrong.",
+      vin_vehicle: {
+        year: decoded.year,
+        make: decoded.make,
+        model: decoded.model,
+        trim: decoded.trim,
+        engine: decoded.engine_description,
+        engine_liters: decoded.engine_liters,
+        body: decoded.body,
+      },
+    };
+  }
+
+  const fitment = await findPartsForVehicle({
+    year: decoded.year,
+    make: decoded.make,
+    model: decoded.model,
+    engine: decoded.engine_liters,
+    part,
+  });
+
+  return {
+    vin_vehicle: {
+      year: decoded.year,
+      make: decoded.make,
+      model: decoded.model,
+      trim: decoded.trim,
+      engine: decoded.engine_description,
+      body: decoded.body,
+    },
+    vin_summary: [decoded.year, decoded.make, decoded.model, decoded.trim, decoded.engine_description]
+      .filter(Boolean)
+      .join(" "),
+    ...fitment,
+  };
+}
+
+// ---------------------------------------------------------------
+// 3. Parts VERIFIED to fit a make + model (any year), used by the AI blog.
+//    Returns nothing unless the make and model really exist in the fitment data.
+// ---------------------------------------------------------------
+export async function findVerifiedProductsForVehicle(
+  makeName: string,
+  modelName: string,
+  partWords: string[],
+  limit = 6,
+): Promise<{ id: number; name: string; sku: string | null; price: number | null; position: string | null; url: string }[]> {
+  const supabase = createPublicClient();
+  const { data: makeRows } = await supabase.from("manufacturer").select("id, manufacturer_name, slug");
+  const makes: Named[] = (makeRows ?? []).map((m: any) => ({ id: m.id, name: m.manufacturer_name, slug: m.slug }));
+  const make = makes.find((m) => norm(m.name) === norm(makeName));
+  if (!make) return [];
+
+  const models = await fitmentOptions(supabase, "models", "model_name", { manufacturer_id: make.id });
+  const model = models.find((m) => norm(m.name) === norm(modelName));
+  if (!model) return [];
+
+  let q = supabase
+    .from("products")
+    .select("id, product_name, price, sku, slug, position, product_fitments!inner ( vehicle_fitments!inner ( id ) )")
+    .eq("is_active", true)
+    .eq("is_delete", false)
+    .eq("product_fitments.vehicle_fitments.manufacturer_id", make.id)
+    .eq("product_fitments.vehicle_fitments.model_id", model.id);
+  for (const w of partWords.map(clean).filter((w) => w.length > 1)) q = q.ilike("product_name", `%${w}%`);
+
+  const { data, error } = await q.order("product_name").limit(40);
+  if (error) {
+    console.error("Verified vehicle products lookup failed:", error.message);
+    return [];
+  }
+  const seen = new Set<number>();
+  const out: { id: number; name: string; sku: string | null; price: number | null; position: string | null; url: string }[] = [];
+  for (const p of (data ?? []) as any[]) {
+    if (seen.has(p.id)) continue;
+    seen.add(p.id);
+    out.push({
+      id: p.id,
+      name: withMaterial(p.product_name, p.sku),
+      sku: p.sku ?? null,
+      price: p.price ?? null,
+      position: p.position ?? null,
+      url: `/product/${p.slug || p.id}`,
+    });
+    if (out.length >= limit) break;
+  }
+  return out;
+}

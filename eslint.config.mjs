@@ -1,16 +1,21 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTypeScript from "eslint-config-next/typescript";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
-];
-
-export default eslintConfig;
+export default defineConfig([
+  ...nextVitals,
+  ...nextTypeScript,
+  {
+    rules: {
+      // The Supabase client is not generated with database types here,
+      // so query results are intentionally loosely typed.
+      "@typescript-eslint/no-explicit-any": "off",
+      // Existing components predate React 19's compiler-oriented lint rules.
+      // Keep CI focused on correctness while these patterns are refactored gradually.
+      "react-hooks/purity": "off",
+      "react-hooks/set-state-in-effect": "off",
+      "react-hooks/static-components": "off",
+    },
+  },
+  globalIgnores([".next/**", "node_modules/**", "next-env.d.ts"]),
+]);

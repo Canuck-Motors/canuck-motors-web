@@ -5,56 +5,60 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    --foreground: 240 6% 7%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 240 6% 7%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
+    --popover-foreground: 240 6% 7%;
+
+    /* Canuck Motors: white / red (#D62828) / ink */
+    --primary: 0 69% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 240 6% 7%;
+    --muted: 0 0% 95%;
+    --muted-foreground: 240 4% 38%;
+    --accent: 0 86% 96%;
+    --accent-foreground: 0 71% 40%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
+    --border: 0 0% 90%;
+    --input: 0 0% 88%;
+    --ring: 0 69% 50%;
+
+    --brand: 0 69% 50%;
+    --brand-dark: 0 71% 40%;
+    --brand-tint: 0 86% 96%;
+    --ink: 240 6% 7%;
+
+    --chart-1: 0 69% 50%;
+    --chart-2: 0 71% 40%;
+    --chart-3: 240 6% 15%;
+    --chart-4: 0 80% 66%;
+    --chart-5: 240 4% 42%;
+    --radius: 1rem;
   }
+
   .dark {
-    --background: 0 0% 3.9%;
+    --background: 0 0% 4%;
     --foreground: 0 0% 98%;
-    --card: 0 0% 3.9%;
+    --card: 0 0% 7%;
     --card-foreground: 0 0% 98%;
-    --popover: 0 0% 3.9%;
+    --popover: 0 0% 7%;
     --popover-foreground: 0 0% 98%;
-    --primary: 0 0% 98%;
-    --primary-foreground: 0 0% 9%;
-    --secondary: 0 0% 14.9%;
+    --primary: 0 69% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 11%;
     --secondary-foreground: 0 0% 98%;
-    --muted: 0 0% 14.9%;
-    --muted-foreground: 0 0% 63.9%;
-    --accent: 0 0% 14.9%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 62.8% 30.6%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 67%;
+    --accent: 0 35% 15%;
+    --accent-foreground: 0 80% 66%;
+    --destructive: 0 63% 31%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 14.9%;
-    --input: 0 0% 14.9%;
-    --ring: 0 0% 83.1%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 0 69% 50%;
   }
 }
 
@@ -62,7 +66,603 @@
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
+
+  html {
+    scroll-behavior: smooth;
   }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans), system-ui, sans-serif;
+  }
+
+  ::selection {
+    background: hsl(var(--brand) / 0.2);
+    color: hsl(var(--ink));
+  }
+
+  :focus-visible {
+    outline: 3px solid hsl(var(--brand) / 0.4);
+    outline-offset: 3px;
+  }
+}
+
+@layer components {
+  .cm-container {
+    @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .cm-eyebrow {
+    @apply text-xs font-bold uppercase tracking-[0.22em] text-brand;
+  }
+
+  .cm-section-title {
+    @apply text-3xl font-black tracking-[-0.035em] text-ink md:text-4xl;
+  }
+
+  .cm-card {
+    @apply rounded-3xl border border-black/5 bg-white shadow-[0_12px_40px_rgba(0,0,0,0.06)];
+  }
+
+  .cm-button-primary {
+    @apply inline-flex items-center justify-center rounded-full bg-brand px-6 py-3 text-sm font-bold text-white shadow-[0_8px_24px_rgba(214,40,40,0.25)] transition duration-200 hover:-translate-y-0.5 hover:bg-brand-dark hover:shadow-[0_12px_30px_rgba(214,40,40,0.34)] active:translate-y-0;
+  }
+
+  .cm-button-dark {
+    @apply inline-flex items-center justify-center rounded-full bg-ink px-6 py-3 text-sm font-bold text-white transition duration-200 hover:-translate-y-0.5 hover:bg-brand active:translate-y-0;
+  }
+}
+
+/* ------------------------------------------------------------------
+   Motion. CSS only, transform/opacity only, no layout shift.
+   All content is in the server-rendered HTML, so crawlers and AI
+   systems always see it. Nothing here hides text behind JavaScript.
+   ------------------------------------------------------------------ */
+
+/* 1. One hero load sequence. Put class "cm-hero-in" on the hero's
+      content wrapper. The H1 is excluded on purpose: it is usually the
+      LCP element and must paint immediately. */
+@keyframes cm-rise {
+  from { opacity: 0.01; transform: translateY(14px); }
+  to   { opacity: 1;    transform: none; }
+}
+.cm-hero-in > :not(h1) {
+  animation: cm-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.cm-hero-in > :nth-child(2) { animation-delay: 0.06s; }
+.cm-hero-in > :nth-child(3) { animation-delay: 0.14s; }
+.cm-hero-in > :nth-child(4) { animation-delay: 0.22s; }
+.cm-hero-in > :nth-child(5) { animation-delay: 0.30s; }
+
+/* 2. Vehicle Finder: when a dropdown becomes enabled, it gets one red
+      ring pulse so the customer sees what to pick next.
+      Add class "cm-step-ready" to the select once it is enabled. */
+@keyframes cm-step {
+  0%   { box-shadow: 0 0 0 0 hsl(var(--brand) / 0.45); }
+  100% { box-shadow: 0 0 0 10px hsl(var(--brand) / 0); }
+}
+.cm-step-ready {
+  animation: cm-step 0.9s ease-out 1;
+  border-color: hsl(var(--brand) / 0.6);
+}
+
+/* 3. Axel chat button: pulses three times after load, then stops. */
+@keyframes cm-ring {
+  0%   { box-shadow: 0 0 0 0 hsl(var(--brand) / 0.5); }
+  100% { box-shadow: 0 0 0 16px hsl(var(--brand) / 0); }
+}
+.cm-pulse {
+  animation: cm-ring 2s ease-out 1.5s 3;
+}
+
+/* 4. Nav link underline. Responds to hover or focus only. */
+.cm-link {
+  position: relative;
+}
+.cm-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 2px;
+  background: hsl(var(--brand));
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.25s ease;
+}
+.cm-link:hover::after,
+.cm-link:focus-visible::after,
+.cm-link[aria-current="page"]::after {
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+/* ------------------------------------------------------------------
+   Axel chatbot. CSS only, transform/opacity only.
+   The car animates only while Axel is working (.cm-driving) or when the
+   launcher button is hovered (.group:hover).
+   ------------------------------------------------------------------ */
+@keyframes cm-spin { to { transform: rotate(360deg); } }
+@keyframes cm-road { to { transform: translateX(-8px); } }
+@keyframes cm-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-0.5px); }
+}
+@keyframes cm-pop {
+  from { opacity: 0.01; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes cm-window-in {
+  from { opacity: 0.01; transform: translateY(18px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes cm-dot {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40% { transform: translateY(-4px); opacity: 1; }
+}
+@keyframes cm-stripe-move {
+  from { background-position: 0% 0; }
+  to { background-position: 200% 0; }
+}
+
+.cm-wheel { transform-box: fill-box; transform-origin: center; }
+.cm-driving .cm-wheel,
+.group:hover .cm-wheel { animation: cm-spin 0.6s linear infinite; }
+.cm-driving .cm-road,
+.group:hover .cm-road { animation: cm-road 0.4s linear infinite; }
+.cm-driving .cm-car,
+.group:hover .cm-car { animation: cm-bob 0.5s ease-in-out infinite; }
+
+.cm-pop { animation: cm-pop 0.35s ease-out both; }
+.cm-window { animation: cm-window-in 0.3s ease-out both; }
+/* The launcher only fades in (no movement), so it never fights its hover effect */
+@keyframes cm-launch-in {
+  from { opacity: 0; transform: scale(0.8); }
+  to { opacity: 1; transform: none; }
+}
+.cm-launch-bounce { animation: cm-launch-in 0.2s ease-out 1 both; }
+.cm-dot { animation: cm-dot 1s ease-in-out infinite; }
+.cm-stripe {
+  background-image: linear-gradient(
+    90deg,
+    hsl(var(--brand)),
+    hsl(var(--brand-dark)),
+    hsl(var(--brand))
+  );
+  background-size: 200% 100%;
+  animation: cm-stripe-move 4s linear infinite;
+}
+
+/* Loading dots after the loader label */
+@keyframes cm-dots-step {
+  0%   { content: ""; }
+  25%  { content: "."; }
+  50%  { content: ".."; }
+  75%  { content: "..."; }
+}
+.cm-dots::after { content: ""; animation: cm-dots-step 1.2s steps(1) infinite; }
+
+/* Road for the loader: dashes repeat every 20px, so it loops seamlessly */
+@keyframes cm-road-wide { to { transform: translateX(-20px); } }
+.cm-driving .cm-road-wide { animation: cm-road-wide 0.35s linear infinite; }
+
+/* ------------------------------------------------------------------
+   Category scenes: smoky red-and-black stage with a floating product.
+   Transform/opacity only.
+   ------------------------------------------------------------------ */
+@keyframes cm-float {
+  0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+  50%      { transform: translateY(-7px) rotate(1.5deg); }
+}
+@keyframes cm-smoke {
+  0%, 100% { transform: translate(0, 0) scale(1);       opacity: 0.55; }
+  50%      { transform: translate(14px, -10px) scale(1.15); opacity: 0.85; }
+}
+@keyframes cm-swoosh {
+  from { transform: translateX(-30%) skewX(-18deg); opacity: 0; }
+  to   { transform: translateX(0) skewX(-18deg);     opacity: 1; }
+}
+@keyframes cm-sheen {
+  from { transform: translateX(-120%) skewX(-20deg); }
+  to   { transform: translateX(260%) skewX(-20deg); }
+}
+.cm-float  { animation: cm-float 5s ease-in-out infinite; }
+.cm-smoke  { animation: cm-smoke 7s ease-in-out infinite; }
+.cm-swoosh { animation: cm-swoosh 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.group:hover .cm-float { animation-duration: 2.8s; }
+.group:hover .cm-sheen { animation: cm-sheen 1.1s ease-out 1; }
+
+/* ------------------------------------------------------------------
+   Neon brand name behind page headers (brand and model pages).
+   The text comes from a data attribute through ::before, so it is NOT
+   in the page text: search engines and AI crawlers only see the real
+   <h1>. Decorative, ignored by screen readers, still when motion is
+   reduced.
+   ------------------------------------------------------------------ */
+@keyframes cm-neon-blink {
+  0%, 38%, 52%, 100% { opacity: 0.4; }
+  40% { opacity: 0.12; }
+  44% { opacity: 0.95; }
+  48% { opacity: 0.25; }
+  60%, 80% { opacity: 0.75; }
+  70% { opacity: 0.5; }
+}
+.cm-neon {
+  position: absolute;
+  right: -1%;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+  animation: cm-neon-blink 4.5s linear infinite;
+}
+.cm-neon::before {
+  content: attr(data-brand);
+  display: block;
+  font-weight: 900;
+  font-size: clamp(5rem, 17vw, 15rem);
+  line-height: 1;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+  text-transform: uppercase;
+  color: transparent;
+  -webkit-text-stroke: 2px hsl(var(--brand));
+  text-shadow: 0 0 28px hsl(var(--brand) / 0.55), 0 0 70px hsl(var(--brand) / 0.35);
+}
+@media (max-width: 640px) {
+  .cm-neon { opacity: 0.25; right: -8%; }
+}
+
+/* Hide the browser's built-in clear (x) on search boxes; we draw our own */
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+/* Order-confirmed badge: the tick draws itself, then glows softly. */
+@keyframes cm-badge-in {
+  0%   { transform: scale(0.6); opacity: 0; }
+  70%  { transform: scale(1.08); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes cm-draw {
+  to { stroke-dashoffset: 0; }
+}
+@keyframes cm-glow {
+  0%, 100% { box-shadow: 0 0 14px 2px rgba(16, 185, 129, 0.35); }
+  50%      { box-shadow: 0 0 34px 10px rgba(16, 185, 129, 0.6); }
+}
+@keyframes cm-glow-tick {
+  0%, 100% { filter: drop-shadow(0 0 3px rgba(16, 185, 129, 0.7)); }
+  50%      { filter: drop-shadow(0 0 10px rgba(16, 185, 129, 1)); }
+}
+.cm-badge-glow { animation: cm-glow 2.2s ease-in-out infinite; }
+.cm-badge-pop  { animation: cm-badge-in 0.45s ease-out forwards, cm-glow-tick 2.2s 0.5s ease-in-out infinite; }
+.cm-badge-tick { stroke-dasharray: 40; stroke-dashoffset: 40; animation: cm-draw 0.5s 0.25s ease-out forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .cm-badge-glow, .cm-badge-pop { animation: none; }
+  .cm-badge-tick { animation: none; stroke-dashoffset: 0; }
+}
+
+/* Admin menu: the page you are on pops in and softly pulses once. */
+@keyframes cm-nav-pop {
+  0%   { transform: scale(0.92); box-shadow: 0 0 0 0 rgba(214, 40, 40, 0.6); }
+  60%  { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(214, 40, 40, 0); }
+  100% { transform: scale(1); }
+}
+.cm-nav-active { animation: cm-nav-pop 0.5s ease-out; }
+@media (prefers-reduced-motion: reduce) { .cm-nav-active { animation: none; } }
+
+/* Categories page cards: slide in one by one, a red light runs around the border and a shine sweeps across on hover. */
+@property --cm-a { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes cm-cat-in {
+  from { opacity: 0; transform: translateY(26px) scale(0.96); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes cm-cat-orbit { to { --cm-a: 360deg; } }
+@keyframes cm-cat-shine {
+  from { transform: translateX(-130%) skewX(-20deg); }
+  to   { transform: translateX(330%) skewX(-20deg); }
+}
+.cm-cat-card { opacity: 1; }
+.cm-cat-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(from var(--cm-a), transparent 0 62%, rgba(214, 40, 40, 0.15) 72%, #d62828 88%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.cm-cat-card:hover::before { opacity: 1; animation: cm-cat-orbit 2.2s linear infinite; }
+.cm-cat-shine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 35%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.10), transparent);
+  transform: translateX(-130%) skewX(-20deg);
+  pointer-events: none;
+}
+.cm-cat-card:hover .cm-cat-shine { animation: cm-cat-shine 0.9s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .cm-cat-card { opacity: 1; animation: none; }
+  .cm-cat-card:hover::before, .cm-cat-card:hover .cm-cat-shine { animation: none; }
+}
+
+/* Categories page: cards reveal as you scroll (no JS), and the hero has moving speed lines. */
+@keyframes cm-speed-move { to { background-position: -240px 0; } }
+.cm-speed {
+  background-image: repeating-linear-gradient(110deg, transparent 0 46px, rgba(255, 255, 255, 0.045) 46px 48px);
+  background-size: 240px 100%;
+  animation: cm-speed-move 6s linear infinite;
+  mask-image: linear-gradient(180deg, transparent, #000 40%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 40%, transparent);
+}
+@media (prefers-reduced-motion: reduce) { .cm-speed { animation: none; } }
+
+/* Text reveal: each line slides up out of a mask. The text is normal HTML, always readable by search engines. */
+@keyframes cm-up {
+  from { transform: translateY(105%); opacity: 0.01; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes cm-line-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.cm-mask { display: block; overflow: hidden; padding-bottom: 0.08em; }
+.cm-up { display: block; animation: cm-up 0.85s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: var(--d, 0s); }
+.cm-up.cm-eyebrow { display: block; }
+.cm-line { animation: cm-line-grow 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) 0.3s both; }
+
+/* Home page Amazon reviews spotlight (components/AmazonReviews.tsx) */
+.cm-reviews-viewport {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 5%, #000 95%, transparent);
+}
+.cm-reviews-track {
+  display: flex;
+  width: max-content;
+  animation: cm-reviews-scroll 80s linear infinite;
+}
+.cm-reviews-viewport:hover .cm-reviews-track,
+.cm-reviews-track:focus-within { animation-play-state: paused; }
+@keyframes cm-reviews-scroll { to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) {
+  .cm-reviews-track { animation: none; }
+  .cm-reviews-viewport { overflow-x: auto; -webkit-mask-image: none; mask-image: none; }
+}
+
+
+/* Admin sidebar: items slide in one by one, glow dot pulses */
+@keyframes cm-side-in { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
+@keyframes cm-side-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(214, 40, 40, 0.55); } 50% { box-shadow: 0 0 0 6px rgba(214, 40, 40, 0); } }
+.cm-side-item { animation: cm-side-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both; animation-delay: calc(var(--i, 0) * 55ms); }
+.cm-side-dot { animation: cm-side-pulse 2s ease-out infinite; }
+@media (prefers-reduced-motion: reduce) { .cm-side-item, .cm-side-dot { animation: none; } }
+
+
+/* About / Manufacturer page: scroll reveals, marquee, drifting grid (CSS only, text stays in the HTML) */
+@keyframes cm-reveal-in { from { opacity: 0; transform: translateY(46px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes cm-reveal-left { from { opacity: 0; transform: translateX(-70px); } to { opacity: 1; transform: none; } }
+@keyframes cm-reveal-right { from { opacity: 0; transform: translateX(70px); } to { opacity: 1; transform: none; } }
+@keyframes cm-marquee { to { transform: translateX(-50%); } }
+@keyframes cm-grid-drift { to { background-position: 64px 64px; } }
+@keyframes cm-glow { 0%, 100% { opacity: 0.45; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.18); } }
+@keyframes cm-sweep { from { transform: translateX(-120%) skewX(-18deg); } to { transform: translateX(320%) skewX(-18deg); } }
+.cm-marquee-track { display: flex; width: max-content; animation: cm-marquee 38s linear infinite; }
+.cm-marquee:hover .cm-marquee-track { animation-play-state: paused; }
+.cm-grid-drift { animation: cm-grid-drift 10s linear infinite; }
+.cm-glow { animation: cm-glow 6s ease-in-out infinite; }
+.cm-sweep::after {
+  content: ""; position: absolute; inset: 0; width: 35%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.10), transparent);
+  animation: cm-sweep 5.5s ease-in-out infinite; pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cm-reveal, .cm-reveal-l, .cm-reveal-r, .cm-marquee-track, .cm-grid-drift, .cm-glow, .cm-sweep::after { animation: none; }
+}
+
+/* Catalog hero: slowly turning brake rotor and gear */
+@keyframes cm-spin { to { transform: rotate(360deg); } }
+@keyframes cm-spin-rev { to { transform: rotate(-360deg); } }
+@keyframes cm-spark { 0% { transform: translateX(-20vw); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateX(110vw); opacity: 0; } }
+.cm-spin { animation: cm-spin 60s linear infinite; transform-origin: center; }
+.cm-spin-rev { animation: cm-spin-rev 40s linear infinite; transform-origin: center; }
+.cm-spark { animation: cm-spark 7s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .cm-spin, .cm-spin-rev, .cm-spark { animation: none; } }
+
+/* Brands hero: sweeping speedometer needle and reverse marquee */
+@keyframes cm-needle { 0%, 100% { transform: rotate(-115deg); } 38% { transform: rotate(75deg); } 50% { transform: rotate(58deg); } 62% { transform: rotate(82deg); } }
+.cm-needle { animation: cm-needle 10s cubic-bezier(0.45, 0, 0.25, 1) infinite; transform-origin: center; }
+.cm-marquee-rev { animation-direction: reverse; animation-duration: 46s; }
+@media (prefers-reduced-motion: reduce) { .cm-needle, .cm-marquee-rev { animation: none; } }
+
+@keyframes cm-toast-in {
+  from { opacity: 0; transform: translateY(-14px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+.cm-toast { animation: cm-toast-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+@media (prefers-reduced-motion: reduce) { .cm-toast { animation: none; } }
+
+/* Canuck Motors tyre loader (components/LoadingAnimation.tsx).
+   3s loop: a bump rolls along the road, the tyre hops over it and settles. */
+@keyframes cm-tire-bump {
+  0% { transform: translateX(186px); opacity: 0; }
+  3% { opacity: 1; }
+  72% { opacity: 1; }
+  78%, 100% { transform: translateX(8px); opacity: 0; }
+}
+@keyframes cm-tire-hop {
+  0%, 33% { transform: translateY(0) scale(1, 1); animation-timing-function: cubic-bezier(0.2, 0.7, 0.3, 1); }
+  45% { transform: translateY(-46px) scale(1, 1); animation-timing-function: cubic-bezier(0.6, 0, 0.9, 0.4); }
+  58% { transform: translateY(0) scale(1.05, 0.93); animation-timing-function: ease-out; }
+  66% { transform: translateY(-3px) scale(0.99, 1.01); animation-timing-function: ease-in-out; }
+  74%, 100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes cm-tire-roll { to { transform: rotate(-360deg); } }
+@keyframes cm-tire-slide { to { stroke-dashoffset: -22; } }
+.cm-tire-bump { animation: cm-tire-bump 3s linear infinite; }
+.cm-tire-hop { transform-box: fill-box; transform-origin: bottom center; animation: cm-tire-hop 3s infinite; }
+.cm-tire-roll { transform-box: fill-box; transform-origin: center; animation: cm-tire-roll 1.4s linear infinite; }
+.cm-tire-dash { animation: cm-tire-slide 0.9s linear infinite; }
+
+/* Page overlay: waits a moment before appearing (fast loads never flash), fades out when done */
+@keyframes cm-ld-in { from { opacity: 0; } to { opacity: 1; } }
+.cm-ld-overlay, .cm-ld-inline { animation: cm-ld-in 0.25s ease-out 0.12s both; }
+.cm-ld-overlay.cm-ld-leaving, .cm-ld-inline.cm-ld-leaving {
+  animation: none;
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+  pointer-events: none;
+}
+
+/* Reduce motion: a still tyre */
+@media (prefers-reduced-motion: reduce) {
+  .cm-tire-bump, .cm-tire-hop, .cm-tire-roll, .cm-tire-dash, .cm-ld-overlay, .cm-ld-inline { animation: none; }
+  .cm-tire-bump { opacity: 0; }
+}
+
+/* ------------------------------------------------------------------
+   Product tabs (components/ProductTabs.tsx, fancy bar).
+   A red pill slides to the active tab; the new panel fades up once.
+   Reduced motion is handled by the global rule.
+   ------------------------------------------------------------------ */
+.cm-tab-pill {
+  transition: left 0.45s cubic-bezier(0.3, 0.8, 0.2, 1), width 0.45s cubic-bezier(0.3, 0.8, 0.2, 1);
+}
+.cm-tab-icon { transition: transform 0.3s cubic-bezier(0.3, 0.8, 0.2, 1); }
+.cm-tab:hover .cm-tab-icon { transform: translateY(-2px) scale(1.12); }
+@keyframes cm-panel-in {
+  from { opacity: 0.01; transform: translateY(10px); }
+  to   { opacity: 1;    transform: none; }
+}
+.cm-panel-in:not([hidden]) { animation: cm-panel-in 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+/* Cart: shake the fit checkbox when someone tries to check out without ticking it. */
+@keyframes cm-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+.cm-shake { animation: cm-shake 0.45s ease-in-out; }
+
+/* French visitors: page stays hidden until the French text is in place (see lib/i18n/lang.ts) */
+html.i18n-pending body {
+  opacity: 0;
+}
+body {
+  transition: opacity 0.15s ease-out;
+}
+
+/* ------------------------------------------------------------------
+   Category banner (components/CategoryHero.tsx)
+   ------------------------------------------------------------------ */
+.cm-cat-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 80% 90% at 70% 50%, #000 30%, transparent 75%);
+}
+.cm-cat-glow {
+  background: radial-gradient(circle, hsl(var(--brand) / 0.45), hsl(var(--brand) / 0.12) 45%, transparent 70%);
+  filter: blur(10px);
+  animation: cm-cat-pulse 6s ease-in-out infinite;
+}
+@keyframes cm-cat-pulse {
+  0%, 100% { opacity: 0.55; transform: translateY(-50%) scale(0.92); }
+  50%      { opacity: 1;    transform: translateY(-50%) scale(1.06); }
+}
+.cm-cat-sweep {
+  background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.06) 50%, transparent 60%);
+  background-size: 250% 100%;
+  animation: cm-cat-sweep 9s linear infinite;
+}
+@keyframes cm-cat-sweep {
+  from { background-position: 150% 0; }
+  to   { background-position: -100% 0; }
+}
+.cm-cat-dot { animation: cm-cat-blink 1.6s ease-in-out infinite; }
+@keyframes cm-cat-blink { 50% { opacity: 0.35; } }
+
+/* Exploded part: layers spread apart along the depth axis, then close up again */
+.cm-xstack { perspective: 1400px; }
+.cm-xstack-inner {
+  transform-style: preserve-3d;
+  transform: rotateX(56deg) rotateZ(-30deg);
+  animation: cm-xturn 16s ease-in-out infinite alternate;
+}
+.cm-xlayer {
+  transform: translateZ(calc(var(--i) * 5px));
+  filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.55));
+  animation: cm-xexplode 7s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes cm-xexplode {
+  0%, 12%   { transform: translateZ(calc(var(--i) * 5px)); }
+  42%, 72%  { transform: translateZ(calc(var(--i) * 300px / var(--n))); }
+  100%      { transform: translateZ(calc(var(--i) * 5px)); }
+}
+@keyframes cm-xturn {
+  from { transform: rotateX(58deg) rotateZ(-36deg); }
+  to   { transform: rotateX(50deg) rotateZ(-20deg); }
+}
+
+/* Category banner photos: each slide fades in, zooms slowly, fades out; --n slides take turns */
+.cm-cat-photos {
+  mask-image: linear-gradient(90deg, transparent 0%, #000 38%);
+}
+@media (max-width: 767px) {
+  .cm-cat-photos { mask-image: none; opacity: 0.45; }
+}
+.cm-cat-slide {
+  opacity: 0;
+  animation: cm-cat-slide calc(var(--n) * 6s) ease-in-out infinite;
+  animation-delay: calc(var(--i) * 6s);
+}
+.cm-cat-slide:first-child { opacity: 1; }
+@keyframes cm-cat-slide {
+  0%   { opacity: 0; transform: scale(1.02); }
+  8%   { opacity: 1; }
+  33%  { opacity: 1; }
+  41%  { opacity: 0; transform: scale(1.12); }
+  100% { opacity: 0; transform: scale(1.12); }
+}
+
+/* Light banner: white-background product photos melt into the white page */
+.cm-cat-photos-light {
+  mask-image: linear-gradient(90deg, transparent 0%, #000 18%);
+}
+@media (max-width: 767px) {
+  .cm-cat-photos-light { mask-image: none; opacity: 0.18; }
+}
+.cm-cat-glow-light {
+  background: radial-gradient(circle, hsl(var(--brand) / 0.14), hsl(var(--brand) / 0.05) 45%, transparent 70%);
+  animation: cm-cat-pulse 6s ease-in-out infinite;
+}
+
+/* Product photos only fade (no zoom), so nothing spills over the edge */
+.cm-cat-fade .cm-cat-slide { animation-name: cm-cat-fade; }
+@keyframes cm-cat-fade {
+  0%   { opacity: 0; }
+  8%   { opacity: 1; }
+  33%  { opacity: 1; }
+  41%  { opacity: 0; }
+  100% { opacity: 0; }
 }

@@ -1,0 +1,225 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { createStripeRefund } from "@/lib/stripe";
+
+export async function requestCancellation(orderId: string, reason: string) {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+
+  if (!auth.user) {
+    redirect("/login");
+  }
+
+  const { data: result, error } = await supabase.rpc("request_order_cancellation", {
+    p_order_id: orderId,
+    p_reason: reason,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (result === "refund_required") {
+    const admin = createAdminClient();
+
+    const { data: prepared, error: prepareError } = await admin.rpc(
+      "prepare_customer_cancellation_refund",
+      { p_order_id: orderId }
+    );
+
+    if (prepareError) {
+      throw new Error(prepareError.message);
+    }
+
+    const refund = prepared?.[0];
+
+    if (refund) {
+      try {
+        const stripeRefund = await createStripeRefund({
+          paymentIntentId: refund.payment_intent_id,
+          amountCents: Math.round(Number(refund.amount) * 100),
+          idempotencyKey: refund.idempotency_key,
+          refundId: refund.refund_id,
+          orderId,
+        });
+
+        const { error: finalizeError } = await admin.rpc("finalize_refund", {
+          p_refund_id: refund.refund_id,
+          p_stripe_refund_id: stripeRefund.id,
+          p_succeeded: true,
+          p_failure_reason: null,
+        });
+
+        if (finalizeError) {
+          throw new Error(finalizeError.message);
+        }
+      } catch (refundError) {
+        await admin.rpc("finalize_refund", {
+          p_refund_id: refund.refund_id,
+          p_stripe_refund_id: null,
+          p_succeeded: false,
+          p_failure_reason:
+            refundError instanceof Error ? refundError.message : "Refund failed",
+        });
+        // The cancellation itself is saved. The failed refund is recorded so staff
+        // can retry it (Admin > Payments), instead of showing the customer a crash.
+        console.error("Cancellation refund failed:", refundError);
+      }
+    }
+  }
+
+  revalidatePath(`/account/orders/${orderId}`);
+  revalidatePath("/account/orders");
+}
+
+// Cancel ONE item of a paid order (before it ships). Refunds just that item.
+export async function cancelOrderItem(orderId: string, orderItemId: number, reason: string) {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) redirect("/login");
+
+  const { data: prepared, error } = await supabase.rpc("prepare_item_cancellation", {
+    p_order_item_id: orderItemId,
+    p_reason: reason,
+  });
+  if (error) {
+    const m = error.message;
+    throw new Error(
+      /prepare_item_cancellation|schema cache/.test(m)
+        ? "Item cancellation is not set up yet. Run database/item_cancellation.sql."
+        : /item_already_cancelled/.test(m)
+          ? "This item was already cancelled."
+          : /order_already_in_delivery_flow/.test(m)
+            ? "This order is already being delivered, so items can no longer be cancelled."
+            : /order_not_paid|order_not_cancellable/.test(m)
+              ? "This order cannot be changed right now."
+              : m
+    );
+  }
+
+  const row = prepared?.[0];
+  if (!row) throw new Error("Unable to cancel this item.");
+
+  // Only one item left: cancel the whole order instead.
+  if (row.action === "cancel_order") {
+    await requestCancellation(orderId, reason || "Customer cancelled the last item");
+    return;
+  }
+
+  const admin = createAdminClient();
+  try {
+    const stripeRefund = await createStripeRefund({
+      paymentIntentId: row.payment_intent_id,
+      amountCents: Math.round(Number(row.amount) * 100),
+      idempotencyKey: row.idempotency_key,
+      refundId: row.refund_id,
+      orderId,
+    });
+
+    const { error: finalizeError } = await admin.rpc("finalize_item_cancellation", {
+      p_refund_id: row.refund_id,
+      p_stripe_refund_id: stripeRefund.id,
+      p_succeeded: true,
+      p_failure_reason: null,
+    });
+    if (finalizeError) throw new Error(finalizeError.message);
+  } catch (refundError) {
+    await admin.rpc("finalize_item_cancellation", {
+      p_refund_id: row.refund_id,
+      p_stripe_refund_id: null,
+      p_succeeded: false,
+      p_failure_reason: refundError instanceof Error ? refundError.message : "Refund failed",
+    });
+    console.error("Item cancellation refund failed:", refundError);
+    throw new Error("The refund could not be completed, so the item was not cancelled. Please try again or contact support.");
+  }
+
+  revalidatePath(`/account/orders/${orderId}`);
+  revalidatePath("/account/orders");
+  revalidatePath("/admin/orders");
+}
+
+export async function requestReturnOrExchange(input: {
+  orderId: string;
+  requestType: "return" | "exchange";
+  reasonCode: string;
+  reasonText: string;
+  items: Array<{
+    order_item_id: number;
+    quantity: number;
+    replacement_product_id?: number | null;
+  }>;
+}) {
+  const allowedReasons = new Set([
+    "damaged",
+    "wrong_item",
+    "not_compatible",
+    "defective",
+    "changed_mind",
+    "other",
+  ]);
+
+  if (!["return", "exchange"].includes(input.requestType)) {
+    throw new Error("Invalid return request type.");
+  }
+
+  if (!allowedReasons.has(input.reasonCode)) {
+    throw new Error("Please select a valid return reason.");
+  }
+
+  if (input.reasonText.length > 2000) {
+    throw new Error("Additional details must be 2,000 characters or fewer.");
+  }
+
+  if (!input.items.length || input.items.length > 20) {
+    throw new Error("Choose between 1 and 20 items.");
+  }
+
+  const seen = new Set<number>();
+  for (const item of input.items) {
+    if (
+      !Number.isInteger(item.order_item_id) ||
+      item.order_item_id <= 0 ||
+      !Number.isInteger(item.quantity) ||
+      item.quantity <= 0 ||
+      seen.has(item.order_item_id)
+    ) {
+      throw new Error("Return items contain an invalid or duplicate quantity.");
+    }
+    seen.add(item.order_item_id);
+
+    if (
+      item.replacement_product_id != null &&
+      (!Number.isInteger(item.replacement_product_id) ||
+        item.replacement_product_id <= 0)
+    ) {
+      throw new Error("Invalid replacement product.");
+    }
+  }
+
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+
+  if (!auth.user) {
+    redirect("/login");
+  }
+
+  const { error } = await supabase.rpc("create_return_request", {
+    p_order_id: input.orderId,
+    p_request_type: input.requestType,
+    p_reason_code: input.reasonCode,
+    p_reason_text: input.reasonText,
+    p_items: input.items,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  revalidatePath(`/account/orders/${input.orderId}`);
+  revalidatePath("/account/orders");
+}
