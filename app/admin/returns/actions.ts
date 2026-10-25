@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { processNotificationOutbox } from "@/lib/notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeAmountCheckoutSession, createStripeRefund } from "@/lib/stripe";
 import { createAmazonMcfReturn, syncAmazonMcfReturn } from "@/lib/amazon-mcf-returns";
@@ -67,7 +68,14 @@ async function queueReturnEmail(
         order_number: (order as { order_number?: string } | undefined)?.order_number ?? "",
       },
     });
-    return !error;
+    if (error) return false;
+    // Send right away instead of waiting for the scheduled job (which does not run locally).
+    try {
+      await processNotificationOutbox(10);
+    } catch (e) {
+      console.error("[returns] could not send queued email now:", e);
+    }
+    return true;
   } catch {
     return false;
   }
@@ -529,14 +537,19 @@ export async function createAmazonReturnAuthorization(requestId: string) {
 
     revalidatePath("/admin/returns");
     return result;
-  } catch (error) {
+  } catch (rawError) {
+    let error: Error = rawError instanceof Error ? rawError : new Error("Amazon MCF return failed.");
+    if (/does not exist|not found|no such|invalid.*order/i.test(error.message)) {
+      error = new Error(
+        "Amazon has no record of this order (it was probably never sent to Amazon, for example a test order, or the sandbox is on). Use the manual return: email the customer the return instructions below, then mark the return Received when the part arrives."
+      );
+    }
     const admin = createAdminClient();
     await admin
       .from("return_requests")
       .update({
         amazon_return_status: "error",
-        amazon_return_error:
-          error instanceof Error ? error.message.slice(0, 2000) : "Amazon MCF return failed.",
+        amazon_return_error: error.message.slice(0, 2000),
         amazon_return_synced_on: new Date().toISOString(),
         updated_on: new Date().toISOString(),
       })

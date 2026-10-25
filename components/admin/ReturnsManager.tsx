@@ -540,8 +540,17 @@ export default function ReturnsManager({
                                 <option value="inspection_failed">Inspection failed</option>
                                 <option value="completed">Completed</option>
                               </select>
-                              <input name="carrier" defaultValue={r.carrier} placeholder="Return carrier" className={input} />
-                              <input name="tracking" defaultValue={r.tracking} placeholder="Return tracking number" className={input} />
+                              {r.fulfillmentProvider === "amazon_mcf" && r.type === "return" ? (
+                                <>
+                                  <input type="hidden" name="carrier" defaultValue={r.carrier} />
+                                  <input type="hidden" name="tracking" defaultValue={r.tracking} />
+                                </>
+                              ) : (
+                                <>
+                                  <input name="carrier" defaultValue={r.carrier} placeholder="Return carrier" className={input} />
+                                  <input name="tracking" defaultValue={r.tracking} placeholder="Return tracking number" className={input} />
+                                </>
+                              )}
                               <textarea
                                 name="notes"
                                 defaultValue={r.notes}
@@ -576,6 +585,101 @@ export default function ReturnsManager({
 
                             {/* Actions */}
                             <div className="space-y-4">
+                              {/* Simple next-step panel */}
+                              <div className="rounded-2xl border-2 border-brand/30 bg-brand-tint/30 p-4">
+                                <p className="text-xs font-bold uppercase tracking-wide text-brand">Next step</p>
+                                {["requested", "under_review"].includes(r.status) && (
+                                  <form className="mt-2">
+                                    <p className="text-sm font-bold text-ink">1. Approve or reject this return</p>
+                                    <textarea
+                                      name="reason"
+                                      placeholder="Reason (only needed if you reject; the customer is emailed)"
+                                      className={`${input} min-h-16`}
+                                    />
+                                    <div className="mt-3 flex gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={pending}
+                                        onClick={() =>
+                                          run(async () => {
+                                            await updateReturnRequest(r.id, "approved", "", r.carrier, r.tracking, { notify: true, message: "" });
+                                            await sendReturnInstructions(
+                                              r.id,
+                                              "Your return is approved. Please pack the part in its original packaging and ship it back to the address below. Print your return label from My Orders (open the order, then Print return label), attach it to the box and send it with any carrier. Return postage is not included."
+                                            );
+                                            setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "approved" } : x)));
+                                          }, `${r.orderNumber} approved. The customer was emailed the return instructions.`)
+                                        }
+                                        className="cm-button-primary flex-1 disabled:opacity-60"
+                                      >
+                                        Approve
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={pending}
+                                        onClick={(e) => {
+                                          const reason = String(new FormData(e.currentTarget.form as HTMLFormElement).get("reason") || "");
+                                          run(async () => {
+                                            await updateReturnRequest(r.id, "rejected", "", r.carrier, r.tracking, { notify: true, message: reason });
+                                            setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "rejected" } : x)));
+                                          }, `${r.orderNumber} rejected. The customer was emailed.`);
+                                        }}
+                                        className="flex-1 rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-ink hover:border-brand disabled:opacity-60"
+                                      >
+                                        Reject
+                                      </button>
+                                    </div>
+                                  </form>
+                                )}
+                                {["approved", "label_issued", "in_transit"].includes(r.status) && (
+                                  <div className="mt-2">
+                                    <p className="text-sm font-bold text-ink">2. Waiting for the customer to send the part back</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      When the part arrives at your shop, click the button below.
+                                    </p>
+                                    <button
+                                      type="button"
+                                      disabled={pending}
+                                      onClick={() =>
+                                        run(async () => {
+                                          await updateReturnRequest(r.id, "received", "", r.carrier, r.tracking, { notify: false, message: "" });
+                                          setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "received" } : x)));
+                                        }, `${r.orderNumber} marked as received.`)
+                                      }
+                                      className="cm-button-primary mt-3 w-full disabled:opacity-60"
+                                    >
+                                      The part arrived: mark received
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={pending}
+                                      onClick={() =>
+                                        run(async () => {
+                                          await sendReturnInstructions(
+                                            r.id,
+                                            "Your return is approved. Please pack the part in its original packaging and ship it back to the address below. Print your return label from My Orders (open the order, then Print return label), attach it to the box and send it with any carrier. Return postage is not included."
+                                          );
+                                        }, "Return instructions emailed to the customer.")
+                                      }
+                                      className="mt-2 w-full rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-ink hover:border-brand disabled:opacity-60"
+                                    >
+                                      Email the return instructions again
+                                    </button>
+                                  </div>
+                                )}
+                                {["received", "refund_pending", "inspection_failed"].includes(r.status) && (
+                                  <div className="mt-2">
+                                    <p className="text-sm font-bold text-ink">3. Refund the customer, then restock</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      Use the refund and returned-stock boxes on this page to finish.
+                                    </p>
+                                  </div>
+                                )}
+                                {["completed", "rejected", "cancelled"].includes(r.status) && (
+                                  <p className="mt-2 text-sm font-bold text-ink">Nothing left to do. This return is {r.status}.</p>
+                                )}
+                              </div>
+
                               {r.fulfillmentProvider === "amazon_mcf" && r.type === "return" && (
                                 <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
                                   <p className="font-bold text-ink">Amazon MCF return</p>
@@ -641,6 +745,24 @@ export default function ReturnsManager({
                                     <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-700">
                                       {r.amazonReturnError}
                                     </p>
+                                  )}
+
+                                  {!r.amazonRmaId && r.status === "approved" && (
+                                    <button
+                                      type="button"
+                                      disabled={pending}
+                                      onClick={() =>
+                                        run(async () => {
+                                          await sendReturnInstructions(
+                                            r.id,
+                                            "Your return is approved. Please pack the part in its original packaging and ship it back to the address below. Print your return label from My Orders (open the order, then Print return label), attach it to the box and send it with any carrier. Return postage is not included. Reply to this email with the tracking number once it ships."
+                                          );
+                                        }, "Manual return instructions emailed to the customer.")
+                                      }
+                                      className="mt-3 w-full rounded-full border border-orange-300 px-4 py-2 text-sm font-bold text-orange-900 hover:bg-orange-100 disabled:opacity-60"
+                                    >
+                                      Can&apos;t use Amazon RMA? Email manual return instructions
+                                    </button>
                                   )}
 
                                   {r.items.some((item) => item.amazonReturnItemStatus) && (

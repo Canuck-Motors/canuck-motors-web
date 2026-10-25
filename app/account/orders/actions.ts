@@ -227,6 +227,32 @@ export async function requestReturnOrExchange(input: {
     redirect("/login");
   }
 
+  // One return per item: block a new request for quantity that is already being returned.
+  {
+    const admin = createAdminClient();
+    const { data: open } = await admin
+      .from("return_request_items")
+      .select("order_item_id, quantity, return_requests!inner(order_id, status)")
+      .eq("return_requests.order_id", input.orderId)
+      .not("return_requests.status", "in", '("rejected","cancelled")');
+    const { data: oi } = await admin
+      .from("order_items")
+      .select("id, quantity")
+      .eq("order_id", input.orderId)
+      .in("id", input.items.map((i) => i.order_item_id));
+    const already = new Map<number, number>();
+    for (const r of open ?? []) {
+      already.set(Number(r.order_item_id), (already.get(Number(r.order_item_id)) ?? 0) + Number(r.quantity));
+    }
+    const qtyBy = new Map((oi ?? []).map((r) => [Number(r.id), Number(r.quantity)]));
+    for (const item of input.items) {
+      const left = (qtyBy.get(item.order_item_id) ?? 0) - (already.get(item.order_item_id) ?? 0);
+      if (item.quantity > left) {
+        throw new Error("A return has already been requested for this item.");
+      }
+    }
+  }
+
   const { error } = await supabase.rpc("create_return_request", {
     p_order_id: input.orderId,
     p_request_type: input.requestType,

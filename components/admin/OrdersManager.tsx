@@ -10,6 +10,7 @@ import {
   createShipment,
   setOrderNote,
   setShippingCost,
+  testSetOrdersStatus,
   updateOrderStatus,
 } from "@/app/admin/actions";
 import { importAmazonTrackingSheet } from "@/app/admin/fulfillment/actions";
@@ -139,6 +140,27 @@ export default function OrdersManager({
   const [limit, setLimit] = useState(PAGE);
   const [open, setOpen] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const isDev = process.env.NODE_ENV !== "production"; // test-only controls, never in production
+  const cols = 6 + (isDev ? 2 : 0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState("");
+  const applyStatus = (ids: string[], status: string) => {
+    if (!status || !ids.length) return;
+    run(async () => {
+      await testSetOrdersStatus(ids, status);
+      setSelected(new Set());
+      setBulk("");
+      router.refresh();
+      return `${ids.length} order${ids.length === 1 ? "" : "s"} set to ${status}.`;
+    });
+  };
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   useEffect(() => {
     if (!msg) return;
     const t = setTimeout(() => setMsg(null), 9000);
@@ -371,16 +393,54 @@ export default function OrdersManager({
           pending ? "opacity-70" : ""
         }`}
       >
+        {isDev && selected.size > 0 && (
+          <div className="flex flex-wrap items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+            {selected.size} selected (test only)
+            <select
+              value={bulk}
+              onChange={(e) => setBulk(e.target.value)}
+              className="rounded-lg border border-amber-300 bg-white px-2 py-1 text-sm"
+            >
+              <option value="">Set status...</option>
+              <option value="shipped">Shipped</option>
+              <option value="out_for_delivery">Out for delivery</option>
+              <option value="delivered">Delivered</option>
+              <option value="cancelled">Cancel</option>
+            </select>
+            <button
+              type="button"
+              disabled={pending || !bulk}
+              onClick={() => applyStatus([...selected], bulk)}
+              className="rounded-full bg-ink px-4 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+            >
+              Apply to selected
+            </button>
+            <button type="button" onClick={() => setSelected(new Set())} className="text-xs underline">
+              Clear
+            </button>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
             <thead className="bg-secondary">
               <tr>
+                {isDev && (
+                  <th className="w-10 px-3 py-4">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all orders"
+                      checked={shown.slice(0, limit).length > 0 && shown.slice(0, limit).every((r) => selected.has(r.id))}
+                      onChange={(e) => setSelected(e.target.checked ? new Set(shown.slice(0, limit).map((r) => r.id)) : new Set())}
+                    />
+                  </th>
+                )}
                 <th className="px-3 py-4 font-semibold text-ink">Order</th>
                 <th className="px-3 py-4 font-semibold text-ink">Customer</th>
                 <th className="px-3 py-4 font-semibold text-ink">Items</th>
                 <th className="px-3 py-4 font-semibold text-ink">Total</th>
                 <th className="px-3 py-4 font-semibold text-ink">Status</th>
                 <th className="px-3 py-4 font-semibold text-ink">Tracking</th>
+                {isDev && <th className="px-3 py-4 font-semibold text-ink">Set status</th>}
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -397,6 +457,16 @@ export default function OrdersManager({
                       className={`cursor-pointer hover:bg-black/[0.02] ${isOpen ? "bg-brand-tint/40" : ""}`}
                       onClick={() => setOpen(isOpen ? null : o.id)}
                     >
+                      {isDev && (
+                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${o.number}`}
+                            checked={selected.has(o.id)}
+                            onChange={() => toggle(o.id)}
+                          />
+                        </td>
+                      )}
                       <td className="px-3 py-3">
                         <div className="flex items-center gap-2 font-bold text-ink">
                           {isOpen ? (
@@ -465,11 +535,27 @@ export default function OrdersManager({
                           <span className="text-muted-foreground">-</span>
                         )}
                       </td>
+                      {isDev && (
+                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          <select
+                            disabled={pending}
+                            value=""
+                            onChange={(e) => applyStatus([o.id], e.target.value)}
+                            className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold"
+                          >
+                            <option value="">Choose...</option>
+                            <option value="shipped">Shipped</option>
+                            <option value="out_for_delivery">Out for delivery</option>
+                            <option value="delivered">Delivered</option>
+                            <option value="cancelled">Cancel</option>
+                          </select>
+                        </td>
+                      )}
                     </tr>
 
                     {isOpen && (
                       <tr className="bg-secondary/40">
-                        <td colSpan={6} className="px-6 py-5">
+                        <td colSpan={cols} className="px-6 py-5">
                           <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr_1fr]">
                             <div>
                               <p className="font-bold text-ink">Items</p>
@@ -715,7 +801,7 @@ export default function OrdersManager({
               })}
               {shown.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">
+                  <td colSpan={cols} className="px-5 py-10 text-center text-muted-foreground">
                     No orders match.
                   </td>
                 </tr>

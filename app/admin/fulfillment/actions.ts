@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { emailShipmentToCustomer } from "@/lib/shipment-email";
-import { processFulfillmentQueue } from "@/lib/fulfillment";
+import { processFulfillmentQueue, syncAmazonMcfOrders, syncAmazonMcfPackageTracking } from "@/lib/fulfillment";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -88,6 +88,16 @@ export async function overrideOrderFulfillment(
 
   revalidatePath("/admin/orders");
   revalidatePath("/admin/fulfillment");
+}
+
+export async function runAmazonMcfSyncNow() {
+  await requireAdmin();
+  const queued = await processFulfillmentQueue(25);
+  const outbound = await syncAmazonMcfOrders(50);
+  const tracking = await syncAmazonMcfPackageTracking(50);
+  revalidatePath("/admin/fulfillment");
+  revalidatePath("/admin/orders");
+  return JSON.stringify({ queued, outbound, tracking });
 }
 
 export async function processAmazonMcfQueueNow() {

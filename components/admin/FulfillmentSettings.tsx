@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import {
+  runAmazonMcfSyncNow,
   saveFulfillmentSettings,
 } from "@/app/admin/fulfillment/actions";
 
@@ -113,6 +114,24 @@ export default function FulfillmentSettings({
           >
             Save settings
           </button>
+          {amazonConfigured && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() =>
+                start(async () => {
+                  try {
+                    setMessage("MCF sync result: " + (await runAmazonMcfSyncNow()));
+                  } catch (e) {
+                    setMessage(e instanceof Error ? e.message : "Unable to run MCF sync.");
+                  }
+                })
+              }
+              className="rounded-full bg-ink px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
+            >
+              Run MCF sync now (test)
+            </button>
+          )}
         </div>
         {message && <p className="mt-3 text-sm">{message}</p>}
       </section>

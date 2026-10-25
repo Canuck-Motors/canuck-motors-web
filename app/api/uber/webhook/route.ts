@@ -79,7 +79,7 @@ export async function POST(request: Request) {
     const map: Record<string, Record<string, unknown>> = {
       pickup_complete: { fulfillment_status: "out_for_delivery" },
       dropoff: { fulfillment_status: "out_for_delivery" },
-      delivered: { fulfillment_status: "delivered", delivered_on: new Date().toISOString() },
+      delivered: { fulfillment_status: "delivered", delivered_on: new Date().toISOString(), return_window_ends_on: new Date(Date.now() + 30 * 86400000).toISOString() },
     };
     if (status && map[status]) await admin.from("orders").update(map[status]).eq("id", order.id);
   }

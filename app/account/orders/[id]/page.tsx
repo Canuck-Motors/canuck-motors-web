@@ -85,7 +85,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
       supabase
         .from("return_requests")
         .select(
-          "id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_tracking_number, return_carrier, fulfillment_provider, amazon_return_status, amazon_rma_id, amazon_rma_page_url, amazon_return_error, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due"
+          "id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_tracking_number, return_carrier, fulfillment_provider, amazon_return_status, amazon_rma_id, amazon_rma_page_url, amazon_return_error, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due, return_request_items(order_item_id, quantity)"
         )
         .eq("order_id", order.id)
         .order("requested_on", { ascending: false }),
@@ -138,10 +138,22 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
     ["unfulfilled", "processing", "packed"].includes(order.fulfillment_status) &&
     order.payment_status !== "refunded";
 
+  // Quantity already part of a return that is still open or done (rejected/cancelled ones don't count).
+  const returnedQty = new Map<number, number>();
+  for (const rr of returnRequests ?? []) {
+    if (["rejected", "cancelled"].includes(String(rr.status))) continue;
+    for (const it of (rr.return_request_items ?? []) as { order_item_id: number; quantity: number }[]) {
+      returnedQty.set(it.order_item_id, (returnedQty.get(it.order_item_id) ?? 0) + Number(it.quantity));
+    }
+  }
+
   const now = Date.now();
+  // Orders marked delivered before a window was stored get 30 days from the delivery date.
   const returnDeadline = order.return_window_ends_on
     ? new Date(order.return_window_ends_on).getTime()
-    : null;
+    : order.fulfillment_status === "delivered" && order.delivered_on
+      ? new Date(order.delivered_on).getTime() + 30 * 86400000
+      : null;
   const canRequestReturn =
     order.fulfillment_status === "delivered" &&
     returnDeadline !== null &&
@@ -175,7 +187,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
               </Link>
             )}
 
-            {order.delivery_method === "uber" && <UberTracking orderId={order.id} />}
+            {order.delivery_method === "uber" && order.fulfillment_status !== "delivered" && <UberTracking orderId={order.id} />}
 
             <section className="mt-8 rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_40px_rgba(0,0,0,0.06)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -192,7 +204,11 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
 
               {(shipments ?? []).length === 0 ? (
                 <p className="mt-5 text-sm leading-6 text-muted-foreground">
-                  Tracking will appear here as soon as a delivery label is created.
+                  {order.fulfillment_status === "delivered"
+                    ? order.delivery_method === "uber"
+                      ? "Delivered by our same-day courier."
+                      : "This order has been delivered."
+                    : "Tracking will appear here as soon as a delivery label is created."}
                 </p>
               ) : (
                 <div className="mt-6 space-y-6">
@@ -338,7 +354,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                         </form>
                       )}
 
-                    {canRequestReturn && !item.cancelled_on && (
+                    {canRequestReturn && !item.cancelled_on && item.quantity - (returnedQty.get(item.id) ?? 0) > 0 && (
                       <div className="mt-5 border-t pt-5">
                         <p className="text-sm font-bold text-ink">
                           Return this item
@@ -373,14 +389,14 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                           className="mt-3 grid gap-3 md:grid-cols-2"
                         >
                           <input type="hidden" name="request_type" value="return" />
-                          {item.quantity > 1 ? (
+                          {item.quantity - (returnedQty.get(item.id) ?? 0) > 1 ? (
                             <label className="flex items-center gap-2 text-sm text-muted-foreground">
                               Quantity to return
                               <input
                                 name="quantity"
                                 type="number"
                                 min={1}
-                                max={item.quantity}
+                                max={item.quantity - (returnedQty.get(item.id) ?? 0)}
                                 defaultValue={1}
                                 className="w-20 rounded-xl border border-black/10 px-3 py-2.5 text-sm text-ink"
                                 required
@@ -452,6 +468,17 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                           Your note: {request.reason_text}
                         </p>
                       )}
+
+                      {["approved", "label_issued", "in_transit"].includes(String(request.status)) &&
+                        request.request_type === "return" &&
+                        request.fulfillment_provider !== "amazon_mcf" && (
+                          <Link
+                            href={`/account/orders/${order.id}/return-label/${request.id}`}
+                            className="mt-3 inline-flex rounded-full bg-ink px-5 py-2 text-sm font-bold text-white"
+                          >
+                            Print return label
+                          </Link>
+                        )}
 
                       {(request.return_tracking_number || request.return_carrier) && (
                         <div className="mt-3 rounded-2xl bg-secondary/60 p-4 text-sm">

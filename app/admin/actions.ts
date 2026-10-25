@@ -163,6 +163,30 @@ export async function bulkChangePrice(
   revalidatePath("/", "layout");
 }
 
+// TEST ONLY (local dev): jumps to any status, skipping the transition rules. Disabled in production.
+export async function testSetOrderStatus(orderId: string, status: string) {
+  if (process.env.NODE_ENV === "production") throw new Error("Not available in production.");
+  if (!["shipped", "out_for_delivery", "delivered", "cancelled"].includes(status)) throw new Error("Unsupported status.");
+  await requireStaff();
+  const patch: Record<string, unknown> = { status, fulfillment_status: status };
+  if (status === "delivered") { patch.delivered_on = new Date().toISOString(); patch.return_window_ends_on = new Date(Date.now() + 30 * 86400000).toISOString(); }
+  const { error } = await createAdminClient().from("orders").update(patch).eq("id", orderId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin/orders");
+}
+
+export async function testSetOrdersStatus(orderIds: string[], status: string) {
+  if (process.env.NODE_ENV === "production") throw new Error("Not available in production.");
+  if (!["shipped", "out_for_delivery", "delivered", "cancelled"].includes(status)) throw new Error("Unsupported status.");
+  if (!orderIds.length) return;
+  await requireStaff();
+  const patch: Record<string, unknown> = { status, fulfillment_status: status };
+  if (status === "delivered") { patch.delivered_on = new Date().toISOString(); patch.return_window_ends_on = new Date(Date.now() + 30 * 86400000).toISOString(); }
+  const { error } = await createAdminClient().from("orders").update(patch).in("id", orderIds);
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin/orders");
+}
+
 export async function updateOrderStatus(orderId: string, status: string) {
   const allowed = new Set(["cancelled", "processing", "packed", "ready_to_ship", "shipped", "out_for_delivery", "delivered"]);
 
