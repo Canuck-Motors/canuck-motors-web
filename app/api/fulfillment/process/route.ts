@@ -7,7 +7,7 @@ import {
 } from "@/lib/fulfillment";
 import { syncAmazonMcfReturn } from "@/lib/amazon-mcf-returns";
 
-export async function POST(request: Request) {
+async function handleFulfillmentProcess(request: Request) {
   const secret = process.env.CRON_SECRET;
   const auth = request.headers.get("authorization") || "";
 
@@ -56,4 +56,13 @@ export async function POST(request: Request) {
     console.error("Fulfillment queue processing failed:", error);
     return NextResponse.json({ error: "Fulfillment processing failed" }, { status: 500 });
   }
+}
+
+
+export async function GET(request: Request) {
+  return handleFulfillmentProcess(request);
+}
+
+export async function POST(request: Request) {
+  return handleFulfillmentProcess(request);
 }
