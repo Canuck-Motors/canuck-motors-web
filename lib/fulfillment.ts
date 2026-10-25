@@ -815,7 +815,12 @@ export async function syncAmazonMcfPackageTracking(limit = 50) {
       };
 
       if (allDelivered) {
-        orderPatch.delivered_on = deliveredOn;
+        const deliveredAt = deliveredOn ?? new Date().toISOString();
+        const returnWindowEndsOn = new Date(deliveredAt);
+        returnWindowEndsOn.setUTCDate(returnWindowEndsOn.getUTCDate() + 15);
+
+        orderPatch.delivered_on = deliveredAt;
+        orderPatch.return_window_ends_on = returnWindowEndsOn.toISOString();
         orderPatch.fulfillment_routing_status = "completed";
       }
 

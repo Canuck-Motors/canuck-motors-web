@@ -189,11 +189,19 @@ export default function FrenchRuntime() {
     if (!pendingNodes) root.classList.remove("i18n-pending");
     observer.observe(root, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ATTRS });
     let tries = 0;
+    const maxHydrationRetries = 8;
     const retry = setInterval(() => {
       tries++;
-      if (!pendingNodes || tries > 8) root.classList.remove("i18n-pending");
-      // Slow pages can take a while to hydrate (dev mode): keep checking for up to 2 minutes
-      if (!pendingNodes || tries > 400) return clearInterval(retry);
+
+      // Do not keep rescanning the whole document for minutes. The mutation
+      // observer below already handles content that appears after hydration.
+      // A bounded retry window avoids repeated DOM work/flicker in dev mode.
+      if (!pendingNodes || tries >= maxHydrationRetries) {
+        root.classList.remove("i18n-pending");
+        clearInterval(retry);
+        return;
+      }
+
       pass();
     }, 300);
 
