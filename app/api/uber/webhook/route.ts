@@ -76,10 +76,18 @@ export async function POST(request: Request) {
     });
 
     // Keep the normal order status in step. Failure here must never reject the webhook.
+    const deliveredAt = new Date();
+    const returnWindowEndsOn = new Date(deliveredAt);
+    returnWindowEndsOn.setUTCDate(returnWindowEndsOn.getUTCDate() + 15);
+
     const map: Record<string, Record<string, unknown>> = {
       pickup_complete: { fulfillment_status: "out_for_delivery" },
       dropoff: { fulfillment_status: "out_for_delivery" },
-      delivered: { fulfillment_status: "delivered", delivered_on: new Date().toISOString() },
+      delivered: {
+        fulfillment_status: "delivered",
+        delivered_on: deliveredAt.toISOString(),
+        return_window_ends_on: returnWindowEndsOn.toISOString(),
+      },
     };
     if (status && map[status]) await admin.from("orders").update(map[status]).eq("id", order.id);
   }
