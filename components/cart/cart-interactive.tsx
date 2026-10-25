@@ -6,11 +6,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Lock, Minus, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { beginCheckout } from "@/app/checkout/actions";
 import { removeCartItem, updateCartQuantity } from "@/app/cart/actions";
+import { quoteStandardShipping } from "@/app/cart/shipping-actions";
+import { UberDelivery, type DeliveryState } from "@/components/cart/uber-delivery";
 
 type CartLine = {
   id: number;
   product_id: number;
   quantity: number;
+  available?: number | null;
   product: {
     id: number;
     product_name: string;
@@ -26,13 +29,94 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 
 export default function CartInteractive({
   initialLines,
+  uberEligible = false,
+  mcfOn = false,
+  uberDefaults,
+  shipPostalDefault = "",
+  shipAccountLabel = "",
 }: {
   initialLines: CartLine[];
+  uberEligible?: boolean;
+  mcfOn?: boolean;
+  uberDefaults?: DeliveryState["fields"];
+  shipPostalDefault?: string;
+  shipAccountLabel?: string;
 }) {
   const [lines, setLines] = useState(initialLines);
   const [saveStates, setSaveStates] = useState<Record<number, SaveState>>({});
   const [removingIds, setRemovingIds] = useState<number[]>([]);
   const [fitConfirmed, setFitConfirmed] = useState(false);
+  const [delivery, setDelivery] = useState<DeliveryState>({
+    method: "standard",
+    fields: uberDefaults ?? { name: "", phone: "", street: "", city: "", state: "", zip: "" },
+    feeCents: null,
+  });
+  const hasAccountAddr = shipPostalDefault.replace(/[^A-Za-z0-9]/g, "").length >= 6;
+  const [shipTo, setShipTo] = useState<"account" | "other">(hasAccountAddr ? "account" : "other");
+  const [other, setOther] = useState({ name: uberDefaults?.name ?? "", line1: "", line2: "", city: "", province: "", postal: "" });
+  const setO = (k: keyof typeof other, v: string) => setOther((o) => ({ ...o, [k]: v }));
+  type AddrSug = { street: string; city: string; zip: string; province: string; label: string };
+  const [sugs, setSugs] = useState<AddrSug[]>([]);
+  const [sugOpen, setSugOpen] = useState(false);
+  const pickedStreet = useRef("");
+  const streetQ = other.line1;
+  useEffect(() => {
+    if (shipTo !== "other" || streetQ.trim().length < 3 || streetQ === pickedStreet.current) {
+      setSugs([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/address-suggest?scope=canada&q=${encodeURIComponent(streetQ)}`);
+        const json = await res.json();
+        setSugs(json.suggestions ?? []);
+        setSugOpen(true);
+      } catch {
+        setSugs([]);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [streetQ, shipTo]);
+  function pickSug(sg: AddrSug) {
+    pickedStreet.current = sg.street;
+    setSugOpen(false);
+    setSugs([]);
+    setOther((o) => ({ ...o, line1: sg.street, city: sg.city, province: sg.province || o.province, postal: sg.zip }));
+  }
+  const otherComplete = !!(other.name.trim() && other.line1.trim() && other.city.trim() && other.province && other.postal.replace(/\s/g, "").length >= 6);
+  const stdPostal = shipTo === "account" ? shipPostalDefault : other.postal;
+  const [stdFeeCents, setStdFeeCents] = useState<number | null>(null);
+  const [stdMsg, setStdMsg] = useState<string | null>(null);
+  const qtySig = lines.map((l) => `${l.id}:${l.quantity}`).join(",");
+  useEffect(() => {
+    if (delivery.method !== "standard") return;
+    const clean = stdPostal.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    setStdFeeCents(null);
+    if (clean.length < 6) {
+      setStdMsg(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const r = await quoteStandardShipping(clean);
+      if (cancelled) return;
+      if (r.ok) {
+        setStdFeeCents(r.feeCents);
+        setStdMsg(null);
+      } else {
+        setStdMsg(r.message);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [stdPostal, delivery.method, qtySig]);
+  const uberReady = (delivery.method === "standard" && stdFeeCents != null && (shipTo === "account" || otherComplete)) || (delivery.feeCents != null && !!delivery.fields.name.trim() && !!delivery.fields.phone.trim());
+  const deliveryFee =
+    delivery.method === "uber"
+      ? delivery.feeCents != null ? delivery.feeCents / 100 : 0
+      : stdFeeCents != null ? stdFeeCents / 100 : 0;
   const [shake, setShake] = useState(false);
   const fitRef = useRef<HTMLLabelElement>(null);
   const itemCount = lines.reduce((n, l) => n + l.quantity, 0);
@@ -61,6 +145,7 @@ export default function CartInteractive({
     [lines],
   );
 
+  const stockProblem = lines.some((l) => l.available != null && l.quantity > l.available);
   const hasPendingChanges = Object.values(saveStates).some(
     (state) => state === "saving" || state === "idle",
   );
@@ -212,6 +297,13 @@ export default function CartInteractive({
                 <p className="mt-2 text-sm text-muted-foreground">
                   ${line.product.price.toFixed(2)} each
                 </p>
+                {line.available != null && line.quantity > line.available && (
+                  <p role="alert" className="mt-1 text-sm font-semibold text-red-700">
+                    {line.available > 0
+                      ? `Only ${line.available} left. Lower the quantity to continue.`
+                      : "Out of stock. Remove it to continue."}
+                  </p>
+                )}
 
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <div
@@ -282,6 +374,88 @@ export default function CartInteractive({
             </article>
           );
         })}
+
+        {uberEligible && <UberDelivery value={delivery} onChange={setDelivery} mcfOn={mcfOn} />}
+
+        {delivery.method === "standard" && (
+          <div className="rounded-2xl border border-border bg-white p-5">
+            <p className="text-sm font-bold text-ink">{mcfOn ? "Shipping address: where should we send it?" : "Standard shipping: where should we send it?"}</p>
+            {hasAccountAddr && (
+              <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
+                <input type="radio" name="ship-to" checked={shipTo === "account"} onChange={() => setShipTo("account")} className="mt-1 accent-[var(--brand,#d62828)]" />
+                <span>
+                  <span className="font-semibold text-ink">Ship to my account address</span>
+                  <span className="block text-xs text-muted-foreground">{shipAccountLabel}</span>
+                </span>
+              </label>
+            )}
+            <label className="mt-3 flex cursor-pointer items-start gap-3 text-sm">
+              <input type="radio" name="ship-to" checked={shipTo === "other"} onChange={() => setShipTo("other")} className="mt-1 accent-[var(--brand,#d62828)]" />
+              <span className="font-semibold text-ink">Ship to a different location</span>
+            </label>
+            {shipTo === "other" && (
+              <div className="mt-4 grid gap-3 pl-7 sm:grid-cols-2">
+                {([
+                  ["name", "Full name", "sm:col-span-2", "name"],
+                  ["line1", "Street address", "sm:col-span-2", "address-line1"],
+                  ["line2", "Apartment, suite, unit (optional)", "sm:col-span-2", "address-line2"],
+                  ["city", "City", "", "address-level2"],
+                ] as const).map(([k, lbl, span, ac]) => (
+                  <div key={k} className={span}>
+                    <label htmlFor={`ship-${k}`} className="mb-1 block text-xs font-bold uppercase tracking-wide text-ink/60">{lbl}</label>
+                    <div className="relative">
+                      <input
+                        id={`ship-${k}`}
+                        value={other[k]}
+                        onChange={(e) => setO(k, e.target.value)}
+                        onFocus={k === "line1" ? () => setSugOpen(true) : undefined}
+                        onBlur={k === "line1" ? () => setTimeout(() => setSugOpen(false), 150) : undefined}
+                        autoComplete={k === "line1" ? "off" : ac}
+                        placeholder={k === "line1" ? "Start typing your street address" : undefined}
+                        className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-base outline-none focus:border-brand sm:text-sm"
+                      />
+                      {k === "line1" && sugOpen && sugs.length > 0 && (
+                        <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
+                          {sugs.map((sg) => (
+                            <li key={sg.label}>
+                              <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => pickSug(sg)} className="block w-full px-4 py-2.5 text-left text-sm hover:bg-secondary">
+                                {sg.label}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <div>
+                  <label htmlFor="ship-province" className="mb-1 block text-xs font-bold uppercase tracking-wide text-ink/60">Province</label>
+                  <select id="ship-province" value={other.province} onChange={(e) => setO("province", e.target.value)} autoComplete="address-level1" className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-base outline-none focus:border-brand sm:text-sm">
+                    <option value="">Select province</option>
+                    {[["AB","Alberta"],["BC","British Columbia"],["MB","Manitoba"],["NB","New Brunswick"],["NL","Newfoundland and Labrador"],["NS","Nova Scotia"],["NT","Northwest Territories"],["NU","Nunavut"],["ON","Ontario"],["PE","Prince Edward Island"],["QC","Quebec"],["SK","Saskatchewan"],["YT","Yukon"]].map(([c, n]) => (
+                      <option key={c} value={c}>{n}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="ship-postal" className="mb-1 block text-xs font-bold uppercase tracking-wide text-ink/60">Postal code</label>
+                  <input id="ship-postal" value={other.postal} onChange={(e) => setO("postal", e.target.value.toUpperCase())} placeholder="M5V 2T6" maxLength={7} autoComplete="postal-code" className="w-full rounded-xl border border-border bg-white px-3 py-2.5 text-base uppercase outline-none focus:border-brand sm:text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-ink/60">Country</label>
+                  <input value="Canada" disabled readOnly className="w-full cursor-not-allowed rounded-xl border border-border bg-secondary px-3 py-2.5 text-base text-ink/50 sm:text-sm" />
+                </div>
+              </div>
+            )}
+            {stdFeeCents != null && (
+              <p className="mt-2 text-sm font-semibold text-ink">
+                Shipping: ${(stdFeeCents / 100).toFixed(2)}
+                <span className="ml-2 font-normal text-muted-foreground">Usually arrives in 2 to 5 business days after we ship</span>
+              </p>
+            )}
+            {stdMsg && <p className="mt-2 text-sm text-red-700">{stdMsg}</p>}
+          </div>
+        )}
       </section>
 
       <div className="h-fit space-y-4 lg:sticky lg:top-28">
@@ -293,29 +467,69 @@ export default function CartInteractive({
             </span>
           </div>
 
-          <dl className="mt-6 space-y-3 text-sm">
+          <ul className="mt-5 space-y-2 border-b border-white/10 pb-4 text-sm">
+            {lines.map((line) => (
+              <li key={line.id} className="flex items-start justify-between gap-3">
+                <span className="min-w-0 text-white/80">
+                  <span className="line-clamp-2">{line.product.display_name}</span>
+                  <span className="text-xs text-white/45">
+                    {line.quantity} × ${line.product.price.toFixed(2)}
+                  </span>
+                </span>
+                <span className="shrink-0 font-semibold">${(line.product.price * line.quantity).toFixed(2)}</span>
+              </li>
+            ))}
+            <li className="flex justify-between gap-3 pt-2 text-white/70">
+              <span>Subtotal</span>
+              <span className="font-semibold text-white">${subtotal.toFixed(2)}</span>
+            </li>
+          </ul>
+
+          <dl className="mt-4 space-y-3 text-sm">
             <div className="flex justify-between gap-4">
-              <dt className="text-white/55">Shipping</dt>
-              <dd className="text-white/75">At checkout</dd>
+              <dt className="text-white/55">{delivery.method === "uber" ? "Uber same-day delivery" : "Shipping"}</dt>
+              <dd className="text-white/75">
+                {delivery.method === "uber"
+                  ? delivery.feeCents != null
+                    ? `$${deliveryFee.toFixed(2)}`
+                    : "Get price above"
+                  : stdFeeCents != null
+                    ? `$${deliveryFee.toFixed(2)}`
+                    : "Enter postal code"}
+              </dd>
             </div>
             <div className="flex justify-between gap-4">
               <dt className="text-white/55">Taxes</dt>
-              <dd className="text-white/75">At checkout</dd>
+              <dd className="text-white/75">Calculated at payment</dd>
             </div>
           </dl>
 
           <div className="mt-5 flex items-end justify-between gap-4 border-t border-white/10 pt-5">
-            <span className="text-sm font-semibold text-white/70">Subtotal</span>
+            <span className="text-sm font-semibold text-white/70">{deliveryFee > 0 ? "Total" : "Subtotal"}</span>
             <span className="text-3xl font-black tracking-tight" aria-live="polite">
-              ${subtotal.toFixed(2)}
+              ${(subtotal + deliveryFee).toFixed(2)}
             </span>
           </div>
 
           <form action={beginCheckout}>
             <input type="hidden" name="fit_confirmed" value={fitConfirmed ? "yes" : "no"} />
+            <input type="hidden" name="delivery_method" value={delivery.method} />
+            <input type="hidden" name="s_mode" value={shipTo} />
+            {shipTo === "other" && (
+              <>
+                <input type="hidden" name="s_name" value={other.name} />
+                <input type="hidden" name="s_line1" value={other.line1} />
+                <input type="hidden" name="s_line2" value={other.line2} />
+                <input type="hidden" name="s_city" value={other.city} />
+                <input type="hidden" name="s_province" value={other.province} />
+                <input type="hidden" name="s_postal" value={other.postal} />
+              </>
+            )}
+            {delivery.method === "uber" &&
+              Object.entries(delivery.fields).map(([k, v]) => <input key={k} type="hidden" name={`u_${k}`} value={v} />)}
             <button
               type="submit"
-              disabled={hasPendingChanges}
+              disabled={hasPendingChanges || !uberReady || stockProblem}
               aria-disabled={!fitConfirmed}
               onClick={(e) => {
                 if (!fitConfirmed) {

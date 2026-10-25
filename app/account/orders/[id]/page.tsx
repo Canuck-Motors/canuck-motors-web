@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { grandTotal, storedTaxLines } from "@/lib/order-totals";
+import UberTracking from "@/components/uber/UberTracking";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -51,7 +53,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
   const { data: order } = await supabase
     .from("orders")
     .select(
-      "id, order_number, status, fulfillment_status, payment_status, total_amount, subtotal, tax_amount, shipping_amount, currency, created_on, placed_on, delivered_on, return_window_ends_on, cancellation_reason"
+      "id, order_number, status, fulfillment_status, payment_status, total_amount, subtotal, tax_amount, shipping_amount, currency, created_on, placed_on, delivered_on, return_window_ends_on, cancellation_reason, delivery_method, delivery_fee, sales_tax, tax_lines, uber_delivery_id, uber_status"
     )
     .eq("id", id)
     .eq("user_id", profile.id)
@@ -123,7 +125,15 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
 
   const activeItemCount = (items ?? []).filter((i) => !i.cancelled_on).length;
 
+  // A booked Uber courier is already on the way: no cancelling until it is delivered.
+  const uberLocked =
+    order.delivery_method === "uber" &&
+    !!order.uber_delivery_id &&
+    !["canceled", "cancelled", "booking_failed"].includes(String(order.uber_status ?? "")) &&
+    order.fulfillment_status !== "delivered";
+
   const canCancel =
+    !uberLocked &&
     cancellationStatuses.has(order.status) &&
     ["unfulfilled", "processing", "packed"].includes(order.fulfillment_status) &&
     order.payment_status !== "refunded";
@@ -156,6 +166,16 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
             <p className="mt-2 text-sm text-muted-foreground">
               {new Date(order.placed_on || order.created_on).toLocaleString()}
             </p>
+            {["paid", "refunded", "partially_refunded"].includes(String(order.payment_status)) && (
+              <Link
+                href={`/account/orders/${order.id}/invoice`}
+                className="mt-4 inline-flex items-center rounded-full border border-black/10 bg-white px-5 py-2 text-sm font-bold text-ink shadow-sm hover:border-brand hover:text-brand"
+              >
+                View invoice / download PDF
+              </Link>
+            )}
+
+            {order.delivery_method === "uber" && <UberTracking orderId={order.id} />}
 
             <section className="mt-8 rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_40px_rgba(0,0,0,0.06)]">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -538,6 +558,16 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
               </section>
             )}
 
+            {uberLocked && order.payment_status === "paid" && (
+              <section className="mt-8 rounded-[26px] border border-black/5 bg-white p-6 text-sm leading-6 text-muted-foreground shadow-sm">
+                <p className="font-bold text-ink">Out for same-day delivery</p>
+                <p className="mt-1">
+                  Your order is with an Uber courier, so it can&apos;t be cancelled. After it&apos;s delivered you can request a
+                  return from this page. Questions? Email contactus@canuckmotors.ca or call 604-445-0147.
+                </p>
+              </section>
+            )}
+
             {canCancel && order.status !== "cancellation_requested" && (
               <section className="mt-8 rounded-[26px] border border-red-100 bg-red-50 p-6">
                 <h2 className="text-xl font-black text-red-900">
@@ -604,18 +634,25 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
               <div className="flex justify-between gap-4">
                 <dt className="text-white/50">Shipping</dt>
                 <dd className="font-bold">
-                  ${Number(order.shipping_amount).toFixed(2)}
+                  ${(Number(order.shipping_amount) + Number(order.delivery_fee ?? 0)).toFixed(2)}
                 </dd>
               </div>
               <div className="flex justify-between gap-4">
                 <dt className="text-white/50">Tax</dt>
-                <dd className="font-bold">${Number(order.tax_amount).toFixed(2)}</dd>
+                <dd className="font-bold">
+                  ${(Number(order.tax_amount) + Number(order.sales_tax ?? 0)).toFixed(2)}
+                  {storedTaxLines(order.tax_lines).length > 0 && (
+                    <span className="block text-xs font-normal text-white/50">
+                      {storedTaxLines(order.tax_lines).map((t) => `${t.name} $${(Number(t.cents) / 100).toFixed(2)}`).join(" · ")}
+                    </span>
+                  )}
+                </dd>
               </div>
               <div className="border-t border-white/10 pt-4">
                 <div className="flex justify-between gap-4 text-lg font-black">
                   <dt>Total</dt>
                   <dd>
-                    ${Number(order.total_amount).toFixed(2)} {order.currency}
+                    ${grandTotal(order).toFixed(2)} {order.currency}
                   </dd>
                 </div>
               </div>

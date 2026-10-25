@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { withMaterial } from "@/lib/material";
 import Link from "next/link";
 import { cacheLife, cacheTag } from "next/cache";
 import { notFound } from "next/navigation";
 import { createPublicClient } from "@/lib/supabase/public";
-import { addToCart } from "@/app/cart/actions";
 import ProductTabs from "@/components/ProductTabs";
-import AddToCartButton from "@/components/AddToCartButton";
+import AddToCartSlot from "@/components/AddToCartSlot";
 import ProductGallery from "@/components/ProductGallery";
 import { getProductImages } from "@/lib/product-images";
 import { getFitments, getInterchanges, getOeNumbers, getSpecs } from "@/lib/product-details";
@@ -359,18 +359,16 @@ export default async function ProductDetailPage({
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              <AddToCartButton action={addToCart.bind(null, product.id)} />
+              <Suspense
+                fallback={
+                  <span className="inline-flex rounded-full bg-secondary px-6 py-3 text-sm font-bold text-muted-foreground">
+                    Checking stock...
+                  </span>
+                }
+              >
+                <AddToCartSlot productId={product.id} amazonUrl={product.amazon_url} />
+              </Suspense>
 
-              {product.amazon_url && (
-                <a
-                  href={product.amazon_url}
-                  rel="nofollow sponsored noopener noreferrer"
-                  target="_blank"
-                  className="rounded-full border border-input bg-white px-6 py-3 text-sm font-semibold text-ink transition hover:border-brand hover:text-brand"
-                >
-                  View purchase option
-                </a>
-              )}
             </div>
           </section>
         </div>

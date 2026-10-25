@@ -980,6 +980,8 @@ export function readAnswers(
 // Typed answers: "if I said no pulley?", "mine is chain driven", "it's the XLT".
 // Only values that exist in the parts' data are recognised; anything else -> null.
 // ---------------------------------------------------------------------------
+// Words that name the part itself ("I'm looking for an engine water pump"), never an answer
+const GENERIC_VALUE = /^(engine )?(water )?pumps?$|^engine$|^brake( pad| shoe)?s?$|^(timing )?belt( kit)?s?$|^kits?$|^parts?$/;
 const NO_WORDS = /\b(no|not|without|w\/o|don'?t|doesn'?t|isn'?t|hasn'?t|none|missing|bare)\b/i;
 const YES_WORDS = /\b(yes|yeah|yep|with|has|have|got|comes|included|attached)\b/i;
 const LABEL_STOP = new Set(["included", "includes", "type", "quantity", "material", "water", "pump", "your", "drive", "brakes"]);
@@ -1006,7 +1008,7 @@ export function interpretText(products: FinderProduct[], specs: SpecMap, text: s
     if (vals.every((v) => ["yes", "no"].includes(low(v)))) continue;
     for (const v of vals) {
       const lv = low(v);
-      if (lv.length < 3 || /^[\d.]+$/.test(lv)) continue;
+      if (lv.length < 3 || /^[\d.]+$/.test(lv) || GENERIC_VALUE.test(lv)) continue;
       if (new RegExp(`(^|[^a-z0-9])${esc(lv)}([^a-z0-9]|$)`).test(t) && (!best || lv.length > best.len)) {
         best = { name, value: v, len: lv.length };
       }

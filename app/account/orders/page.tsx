@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { grandTotal } from "@/lib/order-totals";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -30,7 +31,7 @@ export default async function AccountOrdersPage() {
 
   const { data: orders, error } = await supabase
     .from("orders")
-    .select("id, order_number, status, payment_status, total_amount, currency, created_on, placed_on")
+    .select("id, order_number, status, payment_status, total_amount, delivery_fee, sales_tax, currency, created_on, placed_on")
     .eq("user_id", profile.id)
     .order("created_on", { ascending: false });
 
@@ -78,7 +79,7 @@ export default async function AccountOrdersPage() {
                       {order.status.replace("_", " ")}
                     </span>
                     <span className="text-lg font-black text-ink">
-                      ${Number(order.total_amount).toFixed(2)}
+                      ${grandTotal(order).toFixed(2)}
                     </span>
                   </div>
                 </div>

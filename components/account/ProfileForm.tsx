@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { updateProfile, type ProfileState } from "@/app/account/actions";
 
 export type ProfileValues = {
@@ -35,6 +35,43 @@ const label = "mb-1 block text-xs font-bold uppercase tracking-wide text-ink/60"
 export default function ProfileForm({ values }: { values: ProfileValues }) {
   const [state, action, pending] = useActionState<ProfileState, FormData>(updateProfile, null);
   const a = values.address;
+  type Suggestion = { street: string; city: string; zip: string; province: string; label: string };
+  const [line1, setLine1] = useState(a.line1);
+  const [city, setCity] = useState(a.city);
+  const [province, setProvince] = useState(a.province);
+  const [postal, setPostal] = useState(a.postal_code);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [open, setOpen] = useState(false);
+  const picked = useRef(a.line1);
+
+  // Street suggestions anywhere in Canada: wait for a short pause in typing, then ask the server.
+  useEffect(() => {
+    if (line1.trim().length < 3 || line1 === picked.current) {
+      setSuggestions([]);
+      return;
+    }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/address-suggest?scope=canada&q=${encodeURIComponent(line1)}`);
+        const json = await res.json();
+        setSuggestions(json.suggestions ?? []);
+        setOpen(true);
+      } catch {
+        setSuggestions([]);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [line1]);
+
+  function pick(sg: Suggestion) {
+    picked.current = sg.street;
+    setLine1(sg.street);
+    setCity(sg.city);
+    if (PROVINCES.some(([code]) => code === sg.province)) setProvince(sg.province);
+    setPostal(sg.zip);
+    setOpen(false);
+    setSuggestions([]);
+  }
 
   return (
     <form action={action} className="mt-6 space-y-8">
@@ -70,7 +107,35 @@ export default function ProfileForm({ values }: { values: ProfileValues }) {
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <label className={label} htmlFor="line1">Street address</label>
-            <input id="line1" name="line1" defaultValue={a.line1} autoComplete="address-line1" className={input} />
+            <div className="relative">
+              <input
+                id="line1"
+                name="line1"
+                value={line1}
+                onChange={(e) => setLine1(e.target.value)}
+                onFocus={() => setOpen(true)}
+                onBlur={() => setTimeout(() => setOpen(false), 150)}
+                placeholder="Start typing your street address"
+                autoComplete="off"
+                className={input}
+              />
+              {open && suggestions.length > 0 && (
+                <ul className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-black/10 bg-white shadow-lg">
+                  {suggestions.map((sg) => (
+                    <li key={sg.label}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => pick(sg)}
+                        className="block w-full px-4 py-2.5 text-left text-sm hover:bg-secondary"
+                      >
+                        {sg.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
           <div className="sm:col-span-2">
             <label className={label} htmlFor="line2">Apartment, suite, unit (optional)</label>
@@ -78,11 +143,11 @@ export default function ProfileForm({ values }: { values: ProfileValues }) {
           </div>
           <div>
             <label className={label} htmlFor="city">City</label>
-            <input id="city" name="city" defaultValue={a.city} autoComplete="address-level2" className={input} />
+            <input id="city" name="city" value={city} onChange={(e) => setCity(e.target.value)} autoComplete="address-level2" className={input} />
           </div>
           <div>
             <label className={label} htmlFor="province">Province</label>
-            <select id="province" name="province" defaultValue={a.province} autoComplete="address-level1" className={input}>
+            <select id="province" name="province" value={province} onChange={(e) => setProvince(e.target.value)} autoComplete="address-level1" className={input}>
               <option value="">Select province</option>
               {PROVINCES.map(([code, name]) => (
                 <option key={code} value={code}>{name}</option>
@@ -91,7 +156,7 @@ export default function ProfileForm({ values }: { values: ProfileValues }) {
           </div>
           <div>
             <label className={label} htmlFor="postal_code">Postal code</label>
-            <input id="postal_code" name="postal_code" defaultValue={a.postal_code} placeholder="M5V 2T6" autoComplete="postal-code" maxLength={10} className={`${input} uppercase`} />
+            <input id="postal_code" name="postal_code" value={postal} onChange={(e) => setPostal(e.target.value)} placeholder="M5V 2T6" autoComplete="postal-code" maxLength={10} className={`${input} uppercase`} />
           </div>
           <div>
             <label className={label} htmlFor="country">Country</label>

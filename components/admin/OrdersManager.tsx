@@ -9,6 +9,7 @@ import { ChevronDown, ChevronRight, Download, Printer, Search, X } from "lucide-
 import {
   createShipment,
   setOrderNote,
+  setShippingCost,
   updateOrderStatus,
 } from "@/app/admin/actions";
 import { importAmazonTrackingSheet } from "@/app/admin/fulfillment/actions";
@@ -24,6 +25,12 @@ export type OrderRow = {
   routingStatus: string;
   fulfillmentError: string;
   total: number;
+  shippingFee: number;
+  salesTax: number;
+  shippingZone: string;
+  shippingWeight: number | null;
+  shippingCost: number | null;
+  deliveryMethod: string;
   currency: string;
   email: string;
   name: string;
@@ -181,7 +188,7 @@ export default function OrdersManager({
     });
 
   const downloadCsv = (list: OrderRow[]) => {
-    const head = ["Order", "Date", "Customer", "Email", "Status", "Payment", "Total", "Currency", "Items", "Ship to", "Tracking"];
+    const head = ["Order", "Date", "Customer", "Email", "Status", "Payment", "Total (incl. shipping and tax)", "Sales tax", "Shipping paid", "Parcel kg", "Label cost", "Method", "Currency", "Items", "Ship to", "Tracking"];
     const lines = list.map((o) =>
       [
         o.number,
@@ -190,7 +197,12 @@ export default function OrdersManager({
         o.email,
         label(o.status),
         label(o.payment),
-        o.total.toFixed(2),
+        (o.total + o.shippingFee + o.salesTax).toFixed(2),
+        o.salesTax.toFixed(2),
+        o.shippingFee.toFixed(2),
+        o.shippingWeight == null ? "" : o.shippingWeight.toFixed(2),
+        o.shippingCost == null ? "" : o.shippingCost.toFixed(2),
+        o.deliveryMethod,
         o.currency,
         o.items.map((i) => `${i.quantity}x ${i.sku}`).join("; "),
         addressLines(o.address).join(", "),
@@ -400,6 +412,14 @@ export default function OrdersManager({
                             timeStyle: "short",
                           })}
                         </div>
+                        {isToShip(o) && (() => {
+                          const days = Math.floor((Date.now() - new Date(o.createdOn).getTime()) / 86400000);
+                          return days >= 1 ? (
+                            <div className={`pl-6 text-xs font-bold ${days >= 3 ? "text-red-700" : "text-amber-700"}`}>
+                              Waiting {days} day{days === 1 ? "" : "s"}
+                            </div>
+                          ) : null;
+                        })()}
                       </td>
                       <td className="px-3 py-3">
                         <div className="font-medium text-ink">{o.name || "Customer"}</div>
@@ -409,7 +429,14 @@ export default function OrdersManager({
                         {qty} item{qty === 1 ? "" : "s"}
                         {o.note && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-bold text-amber-800">note</span>}
                       </td>
-                      <td className="px-3 py-3 font-bold text-ink">{money(o.total, o.currency)}</td>
+                      <td className="px-3 py-3 font-bold text-ink">
+                        {money(o.total + o.shippingFee + o.salesTax, o.currency)}
+                        {o.shippingFee > 0 && (
+                          <div className="text-[11px] font-normal text-muted-foreground">
+                            incl. {money(o.shippingFee, o.currency)} shipping{o.salesTax > 0 ? ` + ${money(o.salesTax, o.currency)} tax` : ""}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-3 py-3">
                         <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusText(o.status)[1]}`}>
                           {statusText(o.status)[0]}
@@ -464,7 +491,8 @@ export default function OrdersManager({
                                 {next && deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
                                   <button
                                     type="button"
-                                    disabled={pending}
+                                    disabled={pending || (next === "shipped" && o.deliveryMethod !== "uber" && !o.shipment?.tracking)}
+                                    title={next === "shipped" && o.deliveryMethod !== "uber" && !o.shipment?.tracking ? "Add the carrier and tracking number first" : undefined}
                                     onClick={() =>
                                       run(async () => {
                                         await updateOrderStatus(o.id, next);
@@ -475,6 +503,11 @@ export default function OrdersManager({
                                   >
                                     {NEXT_BUTTON[o.status] ?? `Mark ${label(next)}`}
                                   </button>
+                                )}
+                                {next === "shipped" && o.deliveryMethod !== "uber" && !o.shipment?.tracking && deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
+                                  <p className="w-full text-xs font-semibold text-amber-800">
+                                    Enter the carrier and tracking number on the right. The customer is emailed when you save it.
+                                  </p>
                                 )}
                                 {deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
                                   <Link
@@ -532,6 +565,63 @@ export default function OrdersManager({
                               ) : (
                                 <p className="mt-2 text-sm text-muted-foreground">No address saved.</p>
                               )}
+
+                              <p className="mt-5 font-bold text-ink">Shipping</p>
+                              <div className="mt-2 rounded-xl border bg-white p-3 text-sm leading-6">
+                                <div>
+                                  {o.deliveryMethod === "uber" ? "Uber same-day" : "Standard shipping"}
+                                  {": customer paid "}
+                                  <b>{money(o.shippingFee, o.currency)}</b>
+                                </div>
+                                {o.shippingWeight != null && (
+                                  <div className="text-muted-foreground">
+                                    Parcel about {o.shippingWeight.toFixed(2)} kg
+                                    {o.shippingZone ? ` · zone ${o.shippingZone}` : ""} (box included)
+                                  </div>
+                                )}
+                                {o.deliveryMethod !== "uber" && o.shippingFee > 0 && (
+                                  <form
+                                    className="mt-2 flex items-center gap-2"
+                                    action={(fd) =>
+                                      run(async () => {
+                                        const raw = String(fd.get("label_cost") || "").trim();
+                                        const cost = raw === "" ? null : Number(raw);
+                                        await setShippingCost(o.id, cost);
+                                        setRows((rs) => rs.map((r) => (r.id === o.id ? { ...r, shippingCost: cost } : r)));
+                                        return "Label cost saved.";
+                                      })
+                                    }
+                                  >
+                                    <input
+                                      name="label_cost"
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      defaultValue={o.shippingCost ?? ""}
+                                      placeholder="Label cost $"
+                                      className="w-32 rounded-lg border border-black/10 px-2 py-1.5 text-sm"
+                                    />
+                                    <button className="rounded-full bg-ink px-3 py-1.5 text-xs font-bold text-white hover:bg-brand">
+                                      Save
+                                    </button>
+                                    {o.shippingCost != null && (
+                                      <span
+                                        className={`text-xs font-bold ${
+                                          o.shippingFee - o.shippingCost >= 0 ? "text-green-700" : "text-red-700"
+                                        }`}
+                                      >
+                                        {o.shippingFee - o.shippingCost >= 0 ? "+" : ""}
+                                        {money(o.shippingFee - o.shippingCost, o.currency)}
+                                      </span>
+                                    )}
+                                  </form>
+                                )}
+                                {o.shippingFee > 0 && (
+                                  <p className="mt-2 text-xs text-muted-foreground">
+                                    If you refund the order, the shipping paid is not refunded automatically.
+                                  </p>
+                                )}
+                              </div>
 
                               <p className="mt-5 font-bold text-ink">Private note</p>
                               <form
@@ -600,9 +690,17 @@ export default function OrdersManager({
                                 className="rounded-2xl border border-black/5 bg-white p-4"
                               >
                                 <p className="font-bold text-ink">Create / update shipment</p>
-                                <input name="carrier" defaultValue={o.shipment?.carrier ?? ""} placeholder="Carrier" required className={input} />
+                                <input name="carrier" list="carrier-list" defaultValue={o.shipment?.carrier ?? (o.deliveryMethod === "standard" ? "Chit Chats" : "")} placeholder="Carrier" required className={input} />
+                                <datalist id="carrier-list">
+                                  <option value="Chit Chats" />
+                                  <option value="Canada Post" />
+                                  <option value="Purolator" />
+                                  <option value="UPS" />
+                                  <option value="FedEx" />
+                                  <option value="Canpar" />
+                                </datalist>
                                 <input name="tracking_number" defaultValue={o.shipment?.tracking ?? ""} placeholder="Tracking number" required className={input} />
-                                <input name="tracking_url" defaultValue={o.shipment?.url ?? ""} placeholder="Carrier tracking URL" className={input} />
+                                <input name="tracking_url" defaultValue={o.shipment?.url ?? ""} placeholder="Tracking link (filled automatically for known carriers)" className={input} />
                                 <input name="service_level" placeholder="Service level, e.g. Ground" className={input} />
                                 <input name="estimated_delivery" type="datetime-local" className={input} />
                                 <button className="cm-button-primary mt-3 w-full">Save shipment</button>

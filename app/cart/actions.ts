@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { isAmazonRedirectOn } from "@/lib/fulfillment-mode";
 
 const CART_EXPIRY_DAYS = 7;
 
@@ -41,7 +42,10 @@ async function touchCart(
     .eq("id", cartId);
 }
 
-export async function addToCart(productId: number) {
+export async function addToCart(productId: number): Promise<{ error?: string } | void> {
+  if (await isAmazonRedirectOn()) {
+    return { error: "Please buy this part on Amazon." };
+  }
   const { supabase, userId } = await getCurrentPublicUserId();
 
   const { data: product, error: productError } = await supabase
@@ -64,7 +68,7 @@ export async function addToCart(productId: number) {
     : 0;
 
   if (available < 1) {
-    throw new Error("This product is currently out of stock.");
+    return { error: "Sorry, this part is currently out of stock." };
   }
 
   const { data: loadedCart, error: cartError } = await supabase
@@ -123,7 +127,7 @@ export async function addToCart(productId: number) {
 
   if (existingItem) {
     if (existingItem.quantity >= available) {
-      throw new Error(`Only ${available} unit${available === 1 ? "" : "s"} are currently available.`);
+      return { error: `Only ${available} unit${available === 1 ? "" : "s"} available, and you already have that many in your cart.` };
     }
 
     const nextQuantity = Math.min(existingItem.quantity + 1, 99, available);

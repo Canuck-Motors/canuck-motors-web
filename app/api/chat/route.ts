@@ -9,6 +9,7 @@ import {
   type CatalogProduct,
 } from "@/lib/catalog";
 import { isSpecMessage } from "@/lib/axel-narrow";
+import { shippingNote } from "@/lib/shipping-note";
 import {
   findPart,
   matchPartNumber,
@@ -469,7 +470,9 @@ export async function POST(req: Request) {
   }));
   let answeredSoFar = readAnswers(rawHistory);
   const activeNote =
-    body.context?.input && typeof body.context.input === "object"
+    body.context?.input &&
+    typeof body.context.input === "object" &&
+    (Array.isArray(body.messages) ? body.messages.filter((m: any) => m?.role === "user").length : 0) > 1
       ? `\n\nActive search (do not ask for these details again): ${JSON.stringify(body.context.input).slice(0, 400)}${
           answeredSoFar.length
             ? `. Questions the customer already answered: ${answeredSoFar
@@ -503,7 +506,10 @@ export async function POST(req: Request) {
   }
 
   // Customer answered a spec question: re-run the same search and narrow it
+  // A search context only belongs to a conversation that already has earlier messages:
+  // a fresh conversation must not pick up an old search (it asked F-150 questions before)
   const ctx: Ctx | null =
+    messages.filter((m) => m.role === "user").length > 1 &&
     body.context &&
     (body.context.tool === "find_parts_for_vehicle" ||
       body.context.tool === "find_parts_by_vin") &&
@@ -519,10 +525,10 @@ export async function POST(req: Request) {
   let typedAnswer: Answer | null = null;
   let ctxOut: any = null;
   const compactLast = lastText.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // Earlier typed answers count on every later turn too, also when this turn is a button:
+  // "no pully" typed after a "Pulley: Yes" button must keep overriding it.
   if (
     ctx &&
-    !isSpecMessage(lastText) &&
-    !partNumberTyped &&
     !/^(Make|Model|Engine|Trim):/i.test(lastText) &&
     !/\b(19[5-9]\d|20[0-4]\d)\b/.test(lastText) &&
     !/^[A-HJ-NPR-Z0-9]{17}$/.test(compactLast)
@@ -533,7 +539,7 @@ export async function POST(req: Request) {
       const specs = await getSpecs(products.map((p: any) => p.id));
       const interpret = (t: string) => interpretText(products, specs, t);
       answeredSoFar = readAnswers(rawHistory, interpret);
-      typedAnswer = interpret(lastText);
+      if (!isSpecMessage(lastText) && !partNumberTyped) typedAnswer = interpret(lastText);
       ctxOut = o;
     }
   }
@@ -600,7 +606,7 @@ export async function POST(req: Request) {
       const res = await client.messages.create({
         model: MODEL,
         max_tokens: 1200,
-        system: SYSTEM + pageNote + activeNote + langNote,
+        system: SYSTEM + pageNote + activeNote + (await shippingNote()) + langNote,
         tools,
         messages,
         // First step only: a vehicle answer MUST go through the lookup, so

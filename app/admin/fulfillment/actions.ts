@@ -16,6 +16,7 @@ async function requireAdmin() {
 }
 
 export async function saveFulfillmentSettings(input: {
+  amazonRedirectEnabled?: boolean;
   amazonMcfEnabled: boolean;
   deliveryPartnerEnabled: boolean;
   preferredProvider: "amazon_mcf" | "delivery_partner";
@@ -30,6 +31,13 @@ export async function saveFulfillmentSettings(input: {
     p_amazon_shipping_speed: input.amazonShippingSpeed,
   });
   if (error) throw new Error(error.message);
+
+  const { error: redirectError } = await createAdminClient()
+    .from("fulfillment_settings")
+    .update({ amazon_redirect_enabled: Boolean(input.amazonRedirectEnabled) })
+    .eq("id", 1);
+  if (redirectError) throw new Error(redirectError.message);
+  revalidatePath("/", "layout");
 
   // Keep already-paid, not-yet-shipped orders aligned with the current
   // fulfillment switches. This makes the Orders screen immediately follow

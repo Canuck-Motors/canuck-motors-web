@@ -1,4 +1,9 @@
 import type { Metadata } from "next";
+import { recordStripeTax } from "@/lib/stripe-tax";
+import { grandTotal, storedTaxLines } from "@/lib/order-totals";
+import { sendOrderConfirmation } from "@/lib/order-confirmation";
+import UberTracking from "@/components/uber/UberTracking";
+import { bookUberForOrder } from "@/lib/uber-booking";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
@@ -63,7 +68,7 @@ export default async function CheckoutSuccessPage({
       const admin = createAdminClient();
       const { data: current } = await supabase
         .from("orders")
-        .select("id, payment_status, total_amount, currency")
+        .select("id, payment_status, total_amount, currency, delivery_method, delivery_fee, uber_dropoff, ship_to")
         .eq("id", payment.order_id)
         .eq("user_id", profile.id)
         .maybeSingle();
@@ -74,7 +79,10 @@ export default async function CheckoutSuccessPage({
           (session.metadata?.order_id || session.client_reference_id) === current.id;
 
         const amountMatches =
-          Number(session.amount_total) === Math.round(Number(current.total_amount) * 100);
+          Number(session.amount_total) ===
+          Math.round(Number(current.total_amount) * 100) +
+          Math.round(Number(current.delivery_fee ?? 0) * 100) +
+          Number(session.total_details?.amount_tax ?? 0); // tax is added by Stripe Tax
         const currencyMatches =
           String(session.currency || "").toLowerCase() ===
           String(current.currency || "CAD").toLowerCase();
@@ -120,16 +128,54 @@ export default async function CheckoutSuccessPage({
                 : {};
 
             const shipTo = session.collected_information?.shipping_details ?? session.shipping_details;
+            const uberDrop = current.uber_dropoff as
+              | { name?: string; street?: string; city?: string; state?: string; zip?: string }
+              | null;
+            const isUber = current.delivery_method === "uber" && !!uberDrop?.street;
+            // Standard shipping: the address was chosen in the cart and saved on the order.
+            const std = (current as { ship_to?: Record<string, string> | null }).ship_to;
+            const isStd = current.delivery_method === "standard" && !!std?.line1;
             await admin
               .from("orders")
               .update({
-                shipping_address: addr(shipTo?.name, shipTo?.address),
+                shipping_address: isUber
+                  ? {
+                      name: uberDrop?.name ?? null,
+                      line1: uberDrop?.street ?? null,
+                      line2: null,
+                      city: uberDrop?.city ?? null,
+                      province: uberDrop?.state ?? null,
+                      postal_code: uberDrop?.zip ?? null,
+                      country: "CA",
+                    }
+                  : isStd
+                    ? {
+                        name: std?.name ?? null,
+                        line1: std?.line1 ?? null,
+                        line2: std?.line2 || null,
+                        city: std?.city ?? null,
+                        province: std?.province ?? null,
+                        postal_code: std?.postal_code ?? null,
+                        country: "CA",
+                      }
+                    : addr(shipTo?.name, shipTo?.address),
                 billing_address: addr(session.customer_details?.name, session.customer_details?.address),
                 customer_name:
                   session.customer_details?.name ?? shipTo?.name ?? undefined,
                 customer_email: session.customer_details?.email ?? undefined,
               })
               .eq("id", current.id);
+
+            await recordStripeTax(admin, current.id, session.id, Number(session.amount_total ?? 0));
+            await sendOrderConfirmation(current.id);
+
+            if (current.delivery_method === "uber") {
+              try {
+                await bookUberForOrder(current.id);
+              } catch (uberError) {
+                console.error("[uber] Booking failed for order", current.id, uberError);
+              }
+            }
           } else {
             console.error("Success-page payment sync failed:", finalizeError.message);
           }
@@ -148,6 +194,10 @@ export default async function CheckoutSuccessPage({
         payment_status: string;
         total_amount: number;
         currency: string;
+        delivery_method?: string | null;
+        delivery_fee?: number | null;
+        sales_tax?: number | null;
+        tax_lines?: unknown;
         order_items?: { product_name: string; sku: string; quantity: number; unit_price: number }[] | null;
       }
     | null = null;
@@ -156,7 +206,7 @@ export default async function CheckoutSuccessPage({
     const { data } = await supabase
       .from("orders")
       .select(
-        "id, order_number, status, payment_status, total_amount, currency, order_items(product_name, sku, quantity, unit_price)"
+        "id, order_number, status, payment_status, total_amount, delivery_fee, sales_tax, tax_lines, currency, delivery_method, order_items(product_name, sku, quantity, unit_price)"
       )
       .eq("id", payment.order_id)
       .eq("user_id", profile.id)
@@ -173,7 +223,8 @@ export default async function CheckoutSuccessPage({
   return (
     <main className="min-h-screen bg-secondary/40">
       <div className="mx-auto max-w-3xl px-6 py-16">
-        <div className="rounded-3xl border bg-white p-8 text-center md:p-12">
+        {paid && order?.delivery_method === "uber" && <UberTracking orderId={order.id} />}
+        <div className="mt-8 rounded-3xl border bg-white p-8 text-center md:p-12">
           {paid ? (
             <SuccessBadge />
           ) : (
@@ -238,10 +289,22 @@ export default async function CheckoutSuccessPage({
                     ))}
                   </div>
                 )}
+                {Number(order.delivery_fee ?? 0) > 0 && (
+                  <div className="flex justify-between gap-4 border-t border-black/10 pt-3">
+                    <dt className="text-ink">{order.delivery_method === "uber" ? "Uber same-day delivery" : "Standard shipping"}</dt>
+                    <dd className="font-semibold text-ink">${Number(order.delivery_fee).toFixed(2)}</dd>
+                  </div>
+                )}
+                {storedTaxLines(order.tax_lines).map((t) => (
+                  <div key={t.name} className="flex justify-between gap-4">
+                    <dt className="text-ink">{t.name}</dt>
+                    <dd className="font-semibold text-ink">${(Number(t.cents) / 100).toFixed(2)}</dd>
+                  </div>
+                ))}
                 <div className="flex justify-between gap-4 border-t border-black/10 pt-3 text-base">
                   <dt className="font-semibold text-ink">Total</dt>
                   <dd className="font-black text-ink">
-                    ${Number(order.total_amount).toFixed(2)} {order.currency}
+                    ${grandTotal(order).toFixed(2)} {order.currency}
                   </dd>
                 </div>
               </dl>

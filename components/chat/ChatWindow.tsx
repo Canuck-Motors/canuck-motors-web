@@ -215,7 +215,7 @@ function Avatar({ size, active = false }: { size: string; active?: boolean }) {
 }
 
 const chip =
-  "rounded-full border border-brand/30 bg-white px-3.5 py-2 text-[13px] font-bold text-brand shadow-sm transition hover:-translate-y-0.5 hover:bg-brand hover:text-white";
+  "min-h-[40px] rounded-full border border-brand/30 bg-white px-4 py-2 text-sm font-bold text-brand sm:min-h-0 sm:px-3.5 sm:text-[13px] shadow-sm transition hover:-translate-y-0.5 hover:bg-brand hover:text-white";
 
 export default function ChatWindow({
   onClose,
@@ -340,6 +340,7 @@ export default function ChatWindow({
 
   const pickMenu = (id: string, label: string) => {
     const user: Msg = { role: "user", content: label, local: true };
+    ctxRef.current = null; // a menu choice starts fresh: no answers from an earlier search
     if (id === "parts") {
       setMessages((m) => [
         ...m,
@@ -410,7 +411,8 @@ export default function ChatWindow({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: history,
-          context: ctxRef.current,
+          // A new conversation (no earlier question asked in it) starts a new search
+          context: history.some((m, i) => m.role === "user" && i < history.length - 1) ? ctxRef.current : null,
           page: { path: pathname, title: document.title },
           lang: getLang(),
         }),
@@ -440,10 +442,10 @@ export default function ChatWindow({
     <div
       role="dialog"
       aria-label="Chat with Axel, the Canuck Motors parts assistant"
-      className={`cm-window fixed inset-x-3 bottom-3 z-50 flex h-[78vh] max-h-[620px] flex-col overflow-hidden rounded-3xl border border-black/10 bg-white shadow-[0_24px_70px_rgba(0,0,0,0.25)] sm:inset-x-auto sm:bottom-5 sm:right-5 sm:w-[390px]`}
+      className={`cm-window fixed inset-0 z-50 flex h-[100dvh] flex-col overflow-hidden bg-white sm:inset-auto sm:bottom-5 sm:right-5 sm:h-[78vh] sm:max-h-[620px] sm:w-[390px] sm:rounded-3xl sm:border sm:border-black/10 sm:shadow-[0_24px_70px_rgba(0,0,0,0.25)]`}
     >
       {/* Header: Axel only, kept slim */}
-      <div className="relative bg-white px-4 py-3">
+      <div className="relative bg-white px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <div className="flex items-center gap-3">
           <Avatar size="h-9 w-9" active={loading || intro} />
           <div className="min-w-0 flex-1">
@@ -462,7 +464,7 @@ export default function ChatWindow({
             <button
               type="button"
               onClick={newChat}
-              className="rounded-full px-3 py-1.5 text-xs font-bold text-ink/60 transition hover:bg-brand-tint hover:text-brand"
+              className="rounded-full px-3 py-2 text-xs font-bold text-ink/60 transition hover:bg-brand-tint hover:text-brand"
             >
               Clear history
             </button>
@@ -472,7 +474,7 @@ export default function ChatWindow({
             onClick={onClose}
             aria-label="Minimize chat"
             title="Minimize (your chat is kept)"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-xl font-bold leading-none text-ink/60 transition hover:bg-brand-tint hover:text-brand"
+            className="flex h-10 w-10 items-center justify-center rounded-full sm:h-8 sm:w-8 text-xl font-bold leading-none text-ink/60 transition hover:bg-brand-tint hover:text-brand"
           >
             –
           </button>
@@ -480,7 +482,7 @@ export default function ChatWindow({
             type="button"
             onClick={onClose}
             aria-label="Close chat"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-xl leading-none text-ink/60 transition hover:bg-brand-tint hover:text-brand"
+            className="flex h-10 w-10 items-center justify-center rounded-full sm:h-8 sm:w-8 text-xl leading-none text-ink/60 transition hover:bg-brand-tint hover:text-brand"
           >
             ×
           </button>
@@ -490,7 +492,7 @@ export default function ChatWindow({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 space-y-3 overflow-y-auto bg-secondary p-4">
+      <div className="flex-1 space-y-3 overflow-y-auto overscroll-contain bg-secondary p-3 sm:p-4">
         {messages.map((m, i) =>
           m.divider ? (
             <div
@@ -515,7 +517,7 @@ export default function ChatWindow({
           >
             {m.role === "assistant" && <Avatar size="h-7 w-7" />}
             <div
-              className={`max-w-[82%] rounded-2xl px-4 py-2.5 text-[15px] leading-6 ${m.old ? "opacity-60" : ""} ${
+              className={`max-w-[86%] break-words rounded-2xl px-4 py-2.5 text-[15px] leading-6 sm:max-w-[82%] ${m.old ? "opacity-60" : ""} ${
                 m.role === "user"
                   ? "rounded-br-md bg-brand text-white"
                   : "rounded-bl-md bg-white text-ink shadow-sm"
@@ -565,7 +567,7 @@ export default function ChatWindow({
             <button
               type="button"
               onClick={() => send("I want to find parts using my VIN")}
-              className="rounded-full border border-ink/20 bg-ink px-3.5 py-2 text-[13px] font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand"
+              className="min-h-[40px] rounded-full border border-ink/20 bg-ink px-4 py-2 text-sm font-bold text-white sm:min-h-0 sm:px-3.5 sm:text-[13px] shadow-sm transition hover:-translate-y-0.5 hover:bg-brand"
             >
               Find parts by VIN
             </button>
@@ -617,7 +619,7 @@ export default function ChatWindow({
                   <button
                     type="button"
                     onClick={() => send("I want to find parts using my VIN")}
-                    className="rounded-full border border-ink/20 bg-ink px-3.5 py-2 text-[13px] font-bold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-brand"
+                    className="min-h-[40px] rounded-full border border-ink/20 bg-ink px-4 py-2 text-sm font-bold text-white sm:min-h-0 sm:px-3.5 sm:text-[13px] shadow-sm transition hover:-translate-y-0.5 hover:bg-brand"
                   >
                     Use my VIN
                   </button>
@@ -650,7 +652,7 @@ export default function ChatWindow({
       </div>
 
       {/* Input */}
-      <div className="border-t border-border bg-white p-3">
+      <div className="border-t border-border bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
         <div className="flex gap-2">
           <label htmlFor="axel-input" className="sr-only">
             Message Axel
@@ -662,13 +664,13 @@ export default function ChatWindow({
             onKeyDown={(e) => e.key === "Enter" && send()}
             maxLength={500}
             placeholder="Ask Axel, or paste your VIN..."
-            className="flex-1 rounded-full border border-input bg-secondary px-4 py-2.5 text-[15px] outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            className="min-w-0 flex-1 rounded-full border border-input bg-secondary px-4 py-3 text-base outline-none sm:py-2.5 sm:text-[15px] focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
           <button
             type="button"
             onClick={() => send()}
             disabled={loading || !input.trim()}
-            className="rounded-full bg-brand px-5 py-2.5 text-sm font-bold text-white transition hover:bg-brand-dark disabled:opacity-50"
+            className="shrink-0 rounded-full bg-brand px-5 py-3 text-sm font-bold text-white transition hover:bg-brand-dark disabled:opacity-50 sm:py-2.5"
           >
             Send
           </button>

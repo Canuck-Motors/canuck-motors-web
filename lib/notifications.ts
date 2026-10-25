@@ -73,9 +73,10 @@ function messageFor(row: OutboxRow) {
 
   const status = String(row.payload?.status || "updated").replaceAll("_", " ");
 
+  const num = String(row.payload?.order_number || "");
   return {
-    subject: "Canuck Motors order update",
-    text: `Your Canuck Motors order status is now: ${status}.`,
+    subject: num ? `Canuck Motors order ${num}: ${status}` : "Canuck Motors order update",
+    text: `${num ? `Your Canuck Motors order ${num}` : "Your Canuck Motors order"} is now: ${status}.\n\nQuestions? Reply to this email or call 604-445-0147.`,
   };
 }
 

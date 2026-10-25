@@ -10,12 +10,13 @@ export default function AddToCartButton({
   action,
   label = "Add to Cart",
 }: {
-  action: () => void | Promise<void>;
+  action: () => void | { error?: string } | Promise<void | { error?: string }>;
   label?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const ready = useRef(false);
   const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
   function fly() {
     const cart = document.querySelector<HTMLElement>("[data-cart-target]");
@@ -83,7 +84,10 @@ export default function AddToCartButton({
   return (
     <form
       ref={formRef}
-      action={action}
+      action={async () => {
+        const result = await action();
+        setMessage(result && typeof result === "object" && result.error ? result.error : null);
+      }}
       onSubmit={(e) => {
         if (ready.current) return; // the real submit, after the animation
         if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -105,6 +109,11 @@ export default function AddToCartButton({
       <button type="submit" disabled={busy} className="cm-button-primary disabled:opacity-80">
         {busy ? "Adding..." : label}
       </button>
+      {message && (
+        <p role="alert" className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700">
+          {message}
+        </p>
+      )}
     </form>
   );
 }

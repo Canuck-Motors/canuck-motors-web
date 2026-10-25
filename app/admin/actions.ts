@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { emailShipmentToCustomer } from "@/lib/shipment-email";
+import { trackingUrlFor } from "@/lib/tracking";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 async function requireStaff() {
   const supabase = await createClient();
@@ -192,6 +194,7 @@ export async function createShipment(
   estimatedDelivery = ""
 ) {
   const supabase = await requireStaff();
+  trackingUrl = trackingUrl.trim() || trackingUrlFor(carrier, trackingNumber) || "";
 
   const { error } = await supabase.rpc("admin_create_shipment", {
     p_order_id: orderId,
@@ -338,6 +341,26 @@ export async function setOrderNote(orderId: string, note: string) {
     throw new Error(
       error.message.includes("admin_set_order_note")
         ? "Run database/admin_order_notes.sql in the Supabase SQL editor first."
+        : error.message
+    );
+  }
+  revalidatePath("/admin/orders");
+}
+
+// What the carrier really charged for the label, so shipping profit/loss is visible per order.
+export async function setShippingCost(orderId: string, cost: number | null) {
+  await requireStaff();
+  if (cost != null && (!Number.isFinite(cost) || cost < 0 || cost > 1000)) {
+    throw new Error("Enter a label cost between 0 and 1000.");
+  }
+  const { error } = await createAdminClient()
+    .from("orders")
+    .update({ shipping_cost: cost })
+    .eq("id", orderId);
+  if (error) {
+    throw new Error(
+      error.message.includes("shipping_cost")
+        ? "Run database/standard_shipping.sql in the Supabase SQL editor first."
         : error.message
     );
   }

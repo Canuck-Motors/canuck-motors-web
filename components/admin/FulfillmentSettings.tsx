@@ -2,19 +2,37 @@
 
 import { useState, useTransition } from "react";
 import {
-  importAmazonTrackingSheet,
-  processAmazonMcfQueueNow,
   saveFulfillmentSettings,
 } from "@/app/admin/fulfillment/actions";
 
 type Provider = "amazon_mcf" | "delivery_partner";
 type Speed = "Standard" | "Expedited" | "Priority";
+type Mode = "redirect" | "mcf" | "standard";
+
+const MODES: { id: Mode; title: string; text: string }[] = [
+  {
+    id: "redirect",
+    title: "Amazon redirect",
+    text: "Product pages show a Buy on Amazon button. No cart, no checkout, no Uber.",
+  },
+  {
+    id: "mcf",
+    title: "Amazon MCF",
+    text: "Customers pay on our site; Amazon packs and ships the order. Uber is skipped.",
+  },
+  {
+    id: "standard",
+    title: "Standard shipping",
+    text: "Customers pay on our site; we ship with our own workflow. Uber same-day stays available.",
+  },
+];
 
 export default function FulfillmentSettings({
   initialSettings,
   amazonConfigured,
 }: {
   initialSettings: {
+    amazonRedirectEnabled: boolean;
     amazonMcfEnabled: boolean;
     deliveryPartnerEnabled: boolean;
     preferredProvider: Provider;
@@ -23,14 +41,28 @@ export default function FulfillmentSettings({
   amazonConfigured: boolean;
   jobs: unknown[];
 }) {
-  const [settings, setSettings] = useState(initialSettings);
+  const [settings] = useState(initialSettings);
+  const [mode, setMode] = useState<Mode>(
+    initialSettings.amazonRedirectEnabled
+      ? "redirect"
+      : initialSettings.amazonMcfEnabled && !initialSettings.deliveryPartnerEnabled
+        ? "mcf"
+        : "standard",
+  );
   const [message, setMessage] = useState("");
   const [pending, start] = useTransition();
 
   function saveSettings() {
     start(async () => {
       try {
-        await saveFulfillmentSettings(settings);
+        await saveFulfillmentSettings({
+          ...settings,
+          amazonRedirectEnabled: mode === "redirect",
+          amazonMcfEnabled: mode === "mcf",
+          // Redirect mode keeps a valid underlying state (partner on); the redirect flag overrides it.
+          deliveryPartnerEnabled: mode !== "mcf",
+          preferredProvider: mode === "mcf" ? "amazon_mcf" : "delivery_partner",
+        });
         setMessage("Fulfillment settings saved.");
       } catch (e) {
         setMessage(e instanceof Error ? e.message : "Unable to save settings.");
@@ -40,54 +72,39 @@ export default function FulfillmentSettings({
 
   return (
     <div className="mt-8 space-y-6">
-      <section className="grid gap-5 lg:grid-cols-2">
-        <ProviderCard
-          title="Amazon MCF"
-          description="Route eligible paid orders to Amazon Multi-Channel Fulfillment."
-          checked={settings.amazonMcfEnabled}
-          onChange={(v) => setSettings((s) => ({ ...s, amazonMcfEnabled: v }))}
-          detail={amazonConfigured ? "Amazon API configured" : "Amazon tracking can also be imported by spreadsheet"}
-        />
-        <ProviderCard
-          title="Delivery Partner"
-          description="Use the existing Canuck Motors shipment and tracking workflow."
-          checked={settings.deliveryPartnerEnabled}
-          onChange={(v) => setSettings((s) => ({ ...s, deliveryPartnerEnabled: v }))}
-          detail="Existing shipment workflow"
-        />
+      <section className="rounded-[26px] border bg-white p-6">
+        <h2 className="text-lg font-black">How customers buy (only one at a time)</h2>
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          {MODES.map((m) => {
+            const on = mode === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setMode(m.id)}
+                aria-pressed={on}
+                className={`rounded-2xl border-2 p-5 text-left transition ${
+                  on ? "border-brand bg-brand-tint/50" : "border-input hover:border-brand/50"
+                }`}
+              >
+                <span className={`inline-flex rounded-full px-3 py-1 text-xs font-black ${on ? "bg-brand text-white" : "bg-secondary text-muted-foreground"}`}>
+                  {on ? "ON" : "OFF"}
+                </span>
+                <p className="mt-3 text-base font-black">{m.title}</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">{m.text}</p>
+                {m.id === "mcf" && (
+                  <p className="mt-2 text-xs font-semibold text-muted-foreground">
+                    {amazonConfigured ? "Amazon API configured" : "Tracking can also be imported by spreadsheet"}
+                  </p>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </section>
 
       <section className="rounded-[26px] border bg-white p-6">
-        <label className="text-sm font-bold">
-          Preferred provider when both are ON
-          <select
-            value={settings.preferredProvider}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, preferredProvider: e.target.value as Provider }))
-            }
-            className="mt-2 w-full rounded-xl border px-3 py-2.5"
-          >
-            <option value="amazon_mcf">Amazon MCF first, Delivery Partner fallback</option>
-            <option value="delivery_partner">Delivery Partner first, Amazon MCF fallback</option>
-          </select>
-        </label>
-
-        <label className="mt-4 block text-sm font-bold">
-          Amazon shipping speed
-          <select
-            value={settings.amazonShippingSpeed}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, amazonShippingSpeed: e.target.value as Speed }))
-            }
-            className="mt-2 w-full rounded-xl border px-3 py-2.5"
-          >
-            <option value="Standard">Standard</option>
-            <option value="Expedited">Expedited</option>
-            <option value="Priority">Priority</option>
-          </select>
-        </label>
-
-        <div className="mt-5 flex flex-wrap gap-3">
+        <div className="flex flex-wrap gap-3">
           <button
             type="button"
             disabled={pending}
@@ -96,114 +113,9 @@ export default function FulfillmentSettings({
           >
             Save settings
           </button>
-          {amazonConfigured && (
-            <button
-              type="button"
-              disabled={pending}
-              onClick={() =>
-                start(async () => {
-                  try {
-                    const result = await processAmazonMcfQueueNow();
-                    setMessage(
-                      `MCF queue processed: ${result.succeeded} succeeded, ${result.failed} failed or retried.`
-                    );
-                  } catch (e) {
-                    setMessage(e instanceof Error ? e.message : "Unable to process MCF queue.");
-                  }
-                })
-              }
-              className="rounded-full bg-ink px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40"
-            >
-              Process MCF queue now
-            </button>
-          )}
         </div>
         {message && <p className="mt-3 text-sm">{message}</p>}
       </section>
-
-      <section className="rounded-[26px] border bg-white p-6">
-        <h2 className="text-lg font-black">Amazon MCF tracking import</h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Upload the tracking file received from Amazon. We match each row to the Canuck Motors
-          order number, save the carrier/tracking details and email the customer using the email
-          already stored on their order.
-        </p>
-        <p className="mt-2 text-xs font-semibold text-muted-foreground">
-          Required columns: Order Number and Tracking Number. Optional: Tracking URL, Carrier,
-          Service Level and Estimated Delivery. Accepted formats: .xlsx and .csv.
-        </p>
-        <form
-          action={(formData) =>
-            start(async () => {
-              try {
-                const result = await importAmazonTrackingSheet(formData);
-                const suffix = result.errors.length
-                  ? ` ${result.errors.slice(0, 3).join(" | ")}`
-                  : "";
-                setMessage(
-                  `Tracking import complete: ${result.imported} new shipment(s), ${result.emailed} customer email(s), ${result.skipped} skipped.${suffix}`
-                );
-              } catch (e) {
-                setMessage(e instanceof Error ? e.message : "Unable to import tracking spreadsheet.");
-              }
-            })
-          }
-          className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center"
-        >
-          <input
-            name="file"
-            type="file"
-            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
-            required
-            className="min-w-0 flex-1 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm"
-          />
-          <button
-            type="submit"
-            disabled={pending}
-            className="cm-button-primary shrink-0 disabled:opacity-60"
-          >
-            {pending ? "Importing..." : "Upload tracking file"}
-          </button>
-        </form>
-      </section>
-
-    </div>
-  );
-}
-
-function ProviderCard({
-  title,
-  description,
-  checked,
-  onChange,
-  detail,
-}: {
-  title: string;
-  description: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-[26px] border bg-white p-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-lg font-black">{title}</h2>
-          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-          <p className="mt-4 text-xs font-bold text-brand">{detail}</p>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={checked}
-          onClick={() => onChange(!checked)}
-          className={`rounded-full px-4 py-2 text-sm font-bold ${
-            checked ? "bg-brand text-white" : "bg-secondary text-ink"
-          }`}
-        >
-          {checked ? "ON" : "OFF"}
-        </button>
-      </div>
     </div>
   );
 }

@@ -1,10 +1,13 @@
+import { isAmazonRedirectOn } from "@/lib/fulfillment-mode";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { imageUrl, isVideo } from "@/lib/product-images";
 import { withMaterial } from "@/lib/material";
 import CartInteractive from "@/components/cart/cart-interactive";
+import CartRefresh from "@/components/cart/CartRefresh";
 
 export const instant = false;
 
@@ -36,7 +39,7 @@ export default async function CartPage({ searchParams }: PageProps) {
 
   const { data: profile } = await supabase
     .from("users")
-    .select("id")
+    .select("id, first_name, last_name, phone_number, shipping_address")
     .eq("auth_user_id", authData.user.id)
     .maybeSingle();
 
@@ -97,6 +100,27 @@ export default async function CartPage({ searchParams }: PageProps) {
 
   const productMap = new Map((products ?? []).map((product) => [product.id, product]));
 
+  // Parts that were hidden, deleted or lost their price are removed from the cart with a notice,
+  // instead of silently disappearing from the page while still sitting in the cart.
+  const goneItems = (items ?? []).filter((item) => {
+    const p = productMap.get(item.product_id);
+    return !p || p.price === null;
+  });
+  if (goneItems.length) {
+    await supabase.from("cart_items").delete().in("id", goneItems.map((i) => i.id));
+  }
+
+  const { data: stockRows } =
+    productIds.length > 0
+      ? await supabase.from("inventory").select("product_id, quantity, reserved_quantity, is_active").in("product_id", productIds)
+      : { data: [] };
+  const availableBy = new Map(
+    (stockRows ?? []).map((r) => [
+      r.product_id as number,
+      r.is_active ? Math.max(0, Number(r.quantity ?? 0) - Number(r.reserved_quantity ?? 0)) : 0,
+    ])
+  );
+
   const initialLines = (items ?? [])
     .map((item) => {
       const product = productMap.get(item.product_id);
@@ -113,6 +137,7 @@ export default async function CartPage({ searchParams }: PageProps) {
         id: item.id,
         product_id: item.product_id,
         quantity: item.quantity,
+        available: availableBy.has(item.product_id) ? (availableBy.get(item.product_id) as number) : null,
         product: {
           id: product.id,
           product_name: product.product_name,
@@ -128,6 +153,7 @@ export default async function CartPage({ searchParams }: PageProps) {
       id: number;
       product_id: number;
       quantity: number;
+      available: number | null;
       product: {
         id: number;
         product_name: string;
@@ -138,6 +164,24 @@ export default async function CartPage({ searchParams }: PageProps) {
         image_url: string | null;
       };
     }>;
+
+  // Uber same-day is only offered to customers whose account address is in Vancouver or Burnaby.
+  const saved = (profile.shipping_address ?? {}) as Record<string, string | null>;
+  const savedCity = String(saved.city ?? "").trim();
+  let mcfOn = false;
+  try {
+    const { data: fs } = await createAdminClient().from("fulfillment_settings").select("amazon_mcf_enabled").eq("id", 1).maybeSingle();
+    mcfOn = Boolean(fs?.amazon_mcf_enabled);
+  } catch {}
+  const uberEligible = !(await isAmazonRedirectOn()) && ["vancouver", "burnaby"].includes(savedCity.toLowerCase());
+  const uberDefaults = {
+    name: String(saved.name || [profile.first_name, profile.last_name].filter(Boolean).join(" ") || ""),
+    phone: String(profile.phone_number ?? ""),
+    street: String(saved.line1 ?? ""),
+    city: uberEligible ? (savedCity.toLowerCase() === "burnaby" ? "Burnaby" : "Vancouver") : "",
+    state: "BC",
+    zip: String(saved.postal_code ?? ""),
+  };
 
   return (
     <main className="min-h-screen bg-white">
@@ -165,6 +209,17 @@ export default async function CartPage({ searchParams }: PageProps) {
           </div>
         )}
 
+        {goneItems.length > 0 && (
+          <div
+            role="status"
+            className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-800"
+          >
+            {goneItems.length === 1
+              ? "One part in your cart is no longer available, so we removed it."
+              : `${goneItems.length} parts in your cart are no longer available, so we removed them.`}
+          </div>
+        )}
+
         {checkoutCancelled && (
           <div
             role="status"
@@ -174,7 +229,12 @@ export default async function CartPage({ searchParams }: PageProps) {
           </div>
         )}
 
-        <CartInteractive initialLines={initialLines} />
+        <CartRefresh />
+        <CartInteractive
+          key={initialLines.map((l) => `${l.id}:${l.quantity}`).join(",")}
+          initialLines={initialLines} uberEligible={uberEligible} mcfOn={mcfOn} uberDefaults={uberDefaults} shipPostalDefault={String(saved.postal_code ?? "")}
+          shipAccountLabel={[saved.line1, saved.city, saved.province, saved.postal_code].filter(Boolean).join(", ")}
+        />
       </div>
     </main>
   );

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { grandTotal } from "@/lib/order-totals";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Gauge, Package, ShoppingCart, UserRound } from "lucide-react";
@@ -45,7 +46,7 @@ export default async function AccountPage() {
 
   const { data: orders } = await supabase
     .from("orders")
-    .select("id, order_number, status, payment_status, total_amount, currency, created_on")
+    .select("id, order_number, status, payment_status, total_amount, delivery_fee, sales_tax, currency, created_on")
     .eq("user_id", profile.id)
     .order("created_on", { ascending: false })
     .limit(5);
@@ -142,7 +143,7 @@ export default async function AccountPage() {
                   </div>
                   <div className="text-right">
                     <p className="font-bold text-ink">
-                      ${Number(order.total_amount).toFixed(2)} {order.currency}
+                      ${grandTotal(order).toFixed(2)} {order.currency}
                     </p>
                     <p className="mt-1 text-sm capitalize text-muted-foreground">
                       {order.status.replace("_", " ")}

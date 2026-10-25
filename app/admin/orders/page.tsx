@@ -28,8 +28,19 @@ export default async function OrdersAdminPage() {
     supabase.from("orders").select(select).order("created_on", { ascending: false }).limit(1000);
 
   // admin_note exists only after database/admin_order_notes.sql has been run
-  let res = await load(`${BASE}, admin_note`);
-  if (res.error) res = await load(BASE);
+  const SHIP = "delivery_fee, delivery_method, shipping_zone, shipping_weight_kg, sales_tax";
+  // Optional columns come from separate SQL files, so try the richest select first and
+  // drop groups one at a time. A missing admin_note must not hide the shipping fee.
+  const tries = [
+    `${BASE}, admin_note, ${SHIP}, shipping_cost`,
+    `${BASE}, ${SHIP}, shipping_cost`,
+    `${BASE}, admin_note, ${SHIP}`,
+    `${BASE}, ${SHIP}`,
+    `${BASE}, admin_note`,
+    BASE,
+  ];
+  let res = await load(tries[0]);
+  for (let i = 1; i < tries.length && res.error; i++) res = await load(tries[i]);
   if (res.error) {
     throw new Error("Unable to load orders.");
   }
@@ -92,6 +103,12 @@ export default async function OrdersAdminPage() {
       routingStatus: String(o.fulfillment_routing_status ?? "unrouted"),
       fulfillmentError: (o.fulfillment_error as string) ?? "",
       total: Number(o.total_amount ?? 0),
+      shippingFee: Number(o.delivery_fee ?? 0),
+      salesTax: Number(o.sales_tax ?? 0),
+      shippingZone: (o.shipping_zone as string) ?? "",
+      shippingWeight: o.shipping_weight_kg == null ? null : Number(o.shipping_weight_kg),
+      shippingCost: o.shipping_cost == null ? null : Number(o.shipping_cost),
+      deliveryMethod: String(o.delivery_method ?? "standard"),
       currency: String(o.currency ?? "CAD"),
       email: (o.customer_email as string) ?? "",
       name: (o.customer_name as string) ?? "",
@@ -143,6 +160,40 @@ export default async function OrdersAdminPage() {
           </div>
           <p className="text-sm text-muted-foreground">Signed in as {role}</p>
         </div>
+
+        {(() => {
+          const since = Date.now() - 30 * 86400000;
+          const std = orders.filter(
+            (o) => o.payment === "paid" && o.deliveryMethod === "standard" && o.shippingFee > 0 && new Date(o.createdOn).getTime() >= since
+          );
+          if (!std.length) return null;
+          const collected = std.reduce((t, o) => t + o.shippingFee, 0);
+          const withCost = std.filter((o) => o.shippingCost != null);
+          const spent = withCost.reduce((t, o) => t + (o.shippingCost ?? 0), 0);
+          const net = withCost.reduce((t, o) => t + (o.shippingFee - (o.shippingCost ?? 0)), 0);
+          const missing = std.length - withCost.length;
+          return (
+            <div className="mt-6 rounded-2xl border border-black/5 bg-white p-4 text-sm shadow-sm">
+              <p className="font-bold text-ink">Standard shipping, last 30 days</p>
+              <p className="mt-1 text-muted-foreground">
+                {std.length} orders · collected <b className="text-ink">${collected.toFixed(2)}</b>
+                {withCost.length > 0 && (
+                  <>
+                    {" "}· label cost <b className="text-ink">${spent.toFixed(2)}</b> · net{" "}
+                    <b className={net >= 0 ? "text-green-700" : "text-red-700"}>
+                      {net >= 0 ? "+" : "-"}${Math.abs(net).toFixed(2)}
+                    </b>
+                  </>
+                )}
+              </p>
+              {missing > 0 && (
+                <p className="mt-1 text-xs text-amber-800">
+                  {missing} order{missing === 1 ? " has" : "s have"} no label cost yet. Open the order and enter it so this stays accurate.
+                </p>
+              )}
+            </div>
+          );
+        })()}
 
         <OrdersManager
           initial={orders}

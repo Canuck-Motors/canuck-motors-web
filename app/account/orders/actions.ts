@@ -6,6 +6,23 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeRefund } from "@/lib/stripe";
 
+const UBER_LOCKED_MESSAGE =
+  "This order is with an Uber courier for same-day delivery, so it can't be cancelled. Once it is delivered you can request a return. Questions? Email contactus@canuckmotors.ca or call 604-445-0147.";
+
+// Once an Uber delivery is booked a courier is on the way, so the customer can no longer cancel.
+async function assertNotWithUberCourier(orderId: string, userAuthId: string) {
+  const admin = createAdminClient();
+  const { data: profile } = await admin.from("users").select("id").eq("auth_user_id", userAuthId).maybeSingle();
+  const { data: order } = await admin
+    .from("orders")
+    .select("delivery_method, uber_delivery_id, uber_status, user_id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (!order || !profile || order.user_id !== profile.id) return; // the cancel RPC rejects this itself
+  const booked = !!order.uber_delivery_id && !["canceled", "cancelled", "booking_failed"].includes(String(order.uber_status ?? ""));
+  if (order.delivery_method === "uber" && booked) throw new Error(UBER_LOCKED_MESSAGE);
+}
+
 export async function requestCancellation(orderId: string, reason: string) {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
@@ -13,6 +30,7 @@ export async function requestCancellation(orderId: string, reason: string) {
   if (!auth.user) {
     redirect("/login");
   }
+  await assertNotWithUberCourier(orderId, auth.user.id);
 
   const { data: result, error } = await supabase.rpc("request_order_cancellation", {
     p_order_id: orderId,
@@ -81,6 +99,7 @@ export async function cancelOrderItem(orderId: string, orderItemId: number, reas
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) redirect("/login");
+  await assertNotWithUberCourier(orderId, auth.user.id);
 
   const { data: prepared, error } = await supabase.rpc("prepare_item_cancellation", {
     p_order_item_id: orderItemId,

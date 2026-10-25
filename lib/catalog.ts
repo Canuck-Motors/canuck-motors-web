@@ -114,18 +114,38 @@ async function fitmentOptions(
 ): Promise<Named[]> {
   // Supabase returns at most 1000 rows per request: read every page
   const data: any[] = [];
+  // Only offer vehicles that have at least one part we can really sell (active, not deleted).
+  // Hidden or discontinued parts must not lead the customer down a path with no result.
+  // If the database rejects this stricter query, fall back to the plain one so the finder keeps working.
+  let strict = true;
   for (let from = 0; from < 100000; from += 1000) {
-    let query = supabase
-      .from("vehicle_fitments")
-      .select(`${relation} ( id, ${nameColumn}, slug )`);
+    const build = (onlySellable: boolean) => {
+      let query = supabase
+        .from("vehicle_fitments")
+        .select(
+          onlySellable
+            ? `${relation} ( id, ${nameColumn}, slug ), product_fitments!inner ( products!inner ( id ) )`
+            : `${relation} ( id, ${nameColumn}, slug )`,
+        );
+      for (const [column, value] of Object.entries(filters)) {
+        query = Array.isArray(value)
+          ? query.in(column, value)
+          : query.eq(column, value);
+      }
+      if (onlySellable) {
+        query = query
+          .eq("product_fitments.products.is_active", true)
+          .eq("product_fitments.products.is_delete", false);
+      }
+      return query.order("id").range(from, from + 999);
+    };
 
-    for (const [column, value] of Object.entries(filters)) {
-      query = Array.isArray(value)
-        ? query.in(column, value)
-        : query.eq(column, value);
+    let res = await build(strict);
+    if (res.error && strict) {
+      console.error(`Sellable-only ${relation} lookup failed, using plain lookup:`, res.error.message);
+      strict = false;
+      res = await build(false);
     }
-
-    const res = await query.order("id").range(from, from + 999);
     if (res.error) {
       console.error(`Fitment ${relation} lookup failed:`, res.error.message);
       return [];

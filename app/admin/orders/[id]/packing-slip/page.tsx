@@ -25,11 +25,23 @@ export default async function PackingSlipPage({
   const { data: order } = await supabase
     .from("orders")
     .select(
-      "id, order_number, created_on, customer_name, customer_email, shipping_address, order_items(product_name, sku, quantity, cancelled_on)"
+      "id, order_number, created_on, customer_name, customer_email, shipping_address, delivery_method, shipping_weight_kg, delivery_fee, order_items(product_name, sku, quantity, cancelled_on)"
     )
     .eq("id", id)
     .maybeSingle();
   if (!order) notFound();
+
+  const { data: dims } = await supabase
+    .from("products")
+    .select("sku, weight_kg, length_cm, width_cm, height_cm")
+    .in("sku", (order.order_items ?? []).map((i: { sku: string }) => i.sku));
+  const dimBySku = new Map((dims ?? []).map((d) => [String(d.sku), d]));
+  const boxOf = (sku: string) => {
+    const d = dimBySku.get(sku);
+    if (!d || d.length_cm == null) return "";
+    const f = (n: number | null) => (n == null ? "?" : (Number(n) / 2.54).toFixed(1));
+    return `${f(d.length_cm)}×${f(d.width_cm)}×${f(d.height_cm)} in${d.weight_kg != null ? `, ${(Number(d.weight_kg) / 0.45359237).toFixed(1)} lb` : ""}`;
+  };
 
   const a = (order.shipping_address ?? null) as Addr;
   const items = ((order.order_items ?? []) as { product_name: string; sku: string; quantity: number; cancelled_on?: string | null }[]).filter(
@@ -61,6 +73,10 @@ export default async function PackingSlipPage({
           <p className="mt-1">{order.order_number}</p>
           <p>{new Date(order.created_on).toLocaleDateString("en-CA")}</p>
           <p>{order.customer_email}</p>
+          <p className="mt-2">
+            {order.delivery_method === "uber" ? "Uber same-day delivery" : "Standard shipping"}
+            {order.shipping_weight_kg != null ? ` · about ${Number(order.shipping_weight_kg).toFixed(2)} kg` : ""}
+          </p>
         </div>
       </div>
 
@@ -77,7 +93,10 @@ export default async function PackingSlipPage({
           {items.map((i, n) => (
             <tr key={n} className="border-b border-black/15">
               <td className="py-2 font-semibold">{i.sku}</td>
-              <td className="py-2">{i.product_name}</td>
+              <td className="py-2">
+                {i.product_name}
+                {boxOf(i.sku) && <span className="block text-xs text-black/60">Box: {boxOf(i.sku)}</span>}
+              </td>
               <td className="py-2 text-right">{i.quantity}</td>
               <td className="py-2 text-center">☐</td>
             </tr>

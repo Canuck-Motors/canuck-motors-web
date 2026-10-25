@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import { zoneFromPostal } from "@/lib/standard-shipping";
+import { sendOrderConfirmation } from "@/lib/order-confirmation";
+import { recordStripeTax } from "@/lib/stripe-tax";
+import { bookUberForOrder } from "@/lib/uber-booking";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { verifyStripeWebhookSignature } from "@/lib/stripe";
 
@@ -12,6 +16,7 @@ type StripeEvent = {
       charge?: string | null;
       amount?: number | null;
       amount_total?: number | null;
+      total_details?: { amount_tax?: number | null } | null;
       currency?: string | null;
       reason?: string | null;
       is_charge_refundable?: boolean | null;
@@ -187,7 +192,7 @@ export async function POST(request: Request) {
       if (orderId) {
         const { data: order, error: orderError } = await admin
           .from("orders")
-          .select("id, order_type, total_amount, currency")
+          .select("id, order_type, total_amount, currency, delivery_method, delivery_fee, uber_dropoff, shipping_zone, ship_to")
           .eq("id", orderId)
           .maybeSingle();
 
@@ -209,7 +214,10 @@ export async function POST(request: Request) {
             throw new Error("Stripe checkout referenced an order that does not exist.");
           }
 
-          const expectedCents = Math.round(Number(order.total_amount) * 100);
+          const expectedCents =
+            Math.round(Number(order.total_amount) * 100) +
+            Math.round(Number(order.delivery_fee ?? 0) * 100) +
+            Number(object.total_details?.amount_tax ?? 0); // tax is added by Stripe Tax
           const eventAmount = Number(object.amount_total);
           const eventCurrency = String(object.currency || "").toLowerCase();
           const expectedCurrency = String(order.currency || "CAD").toLowerCase();
@@ -241,18 +249,53 @@ export async function POST(request: Request) {
 
           // Newer Stripe API versions put the shipping address in collected_information.
           const shipTo = object.collected_information?.shipping_details ?? object.shipping_details;
-          const shippingAddress = normalizeStripeAddress(shipTo?.name, shipTo?.address);
+          const uberDrop = order.uber_dropoff as
+            | { name?: string; street?: string; city?: string; state?: string; zip?: string }
+            | null;
+          const shippingAddress =
+            order.delivery_method === "uber" && uberDrop?.street
+              ? {
+                  name: uberDrop.name ?? null,
+                  line1: uberDrop.street,
+                  line2: null,
+                  city: uberDrop.city ?? null,
+                  province: uberDrop.state ?? null,
+                  postal_code: uberDrop.zip ?? null,
+                  country: "CA",
+                }
+              : order.delivery_method === "standard" && (order as { ship_to?: Record<string, string> | null }).ship_to?.line1
+                ? (() => {
+                    const s = (order as { ship_to: Record<string, string> }).ship_to;
+                    return {
+                      name: s.name ?? null,
+                      line1: s.line1,
+                      line2: s.line2 || null,
+                      city: s.city ?? null,
+                      province: s.province ?? null,
+                      postal_code: s.postal_code ?? null,
+                      country: "CA",
+                    };
+                  })()
+                : normalizeStripeAddress(shipTo?.name, shipTo?.address);
 
           const billingAddress = normalizeStripeAddress(
             object.customer_details?.name,
             object.customer_details?.address
           );
 
+          // Customer may type a different address in Stripe than the postal code used for the quote.
+          let zoneMismatch = false;
+          if (order.delivery_method === "standard" && order.shipping_zone) {
+            zoneMismatch = zoneFromPostal(String(shippingAddress?.postal_code ?? "")) !== order.shipping_zone;
+            if (zoneMismatch) console.warn("[shipping] Zone mismatch for order", orderId);
+          }
+
           const { error: addressError } = await admin
             .from("orders")
             .update({
               shipping_address: shippingAddress,
               billing_address: billingAddress,
+              ...(order.delivery_method === "standard" && order.shipping_zone ? { shipping_zone_mismatch: zoneMismatch } : {}),
               customer_name:
                 object.customer_details?.name ??
                 shipTo?.name ??
@@ -263,6 +306,18 @@ export async function POST(request: Request) {
 
           if (addressError) {
             throw new Error(addressError.message);
+          }
+
+          await recordStripeTax(admin, orderId, object.id, eventAmount);
+          await sendOrderConfirmation(orderId);
+
+          if (order.delivery_method === "uber") {
+            try {
+              await bookUberForOrder(orderId);
+            } catch (uberError) {
+              // Payment is already recorded: never fail the webhook. Staff can retry the booking.
+              console.error("[uber] Booking failed for order", orderId, uberError);
+            }
           }
         }
 

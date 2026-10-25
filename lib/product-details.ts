@@ -44,7 +44,32 @@ export async function getSpecs(productId: number): Promise<Spec[]> {
     console.error("Specs lookup failed:", error.message);
     return [];
   }
-  return (data ?? []).map((r: any) => ({ name: r.spec_name, value: r.spec_value }));
+  const specs: Spec[] = (data ?? []).map((r: any) => ({ name: r.spec_name, value: r.spec_value }));
+
+  // Package weight & size (stored on the products row), shown like the supplier sheet.
+  const { data: p } = await createPublicClient()
+    .from("products")
+    .select("weight_kg, length_cm, width_cm, height_cm")
+    .eq("id", productId)
+    .maybeSingle();
+  if (p) {
+    const fmt = (cm: number | null) =>
+      cm == null ? null : `${(Number(cm) / 2.54).toFixed(1)} in (${Number(cm).toFixed(1)} cm)`;
+    const dims: [string, number | null][] = [
+      ["Package Height", p.height_cm],
+      ["Package Width", p.width_cm],
+      ["Package Length", p.length_cm],
+    ];
+    for (const [name, v] of dims) {
+      const f = fmt(v);
+      if (f && !specs.some((x) => x.name.toLowerCase() === name.toLowerCase())) specs.push({ name, value: f });
+    }
+    if (p.weight_kg != null && !specs.some((x) => /^(package )?weight/i.test(x.name))) {
+      const kg = Number(p.weight_kg);
+      specs.push({ name: "Package Weight", value: `${(kg / 0.45359237).toFixed(1)} lb (${kg.toFixed(2)} kg)` });
+    }
+  }
+  return specs;
 }
 
 export async function getOeNumbers(productId: number): Promise<PartNumber[]> {

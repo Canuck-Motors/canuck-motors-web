@@ -293,6 +293,24 @@ export async function processFulfillmentQueue(limit = 25): Promise<FulfillmentRe
 
     if (!claimed) continue;
 
+    // Uber same-day orders are delivered by an Uber courier, never by Amazon.
+    const { data: jobOrder } = await admin
+      .from("orders")
+      .select("delivery_method")
+      .eq("id", job.order_id)
+      .maybeSingle();
+    if (jobOrder?.delivery_method === "uber") {
+      await admin
+        .from("fulfillment_jobs")
+        .update({
+          status: "failed",
+          last_error: "Skipped: this order is delivered by Uber same-day.",
+          updated_on: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+      continue;
+    }
+
     try {
       const submitted = await submitAmazonMcfOrder(String(job.order_id));
 
