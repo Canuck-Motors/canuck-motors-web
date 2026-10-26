@@ -43,8 +43,15 @@ function messageFor(row: OutboxRow) {
           "Print the Amazon document, attach the return-center mailing label to the package, and place the authorization slip inside. Return postage is not included."
         );
       } else {
-        lines.push(address ? `Return address:\n${address}` : "Reply to this email and we will send you the return address.");
-        lines.push("Please pack the item securely, include your order number, and keep your tracking number.");
+        const labelUrl = String(p.return_label_url || "");
+        lines.push(address ? `Return destination:\n${address}` : "Reply to this email and we will send you the return address.");
+        if (labelUrl) {
+          lines.push(`Print your return label (PDF): ${labelUrl}`);
+          lines.push(
+            "Print the PDF, fill in the blank FROM section with your address, attach the label flat to the outside of the box, and do not write anything else on the box."
+          );
+        }
+        lines.push("Pack the item securely and keep your carrier receipt and tracking number until the return is completed.");
       }
     } else {
       const status = String(p.status || "");
