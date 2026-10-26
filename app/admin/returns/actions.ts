@@ -50,7 +50,7 @@ async function queueReturnEmail(
     const admin = createAdminClient();
     const { data: row } = await admin
       .from("return_requests")
-      .select("user_id, order_id, orders!order_id(customer_email, order_number)")
+      .select("user_id, order_id, orders!order_id(customer_email, order_number), return_request_items(quantity, order_items!inner(product_name, sku))")
       .eq("id", requestId)
       .maybeSingle();
     const order = Array.isArray(row?.orders) ? row?.orders[0] : row?.orders;
@@ -67,6 +67,17 @@ async function queueReturnEmail(
       payload: {
         ...payload,
         order_number: (order as { order_number?: string } | undefined)?.order_number ?? "",
+        return_items: ((row.return_request_items ?? []) as Array<{
+          quantity?: number;
+          order_items?: { product_name?: string; sku?: string } | { product_name?: string; sku?: string }[];
+        }>).map((entry) => {
+          const item = Array.isArray(entry.order_items) ? entry.order_items[0] : entry.order_items;
+          return {
+            quantity: Number(entry.quantity ?? 1),
+            name: String(item?.product_name ?? item?.sku ?? "Item"),
+            sku: String(item?.sku ?? ""),
+          };
+        }),
       },
     });
     if (error) return false;
