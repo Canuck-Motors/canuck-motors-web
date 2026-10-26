@@ -4,6 +4,7 @@ import UberTracking from "@/components/uber/UberTracking";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import Image from "next/image";
 import { imageUrl, isVideo } from "@/lib/product-images";
 import ReturnPhotos from "@/components/account/ReturnPhotos";
@@ -85,11 +86,31 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
       supabase
         .from("return_requests")
         .select(
-          "id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_tracking_number, return_carrier, fulfillment_provider, amazon_return_status, amazon_rma_id, amazon_rma_page_url, amazon_return_error, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due, return_request_items(order_item_id, quantity)"
+          "id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, updated_on, return_tracking_number, return_carrier, fulfillment_provider, amazon_return_status, amazon_rma_id, amazon_rma_page_url, amazon_return_error, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due, return_request_items(order_item_id, quantity)"
         )
         .eq("order_id", order.id)
         .order("requested_on", { ascending: false }),
     ]);
+
+  const returnRequestIds = (returnRequests ?? []).map((request) => String(request.id));
+  let returnActivity: {
+    id: number;
+    request_id: string;
+    action: string;
+    detail: string | null;
+    created_on: string;
+  }[] = [];
+
+  if (returnRequestIds.length > 0) {
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("return_activity")
+      .select("id, request_id, action, detail, created_on")
+      .in("request_id", returnRequestIds)
+      .order("created_on", { ascending: true });
+
+    returnActivity = (data ?? []) as typeof returnActivity;
+  }
 
   const shipmentIds = (shipments ?? []).map((shipment) => shipment.id);
 
@@ -159,6 +180,194 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
     returnDeadline !== null &&
     returnDeadline >= now;
 
+  type TimelineEvent = {
+    key: string;
+    status: string;
+    title: string;
+    detail?: string;
+    at: string;
+  };
+
+  const timelineTitle = (status: string) => {
+    const titles: Record<string, string> = {
+      placed: "Order placed",
+      paid: "Payment confirmed",
+      processing: "Order processing",
+      packed: "Order packed",
+      shipped: "Order shipped",
+      out_for_delivery: "Out for delivery",
+      delivered: "Delivered",
+      cancellation_requested: "Cancellation requested",
+      cancelled: "Order cancelled",
+      refunded: "Refund completed",
+      partially_refunded: "Partial refund completed",
+      requested: "Return requested",
+      under_review: "Return under review",
+      approved: "Return request approved",
+      rejected: "Return request rejected",
+      label_issued: "Return label issued",
+      in_transit: "Return in transit",
+      received: "Returned item received",
+      refund_pending: "Refund pending",
+      inspection_failed: "Return inspection issue",
+      exchange_processing: "Exchange processing",
+      completed: "Return completed",
+    };
+    return titles[status] ?? status.replaceAll("_", " ");
+  };
+
+  const timelineTone = (status: string) => {
+    if (["delivered", "received", "completed", "refunded"].includes(status)) {
+      return {
+        dot: "bg-emerald-500",
+        badge: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+      };
+    }
+    if (["rejected", "cancelled", "inspection_failed"].includes(status)) {
+      return {
+        dot: "bg-red-500",
+        badge: "bg-red-50 text-red-700 ring-red-200",
+      };
+    }
+    if (["approved", "label_issued", "in_transit", "out_for_delivery"].includes(status)) {
+      return {
+        dot: "bg-amber-500",
+        badge: "bg-amber-50 text-amber-800 ring-amber-200",
+      };
+    }
+    return {
+      dot: "bg-brand",
+      badge: "bg-brand-tint text-brand ring-brand/20",
+    };
+  };
+
+  const timeline: TimelineEvent[] = [
+    {
+      key: "placed",
+      status: "placed",
+      title: "Order placed",
+      detail: "Your order was successfully placed.",
+      at: String(order.placed_on || order.created_on),
+    },
+  ];
+
+  const customerOrderStatuses = new Set([
+    "paid",
+    "processing",
+    "packed",
+    "shipped",
+    "out_for_delivery",
+    "delivered",
+    "cancellation_requested",
+    "cancelled",
+    "refunded",
+    "partially_refunded",
+  ]);
+
+  for (const event of [...(history ?? [])].reverse()) {
+    const status = String(event.to_status || "");
+    if (!customerOrderStatuses.has(status)) continue;
+    timeline.push({
+      key: `order-${event.id}`,
+      status,
+      title: timelineTitle(status),
+      detail: event.reason || undefined,
+      at: String(event.created_on),
+    });
+  }
+
+  if (
+    order.delivered_on &&
+    !timeline.some((event) => event.status === "delivered")
+  ) {
+    timeline.push({
+      key: "delivered-fallback",
+      status: "delivered",
+      title: "Delivered",
+      detail: "Your order was delivered.",
+      at: String(order.delivered_on),
+    });
+  }
+
+  for (const request of returnRequests ?? []) {
+    timeline.push({
+      key: `return-request-${request.id}`,
+      status: "requested",
+      title: "Return requested",
+      detail: [
+        String(request.reason_code || "").replaceAll("_", " "),
+        request.reason_text ? String(request.reason_text) : "",
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      at: String(request.requested_on),
+    });
+
+    const activities = returnActivity.filter(
+      (activity) => activity.request_id === String(request.id)
+    );
+
+    let sawStatusActivity = false;
+    for (const activity of activities) {
+      if (activity.action === "status") {
+        const match = String(activity.detail || "").match(/^Status set to ([^,]+)/i);
+        const status = String(match?.[1] || "").trim().replaceAll(" ", "_");
+        if (!status || status === "requested") continue;
+        sawStatusActivity = true;
+
+        const isCurrentStatus = status === String(request.status);
+        const reason =
+          isCurrentStatus && request.resolution_notes
+            ? `Reason: ${String(request.resolution_notes)}`
+            : undefined;
+
+        timeline.push({
+          key: `return-status-${activity.id}`,
+          status,
+          title: timelineTitle(status),
+          detail: reason,
+          at: String(activity.created_on),
+        });
+      }
+
+      if (activity.action === "refund") {
+        timeline.push({
+          key: `return-refund-${activity.id}`,
+          status: "refunded",
+          title: "Refund completed",
+          detail: activity.detail || "Your refund was processed.",
+          at: String(activity.created_on),
+        });
+      }
+    }
+
+    if (!sawStatusActivity && String(request.status) !== "requested") {
+      const status = String(request.status);
+      timeline.push({
+        key: `return-current-${request.id}`,
+        status,
+        title: timelineTitle(status),
+        detail:
+          request.resolution_notes && ["rejected", "inspection_failed"].includes(status)
+            ? `Reason: ${String(request.resolution_notes)}`
+            : undefined,
+        at: String(request.updated_on || request.requested_on),
+      });
+    }
+  }
+
+  const customerTimeline = timeline
+    .filter((event) => event.at && !Number.isNaN(new Date(event.at).getTime()))
+    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())
+    .filter(
+      (event, index, all) =>
+        index === 0 ||
+        !(
+          event.status === all[index - 1].status &&
+          Math.abs(new Date(event.at).getTime() - new Date(all[index - 1].at).getTime()) < 60000
+        )
+    );
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_24%,#fafafa_100%)]">
       <div className="cm-container py-12 md:py-16">
@@ -190,28 +399,72 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
             {order.delivery_method === "uber" && order.fulfillment_status !== "delivered" && <UberTracking orderId={order.id} />}
 
             <section className="mt-8 rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_40px_rgba(0,0,0,0.06)]">
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <p className="cm-eyebrow">Tracking</p>
+                  <p className="cm-eyebrow">History</p>
                   <h2 className="mt-2 text-2xl font-black text-ink">
-                    Delivery progress
+                    Order & return timeline
                   </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                    Follow the complete history of your order, delivery and any return request.
+                  </p>
                 </div>
-                <span className="rounded-full bg-brand-tint px-3 py-1.5 text-xs font-bold capitalize text-brand">
-                  {order.fulfillment_status.replaceAll("_", " ")}
-                </span>
+                {customerTimeline.length > 0 && (
+                  <span
+                    className={`rounded-full px-3 py-1.5 text-xs font-bold capitalize ring-1 ${timelineTone(
+                      customerTimeline[customerTimeline.length - 1].status
+                    ).badge}`}
+                  >
+                    {customerTimeline[customerTimeline.length - 1].title}
+                  </span>
+                )}
               </div>
 
-              {(shipments ?? []).length === 0 ? (
-                <p className="mt-5 text-sm leading-6 text-muted-foreground">
-                  {order.fulfillment_status === "delivered"
-                    ? order.delivery_method === "uber"
-                      ? "Delivered by our same-day courier."
-                      : "This order has been delivered."
-                    : "Tracking will appear here as soon as a delivery label is created."}
-                </p>
-              ) : (
-                <div className="mt-6 space-y-6">
+              <ol className="relative mt-7 ml-2 border-l border-black/10 pl-7">
+                {customerTimeline.map((event, index) => {
+                  const tone = timelineTone(event.status);
+                  const latest = index === customerTimeline.length - 1;
+
+                  return (
+                    <li key={event.key} className="relative pb-7 last:pb-0">
+                      <span
+                        className={`absolute -left-[34px] top-1 flex h-4 w-4 items-center justify-center rounded-full ring-4 ring-white ${tone.dot}`}
+                        aria-hidden="true"
+                      />
+                      <div className={latest ? "rounded-2xl bg-secondary/60 p-4" : ""}>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-black text-ink">{event.title}</p>
+                          {latest && (
+                            <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${tone.badge}`}>
+                              Current
+                            </span>
+                          )}
+                        </div>
+                        {event.detail && (
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                            {event.detail}
+                          </p>
+                        )}
+                        <p className="mt-1.5 text-xs font-medium text-muted-foreground">
+                          {new Date(event.at).toLocaleString("en-CA", {
+                            dateStyle: "medium",
+                            timeStyle: "short",
+                          })}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+
+              {(shipments ?? []).length > 0 && (
+                <div className="mt-7 border-t border-black/5 pt-5">
+                  <p className="text-sm font-black text-ink">Shipment details</p>
+                </div>
+              )}
+
+              {(shipments ?? []).length > 0 && (
+                <div className="mt-4 space-y-6">
                   {(shipments ?? []).map((shipment) => {
                     const events = (shipmentEvents ?? []).filter(
                       (event) => event.shipment_id === shipment.id
@@ -443,7 +696,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
               <section className="mt-8 rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_40px_rgba(0,0,0,0.06)]">
                 <p className="cm-eyebrow">Returns</p>
                 <h2 className="mt-2 text-2xl font-black text-ink">
-                  Requests
+                  Return details
                 </h2>
                 <div className="mt-5 divide-y">
                   {(returnRequests ?? []).map((request) => (
@@ -557,33 +810,6 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                     </div>
                   ))}
                 </div>
-              </section>
-            )}
-
-            {(history ?? []).length > 0 && (
-              <section className="mt-8 rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_40px_rgba(0,0,0,0.06)]">
-                <p className="cm-eyebrow">Order activity</p>
-                <h2 className="mt-2 text-2xl font-black text-ink">Timeline</h2>
-                <ol className="mt-5 space-y-4">
-                  {(history ?? []).map((event) => (
-                    <li key={event.id} className="flex gap-3">
-                      <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-brand" />
-                      <div>
-                        <p className="font-semibold capitalize text-ink">
-                          {event.to_status.replaceAll("_", " ")}
-                        </p>
-                        {event.reason && (
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {event.reason}
-                          </p>
-                        )}
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {new Date(event.created_on).toLocaleString()}
-                        </p>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
               </section>
             )}
 
