@@ -77,7 +77,7 @@ const money = (n: number, c = "CAD") =>
   new Intl.NumberFormat("en-CA", { style: "currency", currency: c }).format(n);
 const days = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 
-const NEEDS_ACTION = ["requested", "under_review", "received", "refund_pending", "inspection_failed", "exchange_processing"];
+const NEEDS_ACTION = ["requested", "under_review", "inspection_failed", "exchange_processing"];
 const WAITING = ["approved", "label_issued", "in_transit"];
 const CLOSED = ["completed", "rejected", "cancelled", "canceled", "refunded", "denied", "resolved"];
 const isRefundDue = (r: ReturnRow) => r.type === "return" && ["received", "refund_pending"].includes(r.status);
@@ -214,7 +214,7 @@ export default function ReturnsManager({
   };
 
   const tabs: [Filter, string][] = [
-    ["action", "Needs action"],
+    ["action", "Needs review"],
     ["waiting", "Waiting for item"],
     ["refund", "Refund due"],
     ["done", "Completed"],
