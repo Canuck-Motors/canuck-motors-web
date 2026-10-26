@@ -116,7 +116,7 @@ export default function Header() {
   return (
     <>
     <header className="sticky top-0 z-50 w-full border-b border-black/5 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
-      <div className="flex w-full items-center gap-3 px-3 py-3 sm:px-5 md:gap-6">
+      <div className="flex w-full flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5 sm:px-5 md:flex-nowrap md:gap-6 md:py-3">
         <Link
           href="/"
           aria-label="Canuck Motors home"
@@ -152,14 +152,14 @@ export default function Header() {
             <button
               type="button"
               onClick={handleSearch}
-              className="bg-brand px-5 text-sm font-bold text-white transition hover:bg-brand-dark"
+              className="bg-brand px-4 text-sm font-bold text-white transition hover:bg-brand-dark sm:px-5"
             >
               Search
             </button>
           </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
           {!authLoading &&
             (isAuthenticated ? (
               <>

@@ -569,6 +569,8 @@ html.i18n-pending body {
 }
 body {
   transition: opacity 0.15s ease-out;
+  /* Never let one wide element make the whole mobile page scroll sideways */
+  overflow-x: clip;
 }
 
 /* ------------------------------------------------------------------
