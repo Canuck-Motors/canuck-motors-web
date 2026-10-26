@@ -30,7 +30,13 @@ const baseLinks: NavItem[] = [
   { href: "/admin/returns", label: "Returns", icon: RotateCcw },
 ];
 
-export function AdminNavLinks({ showStripe }: { showStripe: boolean }) {
+export function AdminNavLinks({
+  showStripe,
+  returnAttentionCount = 0,
+}: {
+  showStripe: boolean;
+  returnAttentionCount?: number;
+}) {
   const pathname = usePathname() ?? "";
   // Admins manage Categories inside the Top menu page; staff (no Top menu) keep it as a normal item.
   const links: NavItem[] = showStripe
@@ -80,6 +86,16 @@ export function AdminNavLinks({ showStripe }: { showStripe: boolean }) {
               <Icon className={`h-[17px] w-[17px] ${active ? "text-white" : "text-brand"}`} aria-hidden="true" />
             </span>
             <span className="flex-1">{label}</span>
+            {href === "/admin/returns" && returnAttentionCount > 0 && (
+              <span
+                aria-label={`${returnAttentionCount} returns need attention`}
+                className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-black ${
+                  active ? "bg-white text-brand" : "bg-brand text-white"
+                }`}
+              >
+                {returnAttentionCount > 99 ? "99+" : returnAttentionCount}
+              </span>
+            )}
             {active && <span className="cm-side-dot hidden h-1.5 w-1.5 rounded-full bg-white lg:block" aria-hidden="true" />}
           </Link>
         );
