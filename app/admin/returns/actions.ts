@@ -7,6 +7,7 @@ import { processNotificationOutbox } from "@/lib/notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeAmountCheckoutSession, createStripeRefund } from "@/lib/stripe";
 import { createAmazonMcfReturn, syncAmazonMcfReturn } from "@/lib/amazon-mcf-returns";
+import { formatReturnAddress } from "@/lib/return-label";
 
 async function requireAuthenticatedStaff() {
   const supabase = await createClient();
@@ -474,14 +475,31 @@ export async function handleReturnStock(requestId: string, restock: boolean) {
 }
 
 
-export async function sendReturnInstructions(requestId: string, message: string) {
+export async function sendReturnInstructions(requestId: string, message = "") {
   await requireAuthenticatedStaff();
+
+  const admin = createAdminClient();
+  const { data: request } = await admin
+    .from("return_requests")
+    .select("id, amazon_rma_id, amazon_rma_page_url")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  const hasAmazonDocument = Boolean(request?.amazon_rma_id && request?.amazon_rma_page_url);
+  const labelUrl = hasAmazonDocument
+    ? ""
+    : `${getSiteUrl()}/account/returns/${encodeURIComponent(requestId)}/label`;
+
   const ok = await queueReturnEmail(requestId, "return_instructions", {
-    message,
-    return_address: process.env.RETURN_ADDRESS || "",
+    message:
+      message ||
+      "Your return is approved. Print the return label, fill in the FROM section, attach it flat to the outside of the box, and do not write anything else on the box.",
+    return_address: formatReturnAddress(),
+    return_label_url: labelUrl,
   });
+
   if (!ok) throw new Error("Could not queue the email (no customer email found).");
-  await logActivity(requestId, "email", "Return instructions emailed to the customer");
+  await logActivity(requestId, "email", "Return instructions and label emailed to the customer");
   revalidatePath("/admin/returns");
 }
 
