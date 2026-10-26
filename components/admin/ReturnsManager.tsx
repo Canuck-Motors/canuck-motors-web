@@ -507,10 +507,7 @@ export default function ReturnsManager({
                                     String(fd.get("notes") || ""),
                                     String(fd.get("carrier") || ""),
                                     String(fd.get("tracking") || ""),
-                                    {
-                                      notify: fd.get("notify") === "on",
-                                      message: String(fd.get("message") || ""),
-                                    }
+                                    { notify: false, message: "" }
                                   );
                                   setRows((rs) =>
                                     rs.map((x) =>
@@ -557,30 +554,10 @@ export default function ReturnsManager({
                                 placeholder="Internal resolution notes (private)"
                                 className={`${input} min-h-24`}
                               />
-                              <textarea
-                                name="message"
-                                placeholder="Message to the customer (included in the email, e.g. why it was rejected)"
-                                className={`${input} min-h-20`}
-                              />
-                              <label className="mt-3 flex items-center gap-2 text-sm font-semibold text-ink">
-                                <input type="checkbox" name="notify" defaultChecked className="h-4 w-4 accent-[#d62828]" />
-                                Email the customer about this update
-                              </label>
-                              <button className="cm-button-dark mt-3 w-full">Save</button>
-                              <button
-                                type="button"
-                                disabled={pending}
-                                onClick={(e) => {
-                                  const form = e.currentTarget.form;
-                                  const message = String(new FormData(form ?? undefined).get("message") || "");
-                                  run(async () => {
-                                    await sendReturnInstructions(r.id, message);
-                                  }, "Return instructions queued to email.");
-                                }}
-                                className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-full border border-black/15 px-4 py-2 text-sm font-bold hover:border-brand hover:text-brand disabled:opacity-60"
-                              >
-                                <Mail className="h-4 w-4" aria-hidden="true" /> Send return instructions
-                              </button>
+                              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                                These fields are internal. Saving here does not email the customer.
+                              </p>
+                              <button className="cm-button-dark mt-3 w-full">Save internal changes</button>
                             </form>
 
                             {/* Actions */}
@@ -602,13 +579,9 @@ export default function ReturnsManager({
                                         disabled={pending}
                                         onClick={() =>
                                           run(async () => {
-                                            await updateReturnRequest(r.id, "approved", "", r.carrier, r.tracking, { notify: true, message: "" });
-                                            await sendReturnInstructions(
-                                              r.id,
-                                              "Your return is approved. Please pack the part in its original packaging and ship it back to the address below. Print your return label from My Orders (open the order, then Print return label), attach it to the box and send it with any carrier. Return postage is not included."
-                                            );
+                                            await updateReturnRequest(r.id, "approved", "", r.carrier, r.tracking, { notify: false, message: "" });
                                             setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "approved" } : x)));
-                                          }, `${r.orderNumber} approved. The customer was emailed the return instructions.`)
+                                          }, `${r.orderNumber} approved. Use the next action to send the return instructions.`)
                                         }
                                         className="cm-button-primary flex-1 disabled:opacity-60"
                                       >
@@ -635,8 +608,23 @@ export default function ReturnsManager({
                                   <div className="mt-2">
                                     <p className="text-sm font-bold text-ink">2. Waiting for the customer to send the part back</p>
                                     <p className="mt-1 text-xs text-muted-foreground">
-                                      When the part arrives at your shop, click the button below.
+                                      {r.fulfillmentProvider === "amazon_mcf"
+                                        ? "Create or manage the Amazon RMA below. When the returned part is confirmed received, continue with the refund."
+                                        : "Send the customer one email containing the return instructions and printable PDF label. When the part arrives, mark it received."}
                                     </p>
+                                    <button
+                                      type="button"
+                                      disabled={pending}
+                                      onClick={() =>
+                                        run(async () => {
+                                          await sendReturnInstructions(r.id);
+                                        }, "Return instructions emailed to the customer.")
+                                      }
+                                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-ink hover:border-brand hover:text-brand disabled:opacity-60"
+                                    >
+                                      <Mail className="h-4 w-4" aria-hidden="true" />
+                                      Email return instructions
+                                    </button>
                                     <button
                                       type="button"
                                       disabled={pending}
@@ -649,21 +637,6 @@ export default function ReturnsManager({
                                       className="cm-button-primary mt-3 w-full disabled:opacity-60"
                                     >
                                       The part arrived: mark received
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={pending}
-                                      onClick={() =>
-                                        run(async () => {
-                                          await sendReturnInstructions(
-                                            r.id,
-                                            "Your return is approved. Please pack the part in its original packaging and ship it back to the address below. Print your return label from My Orders (open the order, then Print return label), attach it to the box and send it with any carrier. Return postage is not included."
-                                          );
-                                        }, "Return instructions emailed to the customer.")
-                                      }
-                                      className="mt-2 w-full rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-ink hover:border-brand disabled:opacity-60"
-                                    >
-                                      Email the return instructions again
                                     </button>
                                   </div>
                                 )}
@@ -745,24 +718,6 @@ export default function ReturnsManager({
                                     <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-700">
                                       {r.amazonReturnError}
                                     </p>
-                                  )}
-
-                                  {!r.amazonRmaId && r.status === "approved" && (
-                                    <button
-                                      type="button"
-                                      disabled={pending}
-                                      onClick={() =>
-                                        run(async () => {
-                                          await sendReturnInstructions(
-                                            r.id,
-                                            "Your return is approved. Please pack the part in its original packaging and ship it back to the address below. Print your return label from My Orders (open the order, then Print return label), attach it to the box and send it with any carrier. Return postage is not included. Reply to this email with the tracking number once it ships."
-                                          );
-                                        }, "Manual return instructions emailed to the customer.")
-                                      }
-                                      className="mt-3 w-full rounded-full border border-orange-300 px-4 py-2 text-sm font-bold text-orange-900 hover:bg-orange-100 disabled:opacity-60"
-                                    >
-                                      Can&apos;t use Amazon RMA? Email manual return instructions
-                                    </button>
                                   )}
 
                                   {r.items.some((item) => item.amazonReturnItemStatus) && (

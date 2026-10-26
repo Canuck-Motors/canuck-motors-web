@@ -472,12 +472,14 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                       {["approved", "label_issued", "in_transit"].includes(String(request.status)) &&
                         request.request_type === "return" &&
                         request.fulfillment_provider !== "amazon_mcf" && (
-                          <Link
-                            href={`/account/orders/${order.id}/return-label/${request.id}`}
+                          <a
+                            href={`/account/returns/${request.id}/label`}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="mt-3 inline-flex rounded-full bg-ink px-5 py-2 text-sm font-bold text-white"
                           >
-                            Print return label
-                          </Link>
+                            Open return label PDF
+                          </a>
                         )}
 
                       {(request.return_tracking_number || request.return_carrier) && (
