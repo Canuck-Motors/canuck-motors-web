@@ -496,6 +496,7 @@ export async function sendReturnInstructions(requestId: string, message = "") {
       "Your return is approved. Print the return label, fill in the FROM section, attach it flat to the outside of the box, and do not write anything else on the box.",
     return_address: formatReturnAddress(),
     return_label_url: labelUrl,
+    return_label_request_id: hasAmazonDocument ? "" : requestId,
   });
 
   if (!ok) throw new Error("Could not queue the email (no customer email found).");
