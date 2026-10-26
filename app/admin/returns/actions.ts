@@ -493,10 +493,14 @@ export async function sendReturnInstructions(requestId: string, message = "") {
   const ok = await queueReturnEmail(requestId, "return_instructions", {
     message:
       message ||
-      "Your return is approved. Print the return label, fill in the FROM section, attach it flat to the outside of the box, and do not write anything else on the box.",
-    return_address: formatReturnAddress(),
+      (hasAmazonDocument
+        ? "Your Amazon MCF return authorization is ready. Print the Amazon return document, attach the return-center mailing label to the package, and place the authorization slip inside."
+        : "Your return is approved. Print the return label, fill in the FROM section, attach it flat to the outside of the box, and do not write anything else on the box."),
+    return_address: hasAmazonDocument ? "" : formatReturnAddress(),
     return_label_url: labelUrl,
     return_label_request_id: hasAmazonDocument ? "" : requestId,
+    amazon_rma_id: request?.amazon_rma_id || "",
+    amazon_rma_page_url: request?.amazon_rma_page_url || "",
   });
 
   if (!ok) throw new Error("Could not queue the email (no customer email found).");
