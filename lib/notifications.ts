@@ -66,6 +66,34 @@ function messageFor(row: OutboxRow) {
         "We are writing to inform you that the status of your return request has been updated."
       );
       lines.push(`Order Number: ${order}`);
+
+      const returnItems = Array.isArray(p.return_items)
+        ? (p.return_items as Array<{ quantity?: number; name?: string; sku?: string }>)
+        : [];
+
+      if (returnItems.length === 1) {
+        const item = returnItems[0];
+        const name = String(item.name || item.sku || "Item");
+        const sku = String(item.sku || "");
+        const product = sku && !name.toLowerCase().includes(sku.toLowerCase())
+          ? `${name} (SKU: ${sku})`
+          : name;
+        lines.push(`Product: ${product}`);
+        if (Number(item.quantity || 1) > 1) {
+          lines.push(`Quantity: ${Number(item.quantity)}`);
+        }
+      } else if (returnItems.length > 1) {
+        const products = returnItems.map((item) => {
+          const name = String(item.name || item.sku || "Item");
+          const sku = String(item.sku || "");
+          const product = sku && !name.toLowerCase().includes(sku.toLowerCase())
+            ? `${name} (SKU: ${sku})`
+            : name;
+          return `- ${Number(item.quantity || 1)} × ${product}`;
+        });
+        lines.push(`Products:\n${products.join("\n")}`);
+      }
+
       lines.push(`Status: ${statusLabel || "Updated"}`);
       if (reason) {
         lines.push(`Reason: ${reason}`);
