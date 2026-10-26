@@ -56,18 +56,32 @@ function messageFor(row: OutboxRow) {
       }
     } else {
       const status = String(p.status || "");
-      const headline: Record<string, string> = {
-        under_review: "Your return request is under review.",
-        approved: "Your request was approved.",
-        rejected: "We are sorry, we could not approve your request.",
-        label_issued: "Your return instructions are ready.",
-        in_transit: "Your return is on its way to us.",
-        received: "We received your returned item.",
-        inspection_failed: "We inspected your returned item and there is an issue.",
-        exchange_processing: "We are preparing your exchange.",
-        completed: "Your return or exchange is complete.",
+      const statusLabel = status
+        .replaceAll("_", " ")
+        .replace(/\b\w/g, (char) => char.toUpperCase());
+      const reason = String(p.message || "").trim();
+
+      lines.push("Dear Customer,");
+      lines.push(
+        "We are writing to inform you that the status of your return request has been updated."
+      );
+      lines.push(`Order Number: ${order}`);
+      lines.push(`Status: ${statusLabel || "Updated"}`);
+      if (reason) {
+        lines.push(`Reason: ${reason}`);
+      }
+      if (p.tracking) {
+        lines.push(`Return Tracking: ${String(p.carrier || "")} ${String(p.tracking)}`.trim());
+      }
+      lines.push(
+        "If you have any questions regarding this update, please reply to this email and our team will be happy to assist you."
+      );
+      lines.push("Sincerely,\nCanuck Motors");
+
+      return {
+        subject: `Return Request Update - Order ${order}`,
+        text: lines.join("\n\n"),
       };
-      lines.push(`Update on your request for order ${order}: ${headline[status] || `status is now ${status.replaceAll("_", " ")}.`}`);
     }
 
     if (p.message) lines.push(String(p.message));
