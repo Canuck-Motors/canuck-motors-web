@@ -1,11 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { AdminNavLinks } from "@/components/AdminNavLinks";
 
-const RETURN_NEEDS_ACTION = [
+const RETURN_NEEDS_REVIEW = [
   "requested",
   "under_review",
-  "received",
-  "refund_pending",
   "inspection_failed",
   "exchange_processing",
 ];
@@ -19,7 +17,7 @@ export async function AdminSidebar() {
     const { count } = await supabase
       .from("return_requests")
       .select("id", { count: "exact", head: true })
-      .in("status", RETURN_NEEDS_ACTION);
+      .in("status", RETURN_NEEDS_REVIEW);
     returnAttentionCount = count ?? 0;
   }
 
