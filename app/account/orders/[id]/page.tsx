@@ -773,23 +773,73 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                 <h2 className="mt-2 text-2xl font-black text-ink">
                   Return details
                 </h2>
-                <div className="mt-5 divide-y">
-                  {(returnRequests ?? []).map((request) => (
-                    <div key={request.id} className="py-4 first:pt-0 last:pb-0">
-                      <div className="flex flex-wrap justify-between gap-3">
-                        <div>
-                          <p className="font-bold capitalize text-ink">
-                            {request.request_type}
-                          </p>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {request.reason_code.replaceAll("_", " ")} · Requested{" "}
-                            {new Date(request.requested_on).toLocaleDateString("en-CA")}
-                          </p>
-                        </div>
-                        <span className="h-fit rounded-full bg-brand-tint px-3 py-1 text-sm font-bold capitalize text-brand">
-                          {request.status.replaceAll("_", " ")}
-                        </span>
-                      </div>
+                <div className="mt-5 space-y-3">
+                  {(returnRequests ?? []).map((request) => {
+                    const requestId = String(request.id);
+                    const requestItems = returnItemsFor(request);
+                    const requestNumber = returnNumberById.get(requestId) ?? 1;
+                    const totalReturnQty = requestItems.reduce((sum, item) => sum + item.quantity, 0);
+                    const firstTwo = requestItems.slice(0, 2);
+
+                    return (
+                      <details
+                        key={request.id}
+                        className="group rounded-2xl border border-black/5 bg-secondary/30 open:bg-white"
+                      >
+                        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4 marker:hidden">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full bg-black/5 px-2.5 py-1 text-xs font-black text-ink">
+                                Return {requestNumber}
+                              </span>
+                              <p className="font-black capitalize text-ink">
+                                {request.request_type}
+                              </p>
+                              <span className="text-xs font-semibold text-muted-foreground">
+                                {totalReturnQty} {totalReturnQty === 1 ? "item" : "items"}
+                              </span>
+                            </div>
+                            <p className="mt-2 truncate text-sm font-semibold text-ink">
+                              {firstTwo.map((item) => item.label).join(" · ")}
+                              {requestItems.length > 2 ? ` · +${requestItems.length - 2} more` : ""}
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {request.reason_code.replaceAll("_", " ")} · Requested{" "}
+                              {new Date(request.requested_on).toLocaleString("en-CA", {
+                                dateStyle: "medium",
+                                timeStyle: "short",
+                              })}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="h-fit rounded-full bg-brand-tint px-3 py-1 text-sm font-bold capitalize text-brand">
+                              {request.status.replaceAll("_", " ")}
+                            </span>
+                            <span
+                              aria-hidden="true"
+                              className="text-lg font-black text-muted-foreground transition-transform group-open:rotate-180"
+                            >
+                              ⌄
+                            </span>
+                          </div>
+                        </summary>
+
+                        <div className="border-t border-black/5 px-4 pb-4 pt-3">
+                          <div className="rounded-xl bg-secondary/60 p-3">
+                            <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">
+                              Items in this return
+                            </p>
+                            <div className="mt-2 space-y-1.5">
+                              {requestItems.map((item) => (
+                                <div key={item.sku + item.name} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                                  <span className="font-semibold text-ink">{item.name}</span>
+                                  <span className="text-muted-foreground">
+                                    {item.quantity}× {item.sku}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
 
                       {request.reason_text && (
                         <p className="mt-3 text-sm leading-6 text-muted-foreground">
@@ -882,8 +932,10 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                             )}
                           </div>
                         )}
-                    </div>
-                  ))}
+                        </div>
+                      </details>
+                    );
+                  })}
                 </div>
               </section>
             )}
