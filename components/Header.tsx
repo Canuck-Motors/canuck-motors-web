@@ -123,7 +123,7 @@ export default function Header() {
           className="shrink-0 transition duration-200 hover:opacity-80"
         >
           <Image
-            src="/logo/canuck-motors.png"
+            src="/logo/Canuck-Motors.png"
             alt="Canuck Motors"
             width={110}
             height={46}
