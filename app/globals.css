@@ -567,7 +567,12 @@ input[type="search"]::-webkit-search-decoration {
 html.i18n-pending body {
   opacity: 0;
 }
+html {
+  overflow-x: hidden;
+  max-width: 100%;
+}
 body {
+  max-width: 100%;
   transition: opacity 0.15s ease-out;
   /* Never let one wide element make the whole mobile page scroll sideways */
   overflow-x: clip;
