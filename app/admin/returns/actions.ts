@@ -489,6 +489,69 @@ export async function handleReturnStock(requestId: string, restock: boolean) {
   revalidatePath("/admin/inventory");
 }
 
+export async function completeReturnInspection(
+  requestId: string,
+  outcome: "restock" | "damaged",
+  requestType: string
+) {
+  await handleReturnStock(requestId, outcome === "restock");
+
+  const nextStatus = requestType === "exchange" ? "exchange_processing" : "refund_pending";
+  const message =
+    outcome === "restock"
+      ? requestType === "exchange"
+        ? "Inspection completed successfully. The returned item was accepted and added back to inventory. Your replacement is now being prepared."
+        : "Inspection completed successfully. The returned item was accepted and added back to inventory. Your refund is now being prepared."
+      : requestType === "exchange"
+        ? "Inspection completed successfully. The returned item was accepted but will not be restocked because it is damaged or not sellable. Your replacement is now being prepared."
+        : "Inspection completed successfully. The returned item was accepted but will not be restocked because it is damaged or not sellable. Your refund is now being prepared.";
+
+  await updateReturnRequest(
+    requestId,
+    nextStatus,
+    message,
+    "",
+    "",
+    { notify: true, message }
+  );
+
+  await logActivity(
+    requestId,
+    "inspection",
+    outcome === "restock"
+      ? "Inspection passed - item restocked"
+      : "Inspection passed - item accepted as damaged / not restocked"
+  );
+}
+
+export async function rejectAfterFailedInspection(
+  requestId: string,
+  reason: string
+) {
+  const why = reason.trim();
+  if (!why) {
+    throw new Error("Please enter the inspection failure reason.");
+  }
+
+  const customerMessage =
+    `Inspection failed: ${why}. The return has been declined. No refund or replacement will be issued. The original item will need to be returned to you; our team will arrange the outbound return shipment separately.`;
+
+  await updateReturnRequest(
+    requestId,
+    "rejected",
+    customerMessage,
+    "",
+    "",
+    { notify: true, message: customerMessage }
+  );
+
+  await logActivity(
+    requestId,
+    "inspection_resolution",
+    "Failed inspection resolved as rejected - original item to be returned to customer"
+  );
+}
+
 
 export async function sendReturnInstructions(requestId: string, message = "") {
   await requireAuthenticatedStaff();
