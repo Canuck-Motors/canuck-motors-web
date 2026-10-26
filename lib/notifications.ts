@@ -57,6 +57,7 @@ function messageFor(row: OutboxRow) {
     } else {
       const status = String(p.status || "");
       const headline: Record<string, string> = {
+        under_review: "Your return request is under review.",
         approved: "Your request was approved.",
         rejected: "We are sorry, we could not approve your request.",
         label_issued: "Your return instructions are ready.",

@@ -501,13 +501,19 @@ export default function ReturnsManager({
                               action={(fd) =>
                                 run(async () => {
                                   const status = String(fd.get("status") || "under_review");
+                                  const notes = String(fd.get("notes") || "").trim();
+
+                                  if (status === "rejected" && !notes) {
+                                    throw new Error("Please enter a reason before rejecting this return.");
+                                  }
+
                                   await updateReturnRequest(
                                     r.id,
                                     status,
-                                    String(fd.get("notes") || ""),
+                                    notes,
                                     String(fd.get("carrier") || ""),
                                     String(fd.get("tracking") || ""),
-                                    { notify: false, message: "" }
+                                    { notify: true, message: notes }
                                   );
                                   setRows((rs) =>
                                     rs.map((x) =>
@@ -515,14 +521,14 @@ export default function ReturnsManager({
                                         ? {
                                             ...x,
                                             status,
-                                            notes: String(fd.get("notes") || ""),
+                                            notes,
                                             carrier: String(fd.get("carrier") || ""),
                                             tracking: String(fd.get("tracking") || ""),
                                           }
                                         : x
                                     )
                                   );
-                                }, `${r.orderNumber} updated.`)
+                                }, `${r.orderNumber} updated and the customer was emailed.`)
                               }
                               className="rounded-2xl border border-black/5 bg-white p-4"
                             >
@@ -551,13 +557,13 @@ export default function ReturnsManager({
                               <textarea
                                 name="notes"
                                 defaultValue={r.notes}
-                                placeholder="Internal resolution notes (private)"
+                                placeholder="Reason / resolution notes"
                                 className={`${input} min-h-24`}
                               />
                               <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                                These fields are internal. Saving here does not email the customer.
+                                If you select Rejected, a reason is required. Saving sends the updated status and reason to the customer by email.
                               </p>
-                              <button className="cm-button-dark mt-3 w-full">Save internal changes</button>
+                              <button className="cm-button-dark mt-3 w-full">Save update</button>
                             </form>
 
                             {/* Actions */}
@@ -565,45 +571,6 @@ export default function ReturnsManager({
                               {/* Simple next-step panel */}
                               <div className="rounded-2xl border-2 border-brand/30 bg-brand-tint/30 p-4">
                                 <p className="text-xs font-bold uppercase tracking-wide text-brand">Next step</p>
-                                {["requested", "under_review"].includes(r.status) && (
-                                  <form className="mt-2">
-                                    <p className="text-sm font-bold text-ink">1. Approve or reject this return</p>
-                                    <textarea
-                                      name="reason"
-                                      placeholder="Reason (only needed if you reject; the customer is emailed)"
-                                      className={`${input} min-h-16`}
-                                    />
-                                    <div className="mt-3 flex gap-2">
-                                      <button
-                                        type="button"
-                                        disabled={pending}
-                                        onClick={() =>
-                                          run(async () => {
-                                            await updateReturnRequest(r.id, "approved", "", r.carrier, r.tracking, { notify: false, message: "" });
-                                            setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "approved" } : x)));
-                                          }, `${r.orderNumber} approved. Use the next action to send the return instructions.`)
-                                        }
-                                        className="cm-button-primary flex-1 disabled:opacity-60"
-                                      >
-                                        Approve
-                                      </button>
-                                      <button
-                                        type="button"
-                                        disabled={pending}
-                                        onClick={(e) => {
-                                          const reason = String(new FormData(e.currentTarget.form as HTMLFormElement).get("reason") || "");
-                                          run(async () => {
-                                            await updateReturnRequest(r.id, "rejected", "", r.carrier, r.tracking, { notify: true, message: reason });
-                                            setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "rejected" } : x)));
-                                          }, `${r.orderNumber} rejected. The customer was emailed.`);
-                                        }}
-                                        className="flex-1 rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-ink hover:border-brand disabled:opacity-60"
-                                      >
-                                        Reject
-                                      </button>
-                                    </div>
-                                  </form>
-                                )}
                                 {["approved", "label_issued", "in_transit"].includes(r.status) && (
                                   <div className="mt-2">
                                     <p className="text-sm font-bold text-ink">2. Waiting for the customer to send the part back</p>
