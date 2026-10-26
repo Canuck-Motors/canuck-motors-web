@@ -92,6 +92,10 @@ export async function updateReturnRequest(
 ) {
   const supabase = await requireAuthenticatedStaff();
 
+  if (status === "rejected" && !notes.trim()) {
+    throw new Error("A reason is required when rejecting a return.");
+  }
+
   const { error } = await supabase.rpc("admin_update_return_request", {
     p_request_id: requestId,
     p_new_status: status,
@@ -105,7 +109,7 @@ export async function updateReturnRequest(
   }
 
   let emailed = false;
-  if (email?.notify && status !== "under_review") {
+  if (email?.notify) {
     emailed = await queueReturnEmail(requestId, "return_update", {
       status,
       message: email.message,
