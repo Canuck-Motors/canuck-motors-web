@@ -612,21 +612,19 @@ export default function ReturnsManager({
                                         ? "Create or manage the Amazon RMA below. When the returned part is confirmed received, continue with the refund."
                                         : "Send the customer one email containing the return instructions and printable PDF label. When the part arrives, mark it received."}
                                     </p>
-                                    {r.fulfillmentProvider !== "amazon_mcf" && (
-                                      <button
-                                        type="button"
-                                        disabled={pending}
-                                        onClick={() =>
-                                          run(async () => {
-                                            await sendReturnInstructions(r.id);
-                                          }, "Return instructions and PDF label emailed to the customer.")
-                                        }
-                                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-ink hover:border-brand hover:text-brand disabled:opacity-60"
-                                      >
-                                        <Mail className="h-4 w-4" aria-hidden="true" />
-                                        Email return instructions + PDF label
-                                      </button>
-                                    )}
+                                    <button
+                                      type="button"
+                                      disabled={pending}
+                                      onClick={() =>
+                                        run(async () => {
+                                          await sendReturnInstructions(r.id);
+                                        }, "Return instructions emailed to the customer.")
+                                      }
+                                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-ink hover:border-brand hover:text-brand disabled:opacity-60"
+                                    >
+                                      <Mail className="h-4 w-4" aria-hidden="true" />
+                                      Email return instructions
+                                    </button>
                                     <button
                                       type="button"
                                       disabled={pending}
@@ -720,24 +718,6 @@ export default function ReturnsManager({
                                     <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs text-red-700">
                                       {r.amazonReturnError}
                                     </p>
-                                  )}
-
-                                  {!r.amazonRmaId && r.status === "approved" && (
-                                    <button
-                                      type="button"
-                                      disabled={pending}
-                                      onClick={() =>
-                                        run(async () => {
-                                          await sendReturnInstructions(
-                                            r.id,
-                                            "Amazon RMA is not being used for this return. Please use the attached return workflow: print the PDF label from the link in this email, fill in the FROM section, attach it flat to the outside of the box, and do not write anything else on the box. Keep your carrier receipt and tracking number."
-                                          );
-                                        }, "Manual return instructions and PDF label emailed to the customer.")
-                                      }
-                                      className="mt-3 w-full rounded-full border border-orange-300 px-4 py-2 text-sm font-bold text-orange-900 hover:bg-orange-100 disabled:opacity-60"
-                                    >
-                                      Can&apos;t use Amazon RMA? Email manual instructions + PDF label
-                                    </button>
                                   )}
 
                                   {r.items.some((item) => item.amazonReturnItemStatus) && (
