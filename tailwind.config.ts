@@ -1,6 +1,8 @@
 import type { Config } from "tailwindcss";
 
 export default {
+  // hover: styles apply only on devices with a real mouse, so phones respond on the first tap
+  future: { hoverOnlyWhenSupported: true },
   darkMode: ["class"],
   content: [
     "./pages/**/*.{js,ts,jsx,tsx,mdx}",

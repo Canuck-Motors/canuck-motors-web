@@ -118,7 +118,7 @@ export default function CartInteractive({
       ? delivery.feeCents != null ? delivery.feeCents / 100 : 0
       : stdFeeCents != null ? stdFeeCents / 100 : 0;
   const [shake, setShake] = useState(false);
-  const fitRef = useRef<HTMLLabelElement>(null);
+  const fitRef = useRef<HTMLDivElement>(null);
   const itemCount = lines.reduce((n, l) => n + l.quantity, 0);
 
   const timersRef = useRef(new Map<number, ReturnType<typeof setTimeout>>());
@@ -514,23 +514,10 @@ export default function CartInteractive({
           <div
             ref={fitRef}
             tabIndex={-1}
-            className={`mt-5 rounded-2xl border p-3.5 transition duration-300 ${
-              fitConfirmed
-                ? "border-emerald-400 bg-emerald-50 text-ink"
-                : "border-amber-300 bg-amber-50 text-ink"
+            className={`mt-5 rounded-2xl border px-4 py-3.5 transition duration-300 ${
+              fitConfirmed ? "border-emerald-400/40 bg-emerald-400/10" : "border-white/15 bg-white/[0.06]"
             } ${shake ? "cm-shake border-brand" : ""}`}
           >
-            <div className="mb-2.5 flex items-center justify-between gap-3">
-              <p className="text-xs font-black uppercase tracking-[0.14em] text-brand">
-                Required before checkout
-              </p>
-              {!fitConfirmed && (
-                <span className="whitespace-nowrap rounded-full bg-amber-200 px-2.5 py-1 text-[11px] font-bold text-amber-900">
-                  Action required
-                </span>
-              )}
-            </div>
-
             <label className="flex cursor-pointer items-start gap-3">
               <input
                 type="checkbox"
@@ -540,26 +527,18 @@ export default function CartInteractive({
               />
               <span
                 aria-hidden="true"
-                className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 transition duration-200 peer-focus-visible:ring-4 peer-focus-visible:ring-brand/30 ${
-                  fitConfirmed
-                    ? "scale-105 border-emerald-600 bg-emerald-600 text-white"
-                    : "border-amber-600 bg-white"
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition duration-200 peer-focus-visible:ring-4 peer-focus-visible:ring-brand/30 ${
+                  fitConfirmed ? "border-emerald-400 bg-emerald-500 text-white" : "border-white/40 bg-transparent"
                 }`}
               >
                 <Check
-                  className={`h-4 w-4 transition ${
-                    fitConfirmed ? "scale-100 opacity-100" : "scale-50 opacity-0"
-                  }`}
+                  className={`h-3.5 w-3.5 transition ${fitConfirmed ? "scale-100 opacity-100" : "scale-50 opacity-0"}`}
                   strokeWidth={3}
                 />
               </span>
               <span className="text-sm leading-5">
-                <span className="block font-black text-ink">
-                  I confirm these parts fit my vehicle
-                </span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">
-                  I checked the year, make, model and engine.
-                </span>
+                <span className="block font-semibold text-white">I confirm these parts fit my vehicle</span>
+                <span className="mt-0.5 block text-xs text-white/55">I checked the year, make, model and engine.</span>
               </span>
             </label>
           </div>

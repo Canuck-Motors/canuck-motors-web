@@ -8,8 +8,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import Image from "next/image";
 import { imageUrl, isVideo } from "@/lib/product-images";
 import ReturnPhotos from "@/components/account/ReturnPhotos";
+import ItemActionToggle from "@/components/account/ItemActionToggle";
 import {
   cancelOrderItem,
+  cancelReturnRequest,
   requestCancellation,
   requestReturnOrExchange,
 } from "@/app/account/orders/actions";
@@ -539,6 +541,91 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                 })}
               </ol>
 
+              {(returnRequests ?? []).length > 0 && (
+                <div className="mt-7 border-t border-black/5 pt-5">
+                  <p className="text-sm font-black text-ink">Your returns</p>
+                  <div className="mt-3 space-y-3">
+                    {(returnRequests ?? []).map((request) => {
+                      const status = String(request.status);
+                      const items = returnItemsFor(request);
+                      const canWithdraw =
+                        ["requested", "under_review", "approved"].includes(status) &&
+                        !request.amazon_rma_id &&
+                        !request.return_tracking_number;
+                      const canPrint =
+                        ["approved", "label_issued", "in_transit"].includes(status) &&
+                        request.request_type === "return" &&
+                        request.fulfillment_provider !== "amazon_mcf";
+                      return (
+                        <div key={request.id} className="rounded-2xl border border-black/5 bg-secondary/40 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-black text-ink">
+                              Return {returnNumberById.get(String(request.id))}{" "}
+                              <span className="font-semibold text-muted-foreground">
+                                · {items.map((i) => i.label).join(", ")}
+                              </span>
+                            </p>
+                            <span className="rounded-full bg-white px-3 py-1 text-xs font-bold capitalize text-ink ring-1 ring-black/10">
+                              {status.replaceAll("_", " ")}
+                            </span>
+                          </div>
+                          {(request.return_tracking_number || request.return_carrier) && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              Return shipping: {[request.return_carrier, request.return_tracking_number].filter(Boolean).join(" · ")}
+                            </p>
+                          )}
+                          {(canPrint || canWithdraw || request.amazon_rma_page_url) && (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              {canPrint && (
+                                <Link
+                                  href={`/account/orders/${order.id}/return-label/${request.id}`}
+                                  className="rounded-full bg-ink px-4 py-2 text-sm font-bold text-white"
+                                >
+                                  Print return label
+                                </Link>
+                              )}
+                              {request.amazon_rma_page_url && (
+                                <a
+                                  href={request.amazon_rma_page_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="rounded-full bg-ink px-4 py-2 text-sm font-bold text-white"
+                                >
+                                  Open return document
+                                </a>
+                              )}
+                              {canWithdraw && (
+                                <ItemActionToggle
+                                  bare
+                                  tone="danger"
+                                  label="Cancel this return"
+                                  question="Cancel this return request? You'll keep the item."
+                                >
+                                  <form
+                                    action={async () => {
+                                      "use server";
+                                      await cancelReturnRequest(order.id, String(request.id));
+                                    }}
+                                    className="mt-3"
+                                  >
+                                    <button
+                                      type="submit"
+                                      className="rounded-full border border-red-300 bg-white px-4 py-2 text-sm font-bold text-red-700 hover:bg-red-50"
+                                    >
+                                      Yes, cancel my return
+                                    </button>
+                                  </form>
+                                </ItemActionToggle>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {(shipments ?? []).length > 0 && (
                 <div className="mt-7 border-t border-black/5 pt-5">
                   <p className="text-sm font-black text-ink">Shipment details</p>
@@ -650,6 +737,14 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                         <p className="mt-1 text-sm text-muted-foreground">
                           Quantity: {item.quantity}
                         </p>
+                        {(returnedQty.get(item.id) ?? 0) > 0 && (
+                          <p className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-900">
+                            You ordered {item.quantity} · returning {returnedQty.get(item.id)}
+                            {item.quantity - (returnedQty.get(item.id) ?? 0) > 0
+                              ? ` · ${item.quantity - (returnedQty.get(item.id) ?? 0)} kept`
+                              : ""}
+                          </p>
+                        )}
                       </div>
                       </div>
                       <p className={`font-black ${item.cancelled_on ? "text-muted-foreground line-through" : "text-ink"}`}>
@@ -662,6 +757,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                       order.payment_status === "paid" &&
                       !item.cancelled_on &&
                       activeItemCount > 1 && (
+                        <ItemActionToggle tone="danger" label="Cancel this item" question="Do you want to cancel this item?">
                         <form
                           action={async (formData) => {
                             "use server";
@@ -671,7 +767,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                               String(formData.get("reason") || "Customer cancelled this item")
                             );
                           }}
-                          className="mt-4 flex flex-col gap-2 border-t pt-4 sm:flex-row"
+                          className="mt-3 flex flex-col gap-2 sm:flex-row"
                         >
                           <input
                             name="reason"
@@ -687,13 +783,11 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                             Cancel this item (refund ${Number(item.line_total).toFixed(2)})
                           </button>
                         </form>
+                        </ItemActionToggle>
                       )}
 
                     {canRequestReturn && !item.cancelled_on && item.quantity - (returnedQty.get(item.id) ?? 0) > 0 && (
-                      <div className="mt-5 border-t pt-5">
-                        <p className="text-sm font-bold text-ink">
-                          Return this item
-                        </p>
+                      <ItemActionToggle label="Return this item" question="Do you want to return this item?">
                         <form
                           action={async (formData) => {
                             "use server";
@@ -767,7 +861,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                             Submit request
                           </button>
                         </form>
-                      </div>
+                      </ItemActionToggle>
                     )}
                   </article>
                 ))}

@@ -3,6 +3,7 @@ import { ArrowUpRight } from "lucide-react";
 import { cacheLife, cacheTag } from "next/cache";
 
 import { createPublicClient } from "@/lib/supabase/public";
+import ProductGridView from "@/components/ProductGridView";
 import { ProductCard } from "@/components/ProductCard";
 import { isVideo } from "@/lib/product-images";
 import { PRODUCT_TYPE_ORDER, typeRank } from "@/lib/product-order";
@@ -136,12 +137,14 @@ export async function FeaturedProducts() {
             </p>
           </div>
         ) : (
-          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {products.map((product) => (
-              <div key={product.id} className={showOnPhone.has(product.id) ? "" : "max-sm:hidden"}>
-                <ProductCard product={product} />
-              </div>
-            ))}
+          <div className="mt-10">
+            <ProductGridView>
+              {products.map((product) => (
+                <div key={product.id} className={showOnPhone.has(product.id) ? "" : "max-sm:hidden"}>
+                  <ProductCard product={product} />
+                </div>
+              ))}
+            </ProductGridView>
           </div>
         )}
 

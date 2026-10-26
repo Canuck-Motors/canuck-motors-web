@@ -268,3 +268,50 @@ export async function requestReturnOrExchange(input: {
   revalidatePath(`/account/orders/${input.orderId}`);
   revalidatePath("/account/orders");
 }
+
+
+// The customer changed their mind (or pressed Return by mistake): withdraw a return before the part is on its way back.
+export async function cancelReturnRequest(orderId: string, requestId: string) {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) redirect("/login");
+
+  const { data: profile } = await supabase.from("users").select("id").eq("auth_user_id", auth.user.id).maybeSingle();
+  if (!profile) throw new Error("Customer profile is unavailable.");
+
+  const admin = createAdminClient();
+  const { data: order } = await admin.from("orders").select("id, user_id").eq("id", orderId).maybeSingle();
+  if (!order || order.user_id !== profile.id) throw new Error("Order not found.");
+
+  const { data: request } = await admin
+    .from("return_requests")
+    .select("id, status, amazon_rma_id, return_tracking_number")
+    .eq("id", requestId)
+    .eq("order_id", orderId)
+    .maybeSingle();
+  if (!request) throw new Error("Return request not found.");
+
+  if (!["requested", "under_review", "approved"].includes(String(request.status)) || request.amazon_rma_id || request.return_tracking_number) {
+    throw new Error("This return can no longer be cancelled online. Email contactus@canuckmotors.ca or call 604-445-0147.");
+  }
+
+  const { error } = await admin
+    .from("return_requests")
+    .update({ status: "cancelled", updated_on: new Date().toISOString() })
+    .eq("id", requestId);
+  if (error) throw new Error(error.message);
+
+  try {
+    await admin.rpc("admin_log_return_activity", {
+      p_request_id: requestId,
+      p_action: "status",
+      p_detail: "Customer cancelled this return request",
+    });
+  } catch {
+    // history is optional
+  }
+
+  revalidatePath(`/account/orders/${orderId}`);
+  revalidatePath("/account/orders");
+  revalidatePath("/admin/returns");
+}

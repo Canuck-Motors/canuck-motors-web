@@ -4,7 +4,7 @@ import { DateRangeFilter, inRange, ALL_TIME, type DateRange } from "@/components
 
 import { Fragment, useEffect, useMemo, useState, useTransition } from "react";
 import Image from "next/image";
-import { ChevronDown, ChevronRight, Download, Mail, Search, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, Download, Mail, Search, X } from "lucide-react";
 import {
   createAmazonReturnAuthorization,
   createExchangeReplacement,
@@ -70,22 +70,72 @@ export type ReturnRow = {
 };
 
 type Product = { id: number; sku: string; name: string; price: number };
-type Filter = "action" | "waiting" | "refund" | "exchange" | "done" | "all";
+type Filter = "action" | "review" | "waiting" | "refund" | "exchange" | "done" | "rejected" | "all";
 
 const label = (s: string) => s.replaceAll("_", " ");
 const money = (n: number, c = "CAD") =>
   new Intl.NumberFormat("en-CA", { style: "currency", currency: c }).format(n);
 const days = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 
-const NEEDS_ACTION = ["requested", "under_review", "inspection_failed", "exchange_processing"];
+// New requests and problems. Returns you already marked "under review" have their own tab.
+const NEEDS_ACTION = ["requested", "inspection_failed", "exchange_processing"];
+const UNDER_REVIEW = ["under_review"];
 const WAITING = ["approved", "label_issued", "in_transit"];
 const CLOSED = ["completed", "rejected", "cancelled", "canceled", "refunded", "denied", "resolved"];
+const REJECTED = ["rejected", "cancelled", "canceled", "denied"];
+const needsAction = (r: ReturnRow) =>
+  NEEDS_ACTION.includes(r.status) || (r.type === "exchange" && r.status === "received");
+const isUnderReview = (r: ReturnRow) => UNDER_REVIEW.includes(r.status);
 const isRefundDue = (r: ReturnRow) => r.type === "return" && ["received", "refund_pending"].includes(r.status);
 const isOpen = (r: ReturnRow) => !CLOSED.includes(r.status);
 const OVERDUE_DAYS = 5;
 
 const STATUS_COLOR = (s: string) =>
-  CLOSED.includes(s) ? "bg-secondary text-ink/70" : NEEDS_ACTION.includes(s) ? "bg-brand-tint text-brand" : "bg-amber-100 text-amber-800";
+  REJECTED.includes(s) ? "bg-red-100 text-red-700" : CLOSED.includes(s) ? "bg-green-100 text-green-800" : NEEDS_ACTION.includes(s) ? "bg-brand-tint text-brand" : "bg-amber-100 text-amber-800";
+
+function CopyButton({ text }: { text: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard?.writeText(text).then(() => {
+          setDone(true);
+          setTimeout(() => setDone(false), 1500);
+        });
+      }}
+      className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-ink shadow-sm hover:text-brand"
+    >
+      {done ? <Check className="h-3 w-3" aria-hidden="true" /> : <Copy className="h-3 w-3" aria-hidden="true" />}
+      {done ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function Field({ label: title, className = "", children }: { label: string; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={className}>
+      <dt className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">{title}</dt>
+      <dd className="mt-1 text-sm leading-6 text-ink">{children}</dd>
+    </div>
+  );
+}
+
+// Long customer messages are cut to 3 lines, with a toggle to read all of it.
+function ReasonText({ text }: { text: string }) {
+  const [all, setAll] = useState(false);
+  const long = text.length > 160;
+  return (
+    <div>
+      <p className={`border-l-4 border-brand/30 pl-3 italic text-ink ${long && !all ? "line-clamp-3" : ""}`}>&ldquo;{text}&rdquo;</p>
+      {long && (
+        <button type="button" onClick={() => setAll((v) => !v)} className="mt-1 pl-4 text-xs font-bold text-brand hover:underline">
+          {all ? "Show less" : "Read the full message"}
+        </button>
+      )}
+    </div>
+  );
+}
 
 export default function ReturnsManager({
   initial,
@@ -132,11 +182,13 @@ export default function ReturnsManager({
 
   const counts = useMemo(
     () => ({
-      action: scoped.filter((r) => NEEDS_ACTION.includes(r.status)).length,
+      action: scoped.filter(needsAction).length,
+      review: scoped.filter(isUnderReview).length,
       waiting: scoped.filter((r) => WAITING.includes(r.status)).length,
       refund: scoped.filter(isRefundDue).length,
       exchange: 0,
-      done: scoped.filter((r) => CLOSED.includes(r.status)).length,
+      done: scoped.filter((r) => CLOSED.includes(r.status) && !REJECTED.includes(r.status)).length,
+      rejected: scoped.filter((r) => REJECTED.includes(r.status)).length,
       all: scoped.length,
     }),
     [scoped]
@@ -167,11 +219,13 @@ export default function ReturnsManager({
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
     return scoped.filter((r) => {
-      if (filter === "action" && !NEEDS_ACTION.includes(r.status)) return false;
+      if (filter === "action" && !needsAction(r)) return false;
+      if (filter === "review" && !isUnderReview(r)) return false;
       if (filter === "waiting" && !WAITING.includes(r.status)) return false;
       if (filter === "refund" && !isRefundDue(r)) return false;
       if (filter === "exchange" && r.type !== "exchange") return false;
-      if (filter === "done" && !CLOSED.includes(r.status)) return false;
+      if (filter === "done" && !(CLOSED.includes(r.status) && !REJECTED.includes(r.status))) return false;
+      if (filter === "rejected" && !REJECTED.includes(r.status)) return false;
       if (!term) return true;
       return `${r.orderNumber} ${r.customerName} ${r.customerEmail} ${r.tracking} ${r.items
         .map((i) => i.sku)
@@ -215,12 +269,13 @@ export default function ReturnsManager({
 
   const tabs: [Filter, string][] = [
     ["action", "Needs review"],
+    ["review", "Under review"],
     ["waiting", "Waiting for item"],
     ["refund", "Refund due"],
     ["done", "Completed"],
+    ["rejected", "Rejected / cancelled"],
     ["all", "All"],
   ];
-  const input = "mt-3 w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm";
 
   return (
     <div className="mt-8">
@@ -369,284 +424,66 @@ export default function ReturnsManager({
                 const age = days(r.requestedOn);
                 const first = r.items[0];
                 const maxQty = first ? (first.received || first.quantity || 1) : 1;
-                return (
-                  <Fragment key={r.id}>
-                    <tr
-                      className={`cursor-pointer hover:bg-black/[0.02] ${isOpenRow ? "bg-brand-tint/40" : ""}`}
-                      onClick={() => toggleRow(r.id)}
-                    >
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2 font-bold text-ink">
-                          {isOpenRow ? (
-                            <ChevronDown className="h-4 w-4" aria-hidden="true" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                          )}
-                          {r.orderNumber}
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="font-medium text-ink">{r.customerName || "Customer"}</div>
-                        <div className="text-xs text-muted-foreground">{r.customerEmail}</div>
-                      </td>
-                      <td className="px-3 py-3 text-xs font-black uppercase tracking-[0.14em] text-brand">{r.type}</td>
-                      <td className="px-3 py-3 capitalize text-muted-foreground">{label(r.reasonCode)}</td>
-                      <td className="px-3 py-3 font-bold text-ink">{money(r.subtotal, r.currency)}</td>
-                      <td className="px-3 py-3">
-                        <span className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${STATUS_COLOR(r.status)}`}>
-                          {label(r.status)}
-                        </span>
-                      </td>
-                      <td
-                        className={`px-3 py-3 text-xs font-semibold ${
-                          isOpen(r) && age > OVERDUE_DAYS ? "text-brand" : "text-muted-foreground"
-                        }`}
-                      >
-                        {age === 0 ? "today" : `${age} d`}
-                      </td>
-                    </tr>
-
-                    {isOpenRow && (
-                      <tr className="bg-secondary/40">
-                        <td colSpan={7} className="px-6 py-5">
-                          <div className="grid gap-5 lg:grid-cols-[1.1fr_1fr_1fr]">
-                            {/* Details */}
-                            <div>
-                              <div className="mb-3 rounded-2xl bg-white p-4 text-sm leading-6">
-                                <p className="text-xs font-black uppercase tracking-[0.14em] text-brand">Customer</p>
-                                <p className="mt-1 font-bold text-ink">{r.customerName || "No name saved"}</p>
-                                <p className="text-muted-foreground">{r.customerEmail || "No email saved"}</p>
-                                {r.address ? (
-                                  <address className="mt-2 not-italic text-muted-foreground">
-                                    {[
-                                      r.address.name,
-                                      r.address.line1,
-                                      r.address.line2,
-                                      [r.address.city, r.address.province, r.address.postal_code].filter(Boolean).join(", "),
-                                      r.address.country,
-                                    ]
-                                      .filter(Boolean)
-                                      .map((l, n) => (
-                                        <div key={n}>{l}</div>
-                                      ))}
-                                  </address>
-                                ) : (
-                                  <p className="mt-2 text-muted-foreground">No address saved.</p>
-                                )}
-                              </div>
-                              <div className="rounded-2xl bg-white p-4">
-                                <p className="font-bold capitalize text-ink">{label(r.reasonCode)}</p>
-                                {r.reasonText && (
-                                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{r.reasonText}</p>
-                                )}
-                              </div>
-                              {Array.isArray(photos[r.id]) && (photos[r.id] as string[]).length > 0 && (
-                                <div className="mt-3">
-                                  <p className="text-sm font-bold text-ink">Customer photos</p>
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {(photos[r.id] as string[]).map((u, n) => (
-                                      <a key={n} href={u} target="_blank" rel="noopener noreferrer">
-                                        <Image
-                                          src={u}
-                                          alt={`Customer photo ${n + 1}`}
-                                          width={96}
-                                          height={96}
-                                          unoptimized
-                                          className="h-24 w-24 rounded-xl border object-cover"
-                                        />
-                                      </a>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                              <ul className="mt-3 space-y-2">
-                                {r.items.map((i) => (
-                                  <li
-                                    key={i.id}
-                                    className="flex flex-wrap justify-between gap-2 rounded-2xl border bg-white p-3 text-sm"
-                                  >
-                                    <span>
-                                      <span className="font-bold text-ink">{i.name}</span>
-                                      <span className="block text-xs text-muted-foreground">
-                                        {i.sku} · Requested {i.quantity} · Received {i.received}
-                                      </span>
-                                    </span>
-                                    <span className="font-bold">{money(i.unitPrice, r.currency)}</span>
-                                  </li>
-                                ))}
-                              </ul>
-
-                              <p className="mt-5 text-sm font-bold text-ink">History</p>
-                              {r.activity.length === 0 ? (
-                                <p className="mt-1 text-xs text-muted-foreground">
-                                  No changes recorded yet. Requested {new Date(r.requestedOn).toLocaleDateString("en-CA")}.
-                                </p>
-                              ) : (
-                                <ul className="mt-2 space-y-2 border-l-2 border-black/10 pl-4">
-                                  {r.activity.map((a, n) => (
-                                    <li key={n} className="text-xs">
-                                      <span className="font-semibold text-ink">{a.detail}</span>
-                                      <span className="block text-muted-foreground">
-                                        {new Date(a.at).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}
-                                        {a.by && ` · ${a.by}`}
-                                      </span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              )}
-                            </div>
-
-                            {/* Update */}
-                            <form
-                              action={(fd) =>
-                                run(async () => {
-                                  const status = String(fd.get("status") || "under_review");
-                                  const notes = String(fd.get("notes") || "").trim();
-
-                                  if (status === "rejected" && !notes) {
-                                    throw new Error("Please enter a reason before rejecting this return.");
-                                  }
-
-                                  await updateReturnRequest(
-                                    r.id,
-                                    status,
-                                    notes,
-                                    String(fd.get("carrier") || ""),
-                                    String(fd.get("tracking") || ""),
-                                    { notify: true, message: notes }
-                                  );
-                                  setRows((rs) =>
-                                    rs.map((x) =>
-                                      x.id === r.id
-                                        ? {
-                                            ...x,
-                                            status,
-                                            notes,
-                                            carrier: String(fd.get("carrier") || ""),
-                                            tracking: String(fd.get("tracking") || ""),
-                                          }
-                                        : x
-                                    )
-                                  );
-                                }, `${r.orderNumber} updated and the customer was emailed.`)
-                              }
-                              className="rounded-2xl border border-black/5 bg-white p-4"
-                            >
-                              <p className="font-bold text-ink">Update request</p>
-                              <select name="status" defaultValue={r.status} className={input}>
-                                <option value="under_review">Under review</option>
-                                <option value="approved">Approved</option>
-                                <option value="rejected">Rejected</option>
-                                <option value="label_issued">Return label issued</option>
-                                <option value="in_transit">Return in transit</option>
-                                <option value="received">Received</option>
-                                <option value="inspection_failed">Inspection failed</option>
-                                <option value="completed">Completed</option>
-                              </select>
-                              {r.fulfillmentProvider === "amazon_mcf" && r.type === "return" ? (
-                                <>
-                                  <input type="hidden" name="carrier" defaultValue={r.carrier} />
-                                  <input type="hidden" name="tracking" defaultValue={r.tracking} />
-                                </>
-                              ) : (
-                                <>
-                                  <input name="carrier" defaultValue={r.carrier} placeholder="Return carrier" className={input} />
-                                  <input name="tracking" defaultValue={r.tracking} placeholder="Return tracking number" className={input} />
-                                </>
-                              )}
-                              <textarea
-                                name="notes"
-                                defaultValue={r.notes}
-                                placeholder="Reason / resolution notes"
-                                className={`${input} min-h-24`}
-                              />
-                              <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                                If you select Rejected, a reason is required. Saving sends the updated status and reason to the customer by email.
-                              </p>
-                              <button className="cm-button-dark mt-3 w-full">Save update</button>
-                            </form>
-
-                            {/* Actions */}
-                            <div className="space-y-4">
-                              {/* Simple next-step panel */}
-                              <div className="rounded-2xl border-2 border-brand/30 bg-brand-tint/30 p-4">
-                                <p className="text-xs font-bold uppercase tracking-wide text-brand">Next step</p>
-                                {["requested", "under_review"].includes(r.status) && (
-                                  <div className="mt-2">
-                                    <p className="text-sm font-bold text-ink">1. Review the customer&apos;s return request</p>
-                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                      Check the reason, returned item and any photos. Then choose the appropriate status in
-                                      <span className="font-semibold text-ink"> Update request</span> on the left and click
-                                      <span className="font-semibold text-ink"> Save update</span>. If you reject the request,
-                                      a reason is required. The customer will automatically receive the updated status and reason by email.
-                                    </p>
-                                  </div>
-                                )}
-                                {["approved", "label_issued", "in_transit"].includes(r.status) && (
-                                  <div className="mt-2">
-                                    <p className="text-sm font-bold text-ink">2. Waiting for the customer to send the part back</p>
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                      {r.fulfillmentProvider === "amazon_mcf"
-                                        ? "Create or manage the Amazon RMA below. When the returned part is confirmed received, continue with the refund."
-                                        : "Send the customer one email containing the return instructions and printable PDF label. When the part arrives, mark it received."}
-                                    </p>
-                                    <button
-                                      type="button"
-                                      disabled={pending}
-                                      onClick={() =>
-                                        run(async () => {
-                                          await sendReturnInstructions(r.id);
-                                        }, "Return instructions emailed to the customer.")
-                                      }
-                                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-ink hover:border-brand hover:text-brand disabled:opacity-60"
-                                    >
-                                      <Mail className="h-4 w-4" aria-hidden="true" />
-                                      Email return instructions
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={pending}
-                                      onClick={() =>
-                                        run(async () => {
-                                          await updateReturnRequest(r.id, "received", "", r.carrier, r.tracking, { notify: false, message: "" });
-                                          setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "received" } : x)));
-                                        }, `${r.orderNumber} marked as received.`)
-                                      }
-                                      className="cm-button-primary mt-3 w-full disabled:opacity-60"
-                                    >
-                                      The part arrived: mark received
-                                    </button>
-                                  </div>
-                                )}
-                                {["received", "refund_pending", "inspection_failed"].includes(r.status) && (
-                                  <div className="mt-2">
-                                    <p className="text-sm font-bold text-ink">3. Inspect the returned part and complete the refund</p>
-                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                      The customer&apos;s item has been returned. Check the part and its condition first, then issue the
-                                      appropriate refund. After that, use the returned-stock section below to restock a sellable item
-                                      or mark it damaged.
-                                    </p>
-                                  </div>
-                                )}
-                                {r.status === "rejected" && (
-                                  <div className="mt-2">
-                                    <p className="text-sm font-bold text-ink">Request rejected</p>
-                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                      The customer has been notified by email. No further action is required unless you change the status again.
-                                    </p>
-                                  </div>
-                                )}
-                                {["completed", "cancelled"].includes(r.status) && (
-                                  <div className="mt-2">
-                                    <p className="text-sm font-bold text-ink">Return closed</p>
-                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                      This return is {r.status}. No further action is required.
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-
-                              {r.fulfillmentProvider === "amazon_mcf" && r.type === "return" && (
+                const inspected = r.stock !== null || r.items.some((i) => i.amazonReturnCondition);
+                const rejectedLike = ["rejected", "cancelled", "canceled", "denied"].includes(r.status);
+                const stage: "review" | "receive" | "inspect" | "refund" | "closed" = CLOSED.includes(r.status)
+                  ? "closed"
+                  : ["requested", "under_review"].includes(r.status)
+                    ? "review"
+                    : WAITING.includes(r.status)
+                      ? "receive"
+                      : inspected
+                        ? "refund"
+                        : "inspect";
+                const steps = ["Request", "Review", "Receive", "Inspect", r.type === "exchange" ? "Replace" : "Refund"];
+                const stepIdx = stage === "closed" && rejectedLike ? 1 : { review: 1, receive: 2, inspect: 3, refund: 4, closed: 4 }[stage];
+                const inPanelTools = stage === "inspect" || stage === "refund";
+                // Who/when/why a return was rejected, for the closed card
+                const rejectEntry = rejectedLike
+                  ? [...r.activity]
+                      .sort((x, y) => new Date(y.at).getTime() - new Date(x.at).getTime())
+                      .find((a) => /reject|cancel|denied/i.test(`${a.action} ${a.detail}`))
+                  : undefined;
+                const stepState = (n: number): "done" | "current" | "bad" | "todo" => {
+                  if (stage === "closed" && rejectedLike) return n === 0 ? "done" : n === 1 ? "bad" : "todo";
+                  if (stage === "closed") return "done";
+                  return n < stepIdx ? "done" : n === stepIdx ? "current" : "todo";
+                };
+                const stageInfo = {
+                  review: {
+                    title: "Review this request",
+                    text: "Read the customer's reason and photos below. Approve it to let them send the part back, or reject it with a reason.",
+                  },
+                  receive: {
+                    title: "Wait for the part to come back",
+                    text:
+                      r.fulfillmentProvider === "amazon_mcf"
+                        ? "Create the Amazon return authorization below. When the part has arrived, mark it received."
+                        : "Email the customer the return instructions and label if needed. When the part arrives at your shop, mark it received.",
+                  },
+                  inspect: {
+                    title: "Inspect the returned part",
+                    text: "Check the part, then record the result: restock it, mark it damaged, or fail the inspection. After that, issue the refund.",
+                  },
+                  refund: {
+                    title: r.type === "exchange" ? "Send the replacement" : "Issue the refund",
+                    text:
+                      r.type === "exchange"
+                        ? "Create the replacement order below. Any price difference is handled automatically."
+                        : "The part is back and checked. Review the amount below and refund the customer through Stripe.",
+                  },
+                  closed: {
+                    title: rejectedLike
+                      ? r.status === "rejected" || r.status === "denied"
+                        ? "You rejected this return"
+                        : "This return was cancelled"
+                      : "This return is complete",
+                    text: rejectedLike
+                      ? "No refund was issued and the customer was told by email."
+                      : "The part came back and everything is finished. History is on the right.",
+                  },
+                }[stage];
+                const amazonBlock = r.fulfillmentProvider === "amazon_mcf" && r.type === "return" && (
                                 <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
                                   <p className="font-bold text-ink">Amazon MCF return</p>
                                   <p className="mt-1 text-xs leading-5 text-muted-foreground">
@@ -731,9 +568,8 @@ export default function ReturnsManager({
                                     </div>
                                   )}
                                 </div>
-                              )}
-
-                              {r.fulfillmentProvider !== "amazon_mcf" &&
+                              );
+                const stockBlock = r.fulfillmentProvider !== "amazon_mcf" &&
                                 ["received", "completed", "inspection_failed"].includes(r.status) && (
                                 <div className="rounded-2xl border border-black/5 bg-white p-4">
                                   <p className="font-bold text-ink">Returned stock</p>
@@ -780,9 +616,8 @@ export default function ReturnsManager({
                                     </>
                                   )}
                                 </div>
-                              )}
-
-                              {r.type === "exchange" && ["received", "exchange_processing"].includes(r.status) && (
+                              );
+                const exchBlock = r.type === "exchange" && ["received", "exchange_processing"].includes(r.status) && (
                                 <div className="rounded-2xl bg-ink p-4 text-white">
                                   <p className="font-bold">Replacement order</p>
                                   {r.replacementOrderId ? (
@@ -849,9 +684,8 @@ export default function ReturnsManager({
                                     </form>
                                   )}
                                 </div>
-                              )}
-
-                              {isRefundDue(r) && (
+                              );
+                const refundBlock = isRefundDue(r) && (
                                 <form
                                   action={(fd) =>
                                     run(async () => {
@@ -894,9 +728,354 @@ export default function ReturnsManager({
                                     Refund customer
                                   </button>
                                 </form>
-                              )}
-                            </div>
+                              );
+                // Hide the Amazon return card on closed rejected returns (nothing to authorise) and during review.
+                const showAmazon = Boolean(amazonBlock) && stage !== "review" && !(rejectedLike && !r.amazonRmaId);
+                const tools = [
+                  showAmazon ? amazonBlock : null,
+                  stockBlock || null,
+                  exchBlock || null,
+                  inPanelTools ? refundBlock || null : null,
+                ].filter(Boolean);
+                const addressLines = r.address
+                  ? [
+                      r.address.line1,
+                      r.address.line2 && r.address.line2 !== r.address.line1 ? r.address.line2 : null,
+                      [r.address.city, r.address.province, r.address.postal_code].filter(Boolean).join(", "),
+                      r.address.country,
+                    ].filter(Boolean)
+                  : [];
+                const when = new Date(r.requestedOn);
+                const detailsBlock = (
+                  <div className="space-y-3">
+                    <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm">
+                      <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
+                        <Field label="Item to return">
+                          <ul className="space-y-1.5">
+                            {r.items.map((i) => (
+                              <li key={i.id}>
+                                <span className="font-bold">{i.name}</span>
+                                <span className="block text-xs text-muted-foreground">
+                                  {i.sku} · Return {i.quantity} · Arrived {i.received}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </Field>
+                        <Field label="Price">
+                          <span className="text-xl font-black">{money(r.subtotal, r.currency)}</span>
+                          {r.items.length === 1 && r.items[0].quantity > 1 && (
+                            <span className="block text-xs text-muted-foreground">
+                              {r.items[0].quantity} × {money(r.items[0].unitPrice, r.currency)}
+                            </span>
+                          )}
+                        </Field>
+                        <Field label="Requested on">
+                          <span className="font-bold">{when.toLocaleDateString("en-CA", { dateStyle: "medium" })}</span>
+                          <span className="block text-xs text-muted-foreground">
+                            {when.toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" })}
+                          </span>
+                        </Field>
+                        <Field label="Reason" className="sm:col-span-2 xl:col-span-3">
+                          <span className="inline-flex rounded-full bg-brand-tint px-3 py-0.5 text-sm font-bold capitalize text-brand">
+                            {label(r.reasonCode)}
+                          </span>
+                          <div className="mt-2">
+                            {r.reasonText ? (
+                              <ReasonText text={r.reasonText} />
+                            ) : (
+                              <span className="text-muted-foreground">The customer did not add a note.</span>
+                            )}
                           </div>
+                          {Array.isArray(photos[r.id]) && (photos[r.id] as string[]).length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {(photos[r.id] as string[]).map((u, n) => (
+                                <a key={n} href={u} target="_blank" rel="noopener noreferrer">
+                                  <Image
+                                    src={u}
+                                    alt={`Customer photo ${n + 1}`}
+                                    width={72}
+                                    height={72}
+                                    unoptimized
+                                    className="h-[72px] w-[72px] rounded-lg border object-cover transition hover:scale-105"
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </Field>
+                        <Field label="Customer">
+                          <span className="font-bold">{r.customerName || "No name saved"}</span>
+                          {r.customerEmail && (
+                            <span className="mt-0.5 flex items-center gap-2">
+                              <a href={`mailto:${r.customerEmail}`} className="min-w-0 truncate text-muted-foreground hover:text-brand">
+                                {r.customerEmail}
+                              </a>
+                              <CopyButton text={r.customerEmail} />
+                            </span>
+                          )}
+                        </Field>
+                        <Field label="Customer address" className="sm:col-span-1 xl:col-span-2">
+                          {addressLines.length ? (
+                            <address className="not-italic">{addressLines.join(" · ")}</address>
+                          ) : (
+                            <span className="text-muted-foreground">No address saved</span>
+                          )}
+                        </Field>
+                      </dl>
+                    </section>
+                  </div>
+                );
+                return (
+                  <Fragment key={r.id}>
+                    <tr
+                      className={`cursor-pointer ${isOpenRow ? "bg-brand-tint" : "hover:bg-black/[0.02]"}`}
+                      onClick={() => toggleRow(r.id)}
+                    >
+                      <td className={`border-l-4 px-5 py-3 ${isOpenRow ? "border-brand" : "border-transparent"}`}>
+                        <div className="flex items-center gap-2 font-bold text-ink">
+                          {isOpenRow ? (
+                            <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                          )}
+                          {r.orderNumber}
+                        </div>
+                        <div className="mt-0.5 pl-6 text-xs font-semibold text-muted-foreground">
+                          {r.items[0]?.name ?? ""}
+                          {r.items.length > 1 ? ` +${r.items.length - 1} more` : ""}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="font-medium text-ink">{r.customerName || "Customer"}</div>
+                        <div className="text-xs text-muted-foreground">{r.customerEmail}</div>
+                      </td>
+                      <td className="px-3 py-3 text-xs font-black uppercase tracking-[0.14em] text-brand">{r.type}</td>
+                      <td className="px-3 py-3 capitalize text-muted-foreground">{label(r.reasonCode)}</td>
+                      <td className="px-3 py-3 font-bold text-ink">{money(r.subtotal, r.currency)}</td>
+                      <td className="px-3 py-3">
+                        <span className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${STATUS_COLOR(r.status)}`}>
+                          {label(r.status)}
+                        </span>
+                        <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                          {stage === "closed" ? (rejectedLike ? "Closed, no refund" : "Done") : `Next: ${{ review: "review & approve", receive: "wait for the part", inspect: "inspect the part", refund: r.type === "exchange" ? "send replacement" : "refund" }[stage]}`}
+                        </span>
+                      </td>
+                      <td
+                        className={`px-3 py-3 text-xs font-semibold ${
+                          isOpen(r) && age > OVERDUE_DAYS ? "text-brand" : "text-muted-foreground"
+                        }`}
+                      >
+                        {age === 0 ? "today" : `${age} d`}
+                      </td>
+                    </tr>
+
+                    {isOpenRow && (
+                      <tr className="bg-brand-tint/40">
+                        <td colSpan={7} className="border-l-4 border-brand px-6 py-5">
+                          {/* Step-by-step workflow */}
+                          <ol className="mb-5 grid grid-cols-5 gap-1" aria-label="Return progress">
+                            {steps.map((st, n) => {
+                              const me = stepState(n);
+                              const next = n < steps.length - 1 ? stepState(n + 1) : "todo";
+                              const prev = n > 0 ? stepState(n - 1) : "todo";
+                              return (
+                                <li key={st} className="text-center">
+                                  <div className="flex items-center">
+                                    <span className={`h-0.5 flex-1 ${n === 0 ? "bg-transparent" : me !== "todo" && prev === "done" ? "bg-green-500" : "bg-black/10"}`} />
+                                    <span
+                                      className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black text-white ${
+                                        me === "bad"
+                                          ? "bg-red-500"
+                                          : me === "done"
+                                            ? "bg-green-500"
+                                            : me === "current"
+                                              ? "bg-brand ring-4 ring-brand/20"
+                                              : "bg-black/15"
+                                      }`}
+                                    >
+                                      {me === "done" ? <Check className="h-4 w-4" strokeWidth={3} /> : me === "bad" ? <X className="h-4 w-4" strokeWidth={3} /> : n + 1}
+                                    </span>
+                                    <span className={`h-0.5 flex-1 ${n === steps.length - 1 ? "bg-transparent" : me === "done" && next !== "todo" ? "bg-green-500" : "bg-black/10"}`} />
+                                  </div>
+                                  <p
+                                    className={`mt-1.5 text-[11px] font-bold ${
+                                      me === "bad" ? "text-red-600" : me === "current" ? "text-brand" : me === "done" ? "text-ink" : "text-muted-foreground"
+                                    }`}
+                                  >
+                                    {me === "bad" ? (r.status === "cancelled" || r.status === "canceled" ? "Cancelled" : "Rejected") : st}
+                                  </p>
+                                </li>
+                              );
+                            })}
+                          </ol>
+
+                          <div
+                            className={`rounded-2xl border-2 bg-white p-5 ${
+                              stage === "closed" ? (rejectedLike ? "border-red-300" : "border-green-300") : "border-brand/30"
+                            }`}
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-black uppercase tracking-[0.14em] text-brand">
+                                {stage === "closed" ? (rejectedLike ? "Closed" : "Finished") : `Step ${stepIdx + 1} of 5`}
+                              </span>
+                              <span className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${STATUS_COLOR(r.status)}`}>
+                                Status: {label(r.status)}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-lg font-black text-ink">{stageInfo.title}</p>
+                            <p className="mt-1 text-sm leading-6 text-muted-foreground">{stageInfo.text}</p>
+
+                            {stage === "review" && (
+                              <form className="mt-4">
+                                <textarea
+                                  name="reason"
+                                  placeholder="Note for the customer (optional when approving, required when rejecting). It is included in the email."
+                                  className="w-full min-h-16 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm"
+                                />
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <button
+                                    type="button"
+                                    disabled={pending}
+                                    onClick={(e) => {
+                                      const note = String(new FormData(e.currentTarget.form as HTMLFormElement).get("reason") || "").trim();
+                                      run(async () => {
+                                        await updateReturnRequest(r.id, "approved", note, r.carrier, r.tracking, { notify: true, message: note });
+                                        setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "approved", notes: note || x.notes } : x)));
+                                      }, `${r.orderNumber} approved. The customer was emailed${note ? " with your note" : ""}.`);
+                                    }}
+                                    className="cm-button-primary disabled:opacity-60"
+                                  >
+                                    Approve return
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={pending}
+                                    onClick={(e) => {
+                                      const reason = String(new FormData(e.currentTarget.form as HTMLFormElement).get("reason") || "").trim();
+                                      run(async () => {
+                                        if (!reason) throw new Error("Please enter a reason before rejecting this return.");
+                                        await updateReturnRequest(r.id, "rejected", reason, r.carrier, r.tracking, { notify: true, message: reason });
+                                        setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "rejected", notes: reason } : x)));
+                                      }, `${r.orderNumber} rejected. The customer was emailed.`);
+                                    }}
+                                    className="rounded-full border border-black/15 bg-white px-5 py-2 text-sm font-bold text-ink hover:border-brand disabled:opacity-60"
+                                  >
+                                    Reject return
+                                  </button>
+                                  {r.status === "requested" && (
+                                    <button
+                                      type="button"
+                                      disabled={pending}
+                                      onClick={() =>
+                                        run(async () => {
+                                          await updateReturnRequest(r.id, "under_review", "", r.carrier, r.tracking, { notify: false, message: "" });
+                                          setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "under_review" } : x)));
+                                        }, `${r.orderNumber} is now under review.`)
+                                      }
+                                      className="rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground underline disabled:opacity-60"
+                                    >
+                                      Mark as under review
+                                    </button>
+                                  )}
+                                </div>
+                              </form>
+                            )}
+
+                            {stage === "receive" && (
+                              <div className="mt-4 flex flex-wrap gap-2">
+                                {r.fulfillmentProvider !== "amazon_mcf" && (
+                                  <button
+                                    type="button"
+                                    disabled={pending}
+                                    onClick={() =>
+                                      run(async () => {
+                                        await sendReturnInstructions(r.id);
+                                      }, "Return instructions emailed to the customer.")
+                                    }
+                                    className="inline-flex items-center gap-2 rounded-full border border-black/15 bg-white px-5 py-2 text-sm font-bold text-ink hover:border-brand hover:text-brand disabled:opacity-60"
+                                  >
+                                    <Mail className="h-4 w-4" aria-hidden="true" />
+                                    Email return instructions
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  disabled={pending}
+                                  onClick={() =>
+                                    run(async () => {
+                                      await updateReturnRequest(r.id, "received", "", r.carrier, r.tracking, { notify: false, message: "" });
+                                      setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "received" } : x)));
+                                    }, `${r.orderNumber} marked as received.`)
+                                  }
+                                  className="cm-button-primary disabled:opacity-60"
+                                >
+                                  The part arrived: mark received
+                                </button>
+                              </div>
+                            )}
+
+                            {stage === "inspect" && (
+                              <form className="mt-4">
+                                <ul className="list-disc space-y-1 pl-5 text-sm text-ink">
+                                  <li>Is it the right part, and is the quantity correct?</li>
+                                  <li>Is it unused and in sellable condition?</li>
+                                  <li>Does it match the reason the customer gave?</li>
+                                </ul>
+                                <p className="mt-3 text-sm font-semibold text-ink">Fine? Use Restock or Damaged below, then refund.</p>
+                                <textarea
+                                  name="why"
+                                  placeholder="Only if it fails inspection: what is wrong? (the customer is emailed this)"
+                                  className="mt-3 w-full min-h-16 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={pending}
+                                  onClick={(e) => {
+                                    const why = String(new FormData(e.currentTarget.form as HTMLFormElement).get("why") || "").trim();
+                                    run(async () => {
+                                      if (!why) throw new Error("Please describe what failed inspection.");
+                                      await updateReturnRequest(r.id, "inspection_failed", why, r.carrier, r.tracking, { notify: true, message: why });
+                                      setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "inspection_failed", notes: why } : x)));
+                                    }, `${r.orderNumber} marked as failed inspection. The customer was emailed.`);
+                                  }}
+                                  className="mt-3 rounded-full border border-red-300 bg-white px-5 py-2 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                                >
+                                  The part failed inspection
+                                </button>
+                              </form>
+                            )}
+
+                            {stage === "closed" && rejectedLike && (
+                              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+                                <p className="text-xs font-black uppercase tracking-[0.14em] text-red-700">
+                                  Reason the customer was given
+                                </p>
+                                {r.notes?.trim() ? (
+                                  <p className="mt-2 text-base font-semibold leading-6 text-ink">&ldquo;{r.notes.trim()}&rdquo;</p>
+                                ) : (
+                                  <p className="mt-2 text-sm text-muted-foreground">No reason was saved for this return.</p>
+                                )}
+                                {rejectEntry && (
+                                  <p className="mt-2 text-xs text-muted-foreground">
+                                    {new Date(rejectEntry.at).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}
+                                    {rejectEntry.by && ` · by ${rejectEntry.by}`}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Action tools (only the ones that apply to this step), side by side */}
+                          {tools.length > 0 && (
+                            <div className={`mt-5 grid gap-4 ${tools.length > 1 ? "lg:grid-cols-2" : ""} [&>*]:h-full`}>
+                              {tools.map((t, n) => (
+                                <div key={n}>{t}</div>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="mt-5">{detailsBlock}</div>
                         </td>
                       </tr>
                     )}

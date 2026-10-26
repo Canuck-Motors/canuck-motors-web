@@ -5,9 +5,19 @@ import Image from "next/image";
 import Link from "next/link";
 import { Search, ShoppingCart, UserRound, LogOut, LayoutDashboard, Package, ChevronDown } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import LoadingAnimation from "@/components/LoadingAnimation";
 import { createClient } from "@/lib/supabase/client";
+
+function initialOf(user: { user_metadata?: Record<string, unknown>; email?: string | null } | null) {
+  const first = user?.user_metadata?.first_name;
+  const source =
+    (typeof first === "string" && first.trim()) ||
+    (typeof user?.user_metadata?.full_name === "string" && user.user_metadata.full_name.trim()) ||
+    user?.email ||
+    "";
+  return source ? source.trim().charAt(0).toUpperCase() : "";
+}
 
 export default function Header() {
   const [supabase] = useState(() => createClient());
@@ -18,6 +28,8 @@ export default function Header() {
   const [searchText, setSearchText] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [accountLabel, setAccountLabel] = useState("Account");
+  const [initial, setInitial] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isStaff, setIsStaff] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -36,6 +48,20 @@ export default function Header() {
       active = false;
     };
   }, [supabase, isAuthenticated]);
+
+  // Phones have no hover: tapping anywhere outside, or changing page, closes the account menu.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const away = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
 
   // The header lives in the layout, so its text would otherwise stay on every
   // page. On a search results page show what was searched; anywhere else clear it.
@@ -69,6 +95,7 @@ export default function Header() {
           ? firstName.trim()
           : "Account"
       );
+      setInitial(initialOf(user));
 
       setAuthLoading(false);
     };
@@ -88,6 +115,7 @@ export default function Header() {
           ? firstName.trim()
           : "Account"
       );
+      setInitial(initialOf(user));
 
       setAuthLoading(false);
     });
@@ -164,9 +192,10 @@ export default function Header() {
             (isAuthenticated ? (
               <>
                 <div
+                  ref={menuRef}
                   className="group relative"
-                  onMouseEnter={() => setMenuOpen(true)}
-                  onMouseLeave={() => setMenuOpen(false)}
+                  onPointerEnter={(e) => e.pointerType === "mouse" && setMenuOpen(true)}
+                  onPointerLeave={(e) => e.pointerType === "mouse" && setMenuOpen(false)}
                   onBlur={(e) => {
                     if (!e.currentTarget.contains(e.relatedTarget)) setMenuOpen(false);
                   }}
@@ -175,12 +204,21 @@ export default function Header() {
                     type="button"
                     aria-haspopup="menu"
                     aria-expanded={menuOpen}
+                    aria-label={`Account menu (${accountLabel})`}
                     onClick={() => setMenuOpen((o) => !o)}
                     className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-sm font-semibold text-ink transition hover:bg-brand-tint hover:text-brand"
                   >
-                    <UserRound className="h-4 w-4" aria-hidden="true" />
+                    {initial ? (
+                      <span
+                        aria-hidden="true"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand text-sm font-black text-white sm:hidden"
+                      >
+                        {initial}
+                      </span>
+                    ) : null}
+                    <UserRound className={`h-4 w-4 ${initial ? "hidden sm:block" : ""}`} aria-hidden="true" />
                     <span className="hidden sm:inline">{accountLabel}</span>
-                    <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    <ChevronDown className="hidden h-3.5 w-3.5 sm:block" aria-hidden="true" />
                   </button>
                   {menuOpen && (
                     <div

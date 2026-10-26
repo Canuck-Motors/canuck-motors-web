@@ -96,7 +96,8 @@ function messageFor(row: OutboxRow) {
 
       lines.push(`Status: ${statusLabel || "Updated"}`);
       if (reason) {
-        lines.push(`Reason: ${reason}`);
+        const isDecline = ["rejected", "inspection_failed", "denied", "cancelled", "canceled"].includes(status);
+        lines.push(`${isDecline ? "Reason" : "Note from our team"}: ${reason}`);
       }
       if (p.tracking) {
         lines.push(`Return Tracking: ${String(p.carrier || "")} ${String(p.tracking)}`.trim());

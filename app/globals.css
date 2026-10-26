@@ -704,3 +704,10 @@ body {
   .cm-pgrid[data-view="grid"] article .left-4 { display: none; }
   .cm-pgrid[data-view="grid"] article .aspect-\[4\/3\] { aspect-ratio: 1 / 1; }
 }
+
+
+/* Touch: tap once, react once (no 300ms delay / double-tap zoom wait on controls) */
+a, button, summary, label, select, input, textarea, [role="button"], [role="tab"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
