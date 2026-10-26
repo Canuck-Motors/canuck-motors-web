@@ -395,6 +395,11 @@ export function buildFacts(products: FinderProduct[], specs: SpecMap, refs: RefM
       }
       part.set(name, v);
     }
+    // A chain-driven pump has no pulley flange: nothing for pulley bolts to hold.
+    // So a customer who counts pulley bolts on their old pump does not have this one.
+    if (!part.has("Pulley Flange Bolts") && /\bchain\b/i.test(part.get("Water Pump Drive Type") ?? "")) {
+      part.set("Pulley Flange Bolts", "None (chain driven)");
+    }
     if (seal.size && rowsWithSealInfo === fits.length && !part.has("Contents")) part.set("Seal In Box", [...seal].sort().join(" + "));
     if (p.position) part.set("Position", p.position);
     for (const r of refs?.get(p.id) ?? []) refList.push(r);
@@ -1015,6 +1020,28 @@ export function interpretText(products: FinderProduct[], specs: SpecMap, text: s
     }
   }
   if (best) return { name: best.name, value: best.value };
+
+  // 1b. a count named with its own words: "it has 4 bolts", "four bolt flange", "no bolts"
+  const NUM: Record<string, string> = { one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8" };
+  for (const [name, vals] of dims) {
+    if (!vals.some((v) => /^\d+$/.test(v.trim()))) continue;
+    // The counted thing is the last word of the name ("Pulley Flange Bolts" -> bolts),
+    // so "no pulley" stays a Pulley Included answer
+    const noun = low(name).split(/[^a-z]+/).filter(Boolean).pop() ?? "";
+    if (noun.length < 4) continue;
+    const prefixes = [esc(noun.slice(0, 4))];
+    const said = t.match(new RegExp(`\\b(\\d+|${Object.keys(NUM).join("|")})\\s*-?\\s*(?:[a-z]+\\s+)?(?:${prefixes.join("|")})`));
+    if (said) {
+      const n = NUM[said[1]] ?? said[1];
+      const v = vals.find((x) => x.trim() === n);
+      // A count no part has is still the customer's answer: it rules out the parts that differ
+      return { name, value: v ?? n };
+    }
+    const none = vals.find((v) => /^none\b/i.test(v));
+    if (none && new RegExp(`\\b(?:no|zero|none|0)\\s+(?:[a-z]+\\s+)?(?:${prefixes.join("|")})`).test(t)) {
+      return { name, value: none };
+    }
+  }
 
   // 2. a Yes / No fact named by its own words: "no pulley", "with the back housing"
   const neg = NO_WORDS.test(t);
