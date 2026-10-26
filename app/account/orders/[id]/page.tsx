@@ -168,6 +168,31 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
     }
   }
 
+  const orderItemById = new Map((items ?? []).map((item) => [Number(item.id), item]));
+  const returnNumberById = new Map(
+    [...(returnRequests ?? [])]
+      .reverse()
+      .map((request, index) => [String(request.id), index + 1])
+  );
+
+  const returnItemsFor = (request: (typeof returnRequests extends (infer T)[] | null ? T : never)) => {
+    return ((request?.return_request_items ?? []) as { order_item_id: number; quantity: number }[])
+      .map((entry) => {
+        const item = orderItemById.get(Number(entry.order_item_id));
+        if (!item) return null;
+        const quantity = Number(entry.quantity || 1);
+        return {
+          quantity,
+          name: String(item.product_name || item.sku || "Item"),
+          sku: String(item.sku || ""),
+          label: `${quantity > 1 ? `${quantity}× ` : ""}${String(item.product_name || item.sku || "Item")}${
+            item.sku ? ` · ${item.sku}` : ""
+          }`,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  };
+
   const now = Date.now();
   // Orders marked delivered before a window was stored get 30 days from the delivery date.
   const returnDeadline = order.return_window_ends_on
@@ -186,6 +211,10 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
     title: string;
     detail?: string;
     at: string;
+    returnRequestId?: string;
+    returnLabel?: string;
+    returnItemCount?: number;
+    returnItemLabels?: string[];
   };
 
   const timelineTitle = (status: string) => {
@@ -290,6 +319,12 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
   }
 
   for (const request of returnRequests ?? []) {
+    const requestId = String(request.id);
+    const requestItems = returnItemsFor(request);
+    const returnLabel = `Return ${returnNumberById.get(requestId) ?? ""}`.trim();
+    const returnItemCount = requestItems.reduce((sum, item) => sum + item.quantity, 0);
+    const returnItemLabels = requestItems.map((item) => item.label);
+
     timeline.push({
       key: `return-request-${request.id}`,
       status: "requested",
@@ -301,10 +336,14 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
         .filter(Boolean)
         .join(" · "),
       at: String(request.requested_on),
+      returnRequestId: requestId,
+      returnLabel,
+      returnItemCount,
+      returnItemLabels,
     });
 
     const activities = returnActivity.filter(
-      (activity) => activity.request_id === String(request.id)
+      (activity) => activity.request_id === requestId
     );
 
     let sawStatusActivity = false;
@@ -327,6 +366,10 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
           title: timelineTitle(status),
           detail: reason,
           at: String(activity.created_on),
+          returnRequestId: requestId,
+          returnLabel,
+          returnItemCount,
+          returnItemLabels,
         });
       }
 
@@ -337,6 +380,10 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
           title: "Refund completed",
           detail: activity.detail || "Your refund was processed.",
           at: String(activity.created_on),
+          returnRequestId: requestId,
+          returnLabel,
+          returnItemCount,
+          returnItemLabels,
         });
       }
     }
@@ -352,6 +399,10 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
             ? `Reason: ${String(request.resolution_notes)}`
             : undefined,
         at: String(request.updated_on || request.requested_on),
+        returnRequestId: requestId,
+        returnLabel,
+        returnItemCount,
+        returnItemLabels,
       });
     }
   }
@@ -364,6 +415,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
         index === 0 ||
         !(
           event.status === all[index - 1].status &&
+          event.returnRequestId === all[index - 1].returnRequestId &&
           Math.abs(new Date(event.at).getTime() - new Date(all[index - 1].at).getTime()) < 60000
         )
     );
@@ -440,8 +492,31 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                             </span>
                           )}
                         </div>
+                        {event.returnRequestId && (
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span className="rounded-full bg-black/5 px-2.5 py-1 text-[11px] font-bold text-ink">
+                              {event.returnLabel}
+                            </span>
+                            <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                              {event.returnItemCount || 0} {(event.returnItemCount || 0) === 1 ? "item" : "items"}
+                            </span>
+                            {(event.returnItemLabels ?? []).slice(0, 2).map((itemLabel) => (
+                              <span
+                                key={itemLabel}
+                                className="max-w-[260px] truncate rounded-full border border-black/5 bg-white px-2.5 py-1 text-[11px] font-semibold text-ink"
+                              >
+                                {itemLabel}
+                              </span>
+                            ))}
+                            {(event.returnItemLabels?.length ?? 0) > 2 && (
+                              <span className="text-[11px] font-bold text-brand">
+                                +{(event.returnItemLabels?.length ?? 0) - 2} more
+                              </span>
+                            )}
+                          </div>
+                        )}
                         {event.detail && (
-                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                          <p className="mt-2 text-sm leading-6 text-muted-foreground">
                             {event.detail}
                           </p>
                         )}
