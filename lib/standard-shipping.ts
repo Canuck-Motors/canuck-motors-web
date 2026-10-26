@@ -41,6 +41,48 @@ export function priceForWeight(rates: Rate[], weightKg: number): number | null {
   return band ? band.price_cents : null;
 }
 
+// Large carts can be split into multiple parcels instead of forcing a manual quote.
+// We pack heavier items first, then price each parcel using the same configured rate table.
+function priceForMultipleParcels(rates: Rate[], unitWeightsKg: number[]): { cents: number; billedWeightKg: number } | null {
+  const sortedRates = [...rates].sort((a, b) => a.max_weight_kg - b.max_weight_kg);
+  const largestBand = sortedRates.at(-1);
+  if (!largestBand) return null;
+
+  const maxProductWeightPerParcel = largestBand.max_weight_kg - PACKAGING_KG;
+  if (!(maxProductWeightPerParcel > 0)) return null;
+
+  const units = [...unitWeightsKg].sort((a, b) => b - a);
+  if (units.some((weight) => weight > maxProductWeightPerParcel)) return null;
+
+  const parcels: number[] = [];
+  for (const weight of units) {
+    let placed = false;
+    for (let i = 0; i < parcels.length; i++) {
+      if (parcels[i] + weight <= maxProductWeightPerParcel + 1e-9) {
+        parcels[i] += weight;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) parcels.push(weight);
+  }
+
+  let cents = 0;
+  let billedWeightKg = 0;
+  for (const productWeight of parcels) {
+    const parcelWeight = Math.round((productWeight + PACKAGING_KG) * 1000) / 1000;
+    const parcelPrice = priceForWeight(sortedRates, parcelWeight);
+    if (parcelPrice == null) return null;
+    cents += parcelPrice;
+    billedWeightKg += parcelWeight;
+  }
+
+  return {
+    cents,
+    billedWeightKg: Math.round(billedWeightKg * 1000) / 1000,
+  };
+}
+
 // Reads the signed-in customer's active cart on the server, so the weight is never taken from the browser.
 export async function quoteStandardForCart(
   supabase: { from: (t: string) => any },
@@ -69,27 +111,41 @@ export async function quoteStandardForCart(
     (products ?? []).map((p: { id: number; weight_kg: number | null }) => [p.id, p.weight_kg == null ? null : Number(p.weight_kg)])
   );
 
-  let total = 0;
+  let productWeight = 0;
+  const unitWeightsKg: number[] = [];
   for (const it of items as { product_id: number; quantity: number }[]) {
     const w = weights.get(it.product_id);
     if (w == null || !(w > 0)) return { ok: false, message: CONTACT_MSG }; // never charge $0 for unknown weight
-    total += w * it.quantity;
+    productWeight += w * it.quantity;
+    for (let i = 0; i < it.quantity; i++) unitWeightsKg.push(w);
   }
-  total = Math.round((total + PACKAGING_KG) * 1000) / 1000;
 
   const { data: rates } = await createAdminClient()
     .from("shipping_rates")
     .select("max_weight_kg, price_cents")
     .eq("zone", zone);
-  const cents = priceForWeight(
-    (rates ?? []).map((r: { max_weight_kg: number; price_cents: number }) => ({
-      max_weight_kg: Number(r.max_weight_kg),
-      price_cents: Number(r.price_cents),
-    })),
-    total
-  );
-  if (cents == null) return { ok: false, message: CONTACT_MSG };
-  return { ok: true, cents, zone, weightKg: total, postal };
+
+  const normalizedRates = (rates ?? []).map((r: { max_weight_kg: number; price_cents: number }) => ({
+    max_weight_kg: Number(r.max_weight_kg),
+    price_cents: Number(r.price_cents),
+  }));
+
+  const singleParcelWeight = Math.round((productWeight + PACKAGING_KG) * 1000) / 1000;
+  const singleParcelCents = priceForWeight(normalizedRates, singleParcelWeight);
+  if (singleParcelCents != null) {
+    return { ok: true, cents: singleParcelCents, zone, weightKg: singleParcelWeight, postal };
+  }
+
+  const multiParcel = priceForMultipleParcels(normalizedRates, unitWeightsKg);
+  if (!multiParcel) return { ok: false, message: CONTACT_MSG };
+
+  return {
+    ok: true,
+    cents: multiParcel.cents,
+    zone,
+    weightKg: multiParcel.billedWeightKg,
+    postal,
+  };
 }
 
 export const PROVINCE_CODES = ["AB","BC","MB","NB","NL","NS","NT","NU","ON","PE","QC","SK","YT"];
