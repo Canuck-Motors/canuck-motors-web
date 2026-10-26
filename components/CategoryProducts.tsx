@@ -1,5 +1,6 @@
 "use client";
 
+import ProductGridView from "@/components/ProductGridView";
 import { useState } from "react";
 import { ProductCard } from "@/components/ProductCard";
 
@@ -52,11 +53,11 @@ export function CategoryProducts({ products, showPosition }: { products: Product
           <p className="text-muted-foreground">No parts in this option.</p>
         </div>
       ) : (
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <ProductGridView>
           {shown.map((product) => (
             <ProductCard key={product.id} product={product} />
           ))}
-        </div>
+        </ProductGridView>
       )}
     </>
   );

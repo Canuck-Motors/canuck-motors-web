@@ -1,3 +1,4 @@
+import ProductGridView from "@/components/ProductGridView";
 import { sortByTypeOrder } from "@/lib/product-order";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -106,10 +107,12 @@ export default async function ProductsPage() {
               No products are currently available.
             </div>
           ) : (
-            <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {products.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
+            <div className="mt-8">
+              <ProductGridView>
+                {products.map((product) => (
+                  <ProductCard key={product.id} product={product} />
+                ))}
+              </ProductGridView>
             </div>
           )}
         </section>

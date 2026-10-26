@@ -1,3 +1,5 @@
+import ProductGridView from "@/components/ProductGridView";
+import BrandNeon from "@/components/BrandNeon";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -101,12 +103,7 @@ export default async function BrandModelPage({ params }: PageProps) {
   return (
     <main className="min-h-screen bg-white">
       <section className="relative overflow-hidden bg-ink text-white">
-        <div
-            className="cm-neon"
-            aria-hidden="true"
-            data-brand={result.brand.manufacturer_name}
-            style={{ "--neon-len": Math.max(4, result.brand.manufacturer_name.length) } as React.CSSProperties}
-          />
+        <BrandNeon name={result.brand.manufacturer_name} />
         <div className="cm-container relative z-10 py-12 md:py-16">
           <nav aria-label="Breadcrumb" className="text-sm font-bold text-brand">
             <Link href="/brands" className="hover:underline">All brands</Link>
@@ -155,10 +152,12 @@ export default async function BrandModelPage({ params }: PageProps) {
             .
           </div>
         ) : (
-          <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {result.products.map((product: any) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
+          <div className="mt-8">
+            <ProductGridView className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {result.products.map((product: any) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </ProductGridView>
           </div>
         )}
 

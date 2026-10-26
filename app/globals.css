@@ -319,13 +319,21 @@
   -webkit-text-stroke: 2px hsl(var(--brand));
   text-shadow: 0 0 28px hsl(var(--brand) / 0.55), 0 0 70px hsl(var(--brand) / 0.35);
 }
+.cm-neon-m { display: none; }
 @media (max-width: 640px) {
-  /* Phones: keep the whole brand name on screen (word width = letters x ~0.6em). */
-  .cm-neon { opacity: 0.35; right: 4%; left: auto; max-width: 92%; }
-  .cm-neon::before {
-    font-size: min(24vw, calc(150vw / var(--neon-len, 5)));
-    -webkit-text-stroke-width: 1.5px;
+  /* Phones: a real text span, sized by components/BrandNeon.tsx so the whole name fits. */
+  .cm-neon { opacity: 0.35; right: 5%; left: auto; }
+  .cm-neon::before { display: none; }
+  .cm-neon-m {
+    display: block;
+    font-weight: 900;
+    line-height: 1;
     letter-spacing: -0.02em;
+    white-space: nowrap;
+    text-transform: uppercase;
+    color: transparent;
+    -webkit-text-stroke: 1.5px hsl(var(--brand));
+    text-shadow: 0 0 20px hsl(var(--brand) / 0.55), 0 0 50px hsl(var(--brand) / 0.35);
   }
 }
 
@@ -678,4 +686,21 @@ body {
   33%  { opacity: 1; }
   41%  { opacity: 0; }
   100% { opacity: 0; }
+}
+
+
+/* Phones: product cards as a compact 2-column grid (default) or a full-width list */
+@media (max-width: 639px) {
+  .cm-pgrid { gap: 0.75rem; }
+  .cm-pgrid[data-view="grid"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cm-pgrid[data-view="list"] { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+  .cm-pgrid[data-view="grid"] article { border-radius: 18px; }
+  .cm-pgrid[data-view="grid"] article .p-5 { padding: 0.75rem; }
+  .cm-pgrid[data-view="grid"] article h2 { font-size: 0.8125rem; line-height: 1.15rem; min-height: 2.3rem; margin-top: 0.35rem; }
+  .cm-pgrid[data-view="grid"] article p.text-\[11px\] { font-size: 9.5px; letter-spacing: 0.1em; }
+  .cm-pgrid[data-view="grid"] article .mt-6 { margin-top: 0.6rem; }
+  .cm-pgrid[data-view="grid"] article .text-2xl { font-size: 1.05rem; }
+  .cm-pgrid[data-view="grid"] article .h-11 { height: 2rem; width: 2rem; }
+  .cm-pgrid[data-view="grid"] article .left-4 { display: none; }
+  .cm-pgrid[data-view="grid"] article .aspect-\[4\/3\] { aspect-ratio: 1 / 1; }
 }

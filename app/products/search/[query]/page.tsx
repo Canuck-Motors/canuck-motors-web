@@ -1,3 +1,4 @@
+import ProductGridView from "@/components/ProductGridView";
 import { findProductIds } from "@/lib/part-search";
 import type { Metadata } from "next";
 import { cacheLife, cacheTag } from "next/cache";
@@ -275,11 +276,11 @@ export default async function ProductSearchPage({
               </p>
             </div>
 
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <ProductGridView className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {products.map((product) => (
                 <ProductCard key={product.id} product={product} />
               ))}
-            </div>
+            </ProductGridView>
           </section>
         )}
       </div>

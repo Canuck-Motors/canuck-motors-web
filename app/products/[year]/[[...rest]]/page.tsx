@@ -1,3 +1,4 @@
+import ProductGridView from "@/components/ProductGridView";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createPublicClient } from "@/lib/supabase/public";
@@ -401,11 +402,14 @@ export default async function VehicleProductsPage({ params }: PageProps) {
                       {g.items.length} {g.items.length === 1 ? "option" : "options"} for your {vehicleName}
                     </p>
                   </div>
-                  <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  <ProductGridView
+                    toggle={g.id === groups[0]?.id}
+                    className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                  >
                     {g.items.map((product) => (
                       <ProductCard key={product.id} product={product} />
                     ))}
-                  </div>
+                  </ProductGridView>
                 </div>
               ))}
 
