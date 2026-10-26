@@ -9,8 +9,10 @@ import {
   createAmazonReturnAuthorization,
   createExchangeReplacement,
   getReturnPhotos,
+  completeReturnInspection,
   handleReturnStock,
   issueReturnRefund,
+  rejectAfterFailedInspection,
   sendReturnInstructions,
   syncAmazonReturnStatus,
   updateReturnRequest,
@@ -570,7 +572,7 @@ export default function ReturnsManager({
                                 </div>
                               );
                 const stockBlock = r.fulfillmentProvider !== "amazon_mcf" &&
-                                ["received", "completed", "inspection_failed"].includes(r.status) && (
+                                ["completed"].includes(r.status) && (
                                 <div className="rounded-2xl border border-black/5 bg-white p-4">
                                   <p className="font-bold text-ink">Returned stock</p>
                                   {r.stock ? (
@@ -1016,34 +1018,118 @@ export default function ReturnsManager({
                             )}
 
                             {stage === "inspect" && (
-                              <form className="mt-4">
+                              <div className="mt-4 space-y-4">
                                 <ul className="list-disc space-y-1 pl-5 text-sm text-ink">
                                   <li>Is it the right part, and is the quantity correct?</li>
-                                  <li>Is it unused and in sellable condition?</li>
-                                  <li>Does it match the reason the customer gave?</li>
+                                  <li>Does it match the customer&apos;s return request?</li>
+                                  <li>Is it sellable, damaged, or ineligible for return?</li>
                                 </ul>
-                                <p className="mt-3 text-sm font-semibold text-ink">Fine? Use Restock or Damaged below, then refund.</p>
-                                <textarea
-                                  name="why"
-                                  placeholder="Only if it fails inspection: what is wrong? (the customer is emailed this)"
-                                  className="mt-3 w-full min-h-16 rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm"
-                                />
+
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  <button
+                                    type="button"
+                                    disabled={pending || Boolean(r.stock)}
+                                    onClick={() =>
+                                      run(async () => {
+                                        await completeReturnInspection(r.id, "restock", r.type);
+                                        setRows((rs) =>
+                                          rs.map((x) =>
+                                            x.id === r.id
+                                              ? {
+                                                  ...x,
+                                                  stock: "restocked",
+                                                  status: r.type === "exchange" ? "exchange_processing" : "refund_pending",
+                                                }
+                                              : x
+                                          )
+                                        );
+                                      }, "Inspection passed. Item restocked and workflow advanced.")
+                                    }
+                                    className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left hover:border-emerald-400 disabled:opacity-50"
+                                  >
+                                    <p className="font-black text-emerald-800">Pass inspection · Restock</p>
+                                    <p className="mt-1 text-xs leading-5 text-emerald-800/75">
+                                      Use when the part is correct and sellable. Inventory is increased, then the return moves to {r.type === "exchange" ? "replacement" : "refund"}.
+                                    </p>
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    disabled={pending || Boolean(r.stock)}
+                                    onClick={() =>
+                                      run(async () => {
+                                        await completeReturnInspection(r.id, "damaged", r.type);
+                                        setRows((rs) =>
+                                          rs.map((x) =>
+                                            x.id === r.id
+                                              ? {
+                                                  ...x,
+                                                  stock: "damaged",
+                                                  status: r.type === "exchange" ? "exchange_processing" : "refund_pending",
+                                                }
+                                              : x
+                                          )
+                                        );
+                                      }, "Inspection passed. Item accepted as damaged and workflow advanced.")
+                                    }
+                                    className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left hover:border-amber-400 disabled:opacity-50"
+                                  >
+                                    <p className="font-black text-amber-900">Pass inspection · Don&apos;t restock</p>
+                                    <p className="mt-1 text-xs leading-5 text-amber-900/75">
+                                      Use when the return is valid but the part is damaged or not sellable. Inventory is not increased, but the {r.type === "exchange" ? "replacement" : "refund"} can still continue.
+                                    </p>
+                                  </button>
+                                </div>
+
+                                <form className="rounded-2xl border border-red-200 bg-red-50 p-4">
+                                  <p className="font-black text-red-800">Fail inspection</p>
+                                  <p className="mt-1 text-xs leading-5 text-red-800/75">
+                                    Use only when the return itself is not eligible—for example, the wrong item was sent back, the quantity is incorrect, or the return violates policy. No refund or replacement is issued automatically.
+                                  </p>
+                                  <textarea
+                                    name="why"
+                                    placeholder="Explain why the return failed inspection. This reason is emailed to the customer."
+                                    className="mt-3 w-full min-h-20 rounded-xl border border-red-200 bg-white px-3 py-2.5 text-sm"
+                                  />
+                                  <button
+                                    type="button"
+                                    disabled={pending}
+                                    onClick={(e) => {
+                                      const why = String(new FormData(e.currentTarget.form as HTMLFormElement).get("why") || "").trim();
+                                      run(async () => {
+                                        if (!why) throw new Error("Please describe what failed inspection.");
+                                        await updateReturnRequest(r.id, "inspection_failed", why, r.carrier, r.tracking, { notify: true, message: why });
+                                        setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "inspection_failed", notes: why } : x)));
+                                      }, `${r.orderNumber} marked as failed inspection. The customer was emailed.`);
+                                    }}
+                                    className="mt-3 rounded-full border border-red-300 bg-white px-5 py-2 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                                  >
+                                    Record failed inspection
+                                  </button>
+                                </form>
+                              </div>
+                            )}
+
+                            {r.status === "inspection_failed" && (
+                              <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4">
+                                <p className="font-black text-red-800">Resolve failed inspection</p>
+                                <p className="mt-1 text-sm leading-6 text-red-800/80">
+                                  A failed inspection does not automatically mean refund or replacement. If the return is ineligible, reject it and arrange to send the original part back to the customer. If you decide to accept it after review, use one of the inspection-pass options above instead.
+                                </p>
                                 <button
                                   type="button"
                                   disabled={pending}
-                                  onClick={(e) => {
-                                    const why = String(new FormData(e.currentTarget.form as HTMLFormElement).get("why") || "").trim();
+                                  onClick={() =>
                                     run(async () => {
-                                      if (!why) throw new Error("Please describe what failed inspection.");
-                                      await updateReturnRequest(r.id, "inspection_failed", why, r.carrier, r.tracking, { notify: true, message: why });
-                                      setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "inspection_failed", notes: why } : x)));
-                                    }, `${r.orderNumber} marked as failed inspection. The customer was emailed.`);
-                                  }}
-                                  className="mt-3 rounded-full border border-red-300 bg-white px-5 py-2 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                                      await rejectAfterFailedInspection(r.id, r.notes || "Returned item failed inspection.");
+                                      setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "rejected" } : x)));
+                                    }, "Return rejected after failed inspection. The customer was emailed.")
+                                  }
+                                  className="mt-3 rounded-full bg-red-700 px-5 py-2 text-sm font-bold text-white disabled:opacity-60"
                                 >
-                                  The part failed inspection
+                                  Reject return · No refund
                                 </button>
-                              </form>
+                              </div>
                             )}
 
                             {stage === "closed" && rejectedLike && (
