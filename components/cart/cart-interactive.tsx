@@ -511,6 +511,59 @@ export default function CartInteractive({
             </span>
           </div>
 
+          <div
+            ref={fitRef}
+            tabIndex={-1}
+            className={`mt-6 rounded-2xl border p-4 transition duration-300 ${
+              fitConfirmed
+                ? "border-emerald-400 bg-emerald-50 text-ink"
+                : "border-amber-300 bg-amber-50 text-ink"
+            } ${shake ? "cm-shake border-brand" : ""}`}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-xs font-black uppercase tracking-[0.14em] text-brand">
+                Required before checkout
+              </p>
+              {!fitConfirmed && (
+                <span className="rounded-full bg-amber-200 px-2.5 py-1 text-[11px] font-bold text-amber-900">
+                  Action required
+                </span>
+              )}
+            </div>
+
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="checkbox"
+                checked={fitConfirmed}
+                onChange={(e) => setFitConfirmed(e.target.checked)}
+                className="peer sr-only"
+              />
+              <span
+                aria-hidden="true"
+                className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border-2 transition duration-200 peer-focus-visible:ring-4 peer-focus-visible:ring-brand/30 ${
+                  fitConfirmed
+                    ? "scale-105 border-emerald-600 bg-emerald-600 text-white"
+                    : "border-amber-600 bg-white"
+                }`}
+              >
+                <Check
+                  className={`h-4 w-4 transition ${
+                    fitConfirmed ? "scale-100 opacity-100" : "scale-50 opacity-0"
+                  }`}
+                  strokeWidth={3}
+                />
+              </span>
+              <span className="text-sm leading-5">
+                <span className="block font-black text-ink">
+                  I confirm these parts fit my vehicle
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                  I checked the year, make, model and engine. Check this box to enable Secure Checkout.
+                </span>
+              </span>
+            </label>
+          </div>
+
           <form action={beginCheckout}>
             <input type="hidden" name="fit_confirmed" value={fitConfirmed ? "yes" : "no"} />
             <input type="hidden" name="delivery_method" value={delivery.method} />
@@ -529,22 +582,16 @@ export default function CartInteractive({
               Object.entries(delivery.fields).map(([k, v]) => <input key={k} type="hidden" name={`u_${k}`} value={v} />)}
             <button
               type="submit"
-              disabled={hasPendingChanges || !uberReady || stockProblem}
-              aria-disabled={!fitConfirmed}
-              onClick={(e) => {
-                if (!fitConfirmed) {
-                  e.preventDefault();
-                  setShake(true);
-                  fitRef.current?.focus();
-                  setTimeout(() => setShake(false), 500);
-                }
-              }}
-              className={`cm-button-primary mt-6 w-full gap-2 py-3.5 disabled:cursor-not-allowed disabled:opacity-50 ${
-                fitConfirmed ? "" : "opacity-60 saturate-50"
-              }`}
+              disabled={hasPendingChanges || !uberReady || stockProblem || !fitConfirmed}
+              aria-disabled={hasPendingChanges || !uberReady || stockProblem || !fitConfirmed}
+              className="cm-button-primary mt-4 w-full gap-2 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Lock className="h-4 w-4" />
-              {hasPendingChanges ? "Saving cart…" : "Secure Checkout"}
+              {hasPendingChanges
+                ? "Saving cart…"
+                : !fitConfirmed
+                  ? "Confirm vehicle fit to checkout"
+                  : "Secure Checkout"}
             </button>
           </form>
 
@@ -554,36 +601,7 @@ export default function CartInteractive({
           </p>
         </aside>
 
-        <label
-          ref={fitRef}
-          tabIndex={-1}
-          className={`cm-fit flex cursor-pointer items-center gap-3 rounded-2xl border p-4 transition duration-300 ${
-            fitConfirmed
-              ? "border-emerald-300 bg-emerald-50"
-              : "border-border bg-secondary hover:border-brand/40"
-          } ${shake ? "cm-shake border-brand" : ""}`}
-        >
-          <input
-            type="checkbox"
-            checked={fitConfirmed}
-            onChange={(e) => setFitConfirmed(e.target.checked)}
-            className="peer sr-only"
-          />
-          <span
-            aria-hidden="true"
-            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 transition duration-200 peer-focus-visible:ring-4 peer-focus-visible:ring-brand/30 ${
-              fitConfirmed ? "scale-110 border-emerald-600 bg-emerald-600 text-white" : "border-ink/30 bg-white"
-            }`}
-          >
-            <Check className={`h-4 w-4 transition ${fitConfirmed ? "scale-100 opacity-100" : "scale-50 opacity-0"}`} strokeWidth={3} />
-          </span>
-          <span className="text-sm leading-5">
-            <span className="block font-bold text-ink">These parts fit my vehicle</span>
-            <span className="block text-xs text-muted-foreground">
-              I checked the year, make, model and engine.
-            </span>
-          </span>
-        </label>
+
       </div>
     </div>
   );
