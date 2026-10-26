@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import crypto from "node:crypto";
 
 const STRIPE_API_BASE = "https://api.stripe.com/v1";
@@ -73,7 +74,10 @@ async function addBranding(body: URLSearchParams) {
   }
 }
 
-async function postCheckoutSession(body: URLSearchParams, idempotencyKey: string) {
+async function postCheckoutSession(body: URLSearchParams, baseKey: string) {
+  // Stripe rejects a reused key when the request changed (new shipping, tax, customer...).
+  // Same request => same key (safe retry); changed request => new key.
+  const idempotencyKey = `${baseKey}:${createHash("sha256").update(body.toString()).digest("hex").slice(0, 16)}`;
   const send = (b: URLSearchParams, key = idempotencyKey) =>
     fetch(`${STRIPE_API_BASE}/checkout/sessions`, {
       method: "POST",
