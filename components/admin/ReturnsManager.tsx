@@ -571,6 +571,17 @@ export default function ReturnsManager({
                               {/* Simple next-step panel */}
                               <div className="rounded-2xl border-2 border-brand/30 bg-brand-tint/30 p-4">
                                 <p className="text-xs font-bold uppercase tracking-wide text-brand">Next step</p>
+                                {["requested", "under_review"].includes(r.status) && (
+                                  <div className="mt-2">
+                                    <p className="text-sm font-bold text-ink">1. Review the customer&apos;s return request</p>
+                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                      Check the reason, returned item and any photos. Then choose the appropriate status in
+                                      <span className="font-semibold text-ink"> Update request</span> on the left and click
+                                      <span className="font-semibold text-ink"> Save update</span>. If you reject the request,
+                                      a reason is required. The customer will automatically receive the updated status and reason by email.
+                                    </p>
+                                  </div>
+                                )}
                                 {["approved", "label_issued", "in_transit"].includes(r.status) && (
                                   <div className="mt-2">
                                     <p className="text-sm font-bold text-ink">2. Waiting for the customer to send the part back</p>
@@ -609,14 +620,29 @@ export default function ReturnsManager({
                                 )}
                                 {["received", "refund_pending", "inspection_failed"].includes(r.status) && (
                                   <div className="mt-2">
-                                    <p className="text-sm font-bold text-ink">3. Refund the customer, then restock</p>
-                                    <p className="mt-1 text-xs text-muted-foreground">
-                                      Use the refund and returned-stock boxes on this page to finish.
+                                    <p className="text-sm font-bold text-ink">3. Inspect the returned part and complete the refund</p>
+                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                      The customer&apos;s item has been returned. Check the part and its condition first, then issue the
+                                      appropriate refund. After that, use the returned-stock section below to restock a sellable item
+                                      or mark it damaged.
                                     </p>
                                   </div>
                                 )}
-                                {["completed", "rejected", "cancelled"].includes(r.status) && (
-                                  <p className="mt-2 text-sm font-bold text-ink">Nothing left to do. This return is {r.status}.</p>
+                                {r.status === "rejected" && (
+                                  <div className="mt-2">
+                                    <p className="text-sm font-bold text-ink">Request rejected</p>
+                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                      The customer has been notified by email. No further action is required unless you change the status again.
+                                    </p>
+                                  </div>
+                                )}
+                                {["completed", "cancelled"].includes(r.status) && (
+                                  <div className="mt-2">
+                                    <p className="text-sm font-bold text-ink">Return closed</p>
+                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                      This return is {r.status}. No further action is required.
+                                    </p>
+                                  </div>
                                 )}
                               </div>
 
