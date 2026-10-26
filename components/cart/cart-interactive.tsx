@@ -514,18 +514,18 @@ export default function CartInteractive({
           <div
             ref={fitRef}
             tabIndex={-1}
-            className={`mt-6 rounded-2xl border p-4 transition duration-300 ${
+            className={`mt-5 rounded-2xl border p-3.5 transition duration-300 ${
               fitConfirmed
                 ? "border-emerald-400 bg-emerald-50 text-ink"
                 : "border-amber-300 bg-amber-50 text-ink"
             } ${shake ? "cm-shake border-brand" : ""}`}
           >
-            <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="mb-2.5 flex items-center justify-between gap-3">
               <p className="text-xs font-black uppercase tracking-[0.14em] text-brand">
                 Required before checkout
               </p>
               {!fitConfirmed && (
-                <span className="rounded-full bg-amber-200 px-2.5 py-1 text-[11px] font-bold text-amber-900">
+                <span className="whitespace-nowrap rounded-full bg-amber-200 px-2.5 py-1 text-[11px] font-bold text-amber-900">
                   Action required
                 </span>
               )}
@@ -557,8 +557,8 @@ export default function CartInteractive({
                 <span className="block font-black text-ink">
                   I confirm these parts fit my vehicle
                 </span>
-                <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                  I checked the year, make, model and engine. Check this box to enable Secure Checkout.
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  I checked the year, make, model and engine.
                 </span>
               </span>
             </label>
@@ -584,7 +584,7 @@ export default function CartInteractive({
               type="submit"
               disabled={hasPendingChanges || !uberReady || stockProblem || !fitConfirmed}
               aria-disabled={hasPendingChanges || !uberReady || stockProblem || !fitConfirmed}
-              className="cm-button-primary mt-4 w-full gap-2 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
+              className="cm-button-primary mt-3.5 w-full gap-2 py-3 disabled:cursor-not-allowed disabled:opacity-45"
             >
               <Lock className="h-4 w-4" />
               {hasPendingChanges
