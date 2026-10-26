@@ -29,7 +29,7 @@ const dayKey = (d: Date | string) =>
   new Date(d).toLocaleDateString("en-CA", { timeZone: TZ });
 
 const TO_SHIP = ["paid", "processing", "packed", "ready_to_ship"];
-const RETURN_CLOSED = ["completed", "closed", "rejected", "cancelled", "canceled", "refunded", "denied", "exchanged", "exchange_completed", "resolved"];
+const RETURN_NEEDS_REVIEW = ["requested", "under_review", "inspection_failed", "exchange_processing"];
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
 
@@ -126,7 +126,7 @@ async function loadDashboard(supabase: Supa, role: string) {
 
   // Needs attention
   const toShip = orders.filter((o) => o.payment_status === "paid" && TO_SHIP.includes(o.status)).length;
-  const openReturns = (returns.data ?? []).filter((r) => !RETURN_CLOSED.includes(String(r.status))).length;
+  const openReturns = (returns.data ?? []).filter((r) => RETURN_NEEDS_REVIEW.includes(String(r.status))).length;
   const openDisputes = (disputes.data ?? []).filter((d) => /needs_response|warning_needs|under_review/.test(String(d.status))).length;
   const stripeIssues = run.data && run.data.status !== "running" ? Number(run.data.issue_count ?? 0) : 0;
 
@@ -193,7 +193,7 @@ export default async function AdminDashboardPage() {
 
   const attention = [
     { label: "Orders to ship", value: d.attention.toShip, href: "/admin/orders", icon: PackageCheck },
-    { label: "Open returns", value: d.attention.openReturns, href: "/admin/returns", icon: RotateCcw },
+    { label: "Returns needing review", value: d.attention.openReturns, href: "/admin/returns", icon: RotateCcw },
     ...(role === "admin"
       ? [
           {
