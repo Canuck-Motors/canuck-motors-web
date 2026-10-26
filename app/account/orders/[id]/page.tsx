@@ -185,9 +185,14 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
           quantity,
           name: String(item.product_name || item.sku || "Item"),
           sku: String(item.sku || ""),
-          label: `${quantity > 1 ? `${quantity}× ` : ""}${String(item.product_name || item.sku || "Item")}${
-            item.sku ? ` · ${item.sku}` : ""
-          }`,
+          label: (() => {
+            const name = String(item.product_name || item.sku || "Item");
+            const sku = String(item.sku || "");
+            const display = sku && !name.toLowerCase().includes(sku.toLowerCase())
+              ? `${name} · ${sku}`
+              : name;
+            return `${quantity > 1 ? `${quantity}× ` : ""}${display}`;
+          })(),
         };
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -420,6 +425,11 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
         )
     );
 
+  const latestReturnEventKey = new Map<string, string>();
+  for (const event of customerTimeline) {
+    if (event.returnRequestId) latestReturnEventKey.set(event.returnRequestId, event.key);
+  }
+
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#fff7ed_0%,#ffffff_24%,#fafafa_100%)]">
       <div className="cm-container py-12 md:py-16">
@@ -475,7 +485,11 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
               <ol className="relative mt-7 ml-2 border-l border-black/10 pl-7">
                 {customerTimeline.map((event, index) => {
                   const tone = timelineTone(event.status);
-                  const latest = index === customerTimeline.length - 1;
+                  const isLatestOverall = index === customerTimeline.length - 1;
+                  const isCurrentReturnState =
+                    Boolean(event.returnRequestId) &&
+                    latestReturnEventKey.get(String(event.returnRequestId)) === event.key;
+                  const highlight = isCurrentReturnState || (!event.returnRequestId && isLatestOverall);
 
                   return (
                     <li key={event.key} className="relative pb-7 last:pb-0">
@@ -483,36 +497,29 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                         className={`absolute -left-[34px] top-1 flex h-4 w-4 items-center justify-center rounded-full ring-4 ring-white ${tone.dot}`}
                         aria-hidden="true"
                       />
-                      <div className={latest ? "rounded-2xl bg-secondary/60 p-4" : ""}>
+                      <div className={highlight ? "rounded-2xl bg-secondary/60 p-4" : ""}>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-black text-ink">{event.title}</p>
-                          {latest && (
+                          {isCurrentReturnState && (
                             <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${tone.badge}`}>
-                              Current
+                              Current status
                             </span>
                           )}
                         </div>
                         {event.returnRequestId && (
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                            <span className="rounded-full bg-black/5 px-2.5 py-1 text-[11px] font-bold text-ink">
-                              {event.returnLabel}
-                            </span>
-                            <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
-                              {event.returnItemCount || 0} {(event.returnItemCount || 0) === 1 ? "item" : "items"}
-                            </span>
-                            {(event.returnItemLabels ?? []).slice(0, 2).map((itemLabel) => (
-                              <span
-                                key={itemLabel}
-                                className="max-w-[260px] truncate rounded-full border border-black/5 bg-white px-2.5 py-1 text-[11px] font-semibold text-ink"
-                              >
-                                {itemLabel}
+                          <div className="mt-2 rounded-xl border border-black/5 bg-white px-3 py-2.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs font-black text-brand">{event.returnLabel}</span>
+                              <span className="text-xs font-semibold text-muted-foreground">
+                                {event.returnItemCount || 0} {(event.returnItemCount || 0) === 1 ? "item" : "items"}
                               </span>
-                            ))}
-                            {(event.returnItemLabels?.length ?? 0) > 2 && (
-                              <span className="text-[11px] font-bold text-brand">
-                                +{(event.returnItemLabels?.length ?? 0) - 2} more
-                              </span>
-                            )}
+                            </div>
+                            <p className="mt-1 text-sm font-semibold text-ink">
+                              {(event.returnItemLabels ?? []).slice(0, 2).join(" · ")}
+                              {(event.returnItemLabels?.length ?? 0) > 2
+                                ? ` · +${(event.returnItemLabels?.length ?? 0) - 2} more`
+                                : ""}
+                            </p>
                           </div>
                         )}
                         {event.detail && (
@@ -766,179 +773,6 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                 ))}
               </div>
             </section>
-
-            {(returnRequests ?? []).length > 0 && (
-              <section className="mt-8 rounded-[26px] border border-black/5 bg-white p-6 shadow-[0_14px_40px_rgba(0,0,0,0.06)]">
-                <p className="cm-eyebrow">Returns</p>
-                <h2 className="mt-2 text-2xl font-black text-ink">
-                  Return details
-                </h2>
-                <div className="mt-5 space-y-3">
-                  {(returnRequests ?? []).map((request) => {
-                    const requestId = String(request.id);
-                    const requestItems = returnItemsFor(request);
-                    const requestNumber = returnNumberById.get(requestId) ?? 1;
-                    const totalReturnQty = requestItems.reduce((sum, item) => sum + item.quantity, 0);
-                    const firstTwo = requestItems.slice(0, 2);
-
-                    return (
-                      <details
-                        key={request.id}
-                        className="group rounded-2xl border border-black/5 bg-secondary/30 open:bg-white"
-                      >
-                        <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4 marker:hidden">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="rounded-full bg-black/5 px-2.5 py-1 text-xs font-black text-ink">
-                                Return {requestNumber}
-                              </span>
-                              <p className="font-black capitalize text-ink">
-                                {request.request_type}
-                              </p>
-                              <span className="text-xs font-semibold text-muted-foreground">
-                                {totalReturnQty} {totalReturnQty === 1 ? "item" : "items"}
-                              </span>
-                            </div>
-                            <p className="mt-2 truncate text-sm font-semibold text-ink">
-                              {firstTwo.map((item) => item.label).join(" · ")}
-                              {requestItems.length > 2 ? ` · +${requestItems.length - 2} more` : ""}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              {request.reason_code.replaceAll("_", " ")} · Requested{" "}
-                              {new Date(request.requested_on).toLocaleString("en-CA", {
-                                dateStyle: "medium",
-                                timeStyle: "short",
-                              })}
-                            </p>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="h-fit rounded-full bg-brand-tint px-3 py-1 text-sm font-bold capitalize text-brand">
-                              {request.status.replaceAll("_", " ")}
-                            </span>
-                            <span
-                              aria-hidden="true"
-                              className="text-lg font-black text-muted-foreground transition-transform group-open:rotate-180"
-                            >
-                              ⌄
-                            </span>
-                          </div>
-                        </summary>
-
-                        <div className="border-t border-black/5 px-4 pb-4 pt-3">
-                          <div className="rounded-xl bg-secondary/60 p-3">
-                            <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">
-                              Items in this return
-                            </p>
-                            <div className="mt-2 space-y-1.5">
-                              {requestItems.map((item) => (
-                                <div key={item.sku + item.name} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                                  <span className="font-semibold text-ink">{item.name}</span>
-                                  <span className="text-muted-foreground">
-                                    {item.quantity}× {item.sku}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                      {request.reason_text && (
-                        <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                          Your note: {request.reason_text}
-                        </p>
-                      )}
-
-                      {["approved", "label_issued", "in_transit"].includes(String(request.status)) &&
-                        request.request_type === "return" &&
-                        request.fulfillment_provider !== "amazon_mcf" && (
-                          <a
-                            href={`/account/returns/${request.id}/label`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="mt-3 inline-flex rounded-full bg-ink px-5 py-2 text-sm font-bold text-white"
-                          >
-                            Open return label PDF
-                          </a>
-                        )}
-
-                      {(request.return_tracking_number || request.return_carrier) && (
-                        <div className="mt-3 rounded-2xl bg-secondary/60 p-4 text-sm">
-                          <p className="font-bold text-ink">Return shipping</p>
-                          <p className="mt-1 text-muted-foreground">
-                            {[request.return_carrier, request.return_tracking_number]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </p>
-                        </div>
-                      )}
-
-                      {request.fulfillment_provider === "amazon_mcf" && request.amazon_rma_id && (
-                        <div className="mt-3 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm">
-                          <p className="font-bold text-ink">Amazon MCF return</p>
-                          <p className="mt-1 text-muted-foreground">
-                            RMA {request.amazon_rma_id}
-                            {request.amazon_return_status
-                              ? ` · ${request.amazon_return_status.replaceAll("_", " ")}`
-                              : ""}
-                          </p>
-                          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                            Print the Amazon return authorization document. Attach the return-center mailing label to the package and place the authorization slip inside. Return postage is not included.
-                          </p>
-                          {request.amazon_rma_page_url && (
-                            <a
-                              href={request.amazon_rma_page_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="cm-button-primary mt-3"
-                            >
-                              Open Amazon return document
-                            </a>
-                          )}
-                        </div>
-                      )}
-
-                      {request.resolution_notes && (
-                        <div className="mt-3 rounded-2xl bg-secondary/60 p-4 text-sm">
-                          <p className="font-bold text-ink">Message from Canuck Motors</p>
-                          <p className="mt-1 whitespace-pre-line leading-6 text-muted-foreground">
-                            {request.resolution_notes}
-                          </p>
-                        </div>
-                      )}
-
-                      {request.request_type === "exchange" &&
-                        request.replacement_order_id && (
-                          <div className="mt-4 rounded-2xl bg-secondary/60 p-4">
-                            {Number(request.replacement_amount_due) > 0 && (
-                              <p className="text-sm font-semibold text-ink">
-                                Exchange payment due: $
-                                {Number(request.replacement_amount_due).toFixed(2)}
-                              </p>
-                            )}
-
-                            {Number(request.replacement_refund_due) > 0 && (
-                              <p className="text-sm font-semibold text-ink">
-                                Exchange refund: $
-                                {Number(request.replacement_refund_due).toFixed(2)}
-                              </p>
-                            )}
-
-                            {request.replacement_payment_url && (
-                              <a
-                                href={request.replacement_payment_url}
-                                className="cm-button-primary mt-3"
-                              >
-                                Pay exchange difference
-                              </a>
-                            )}
-                          </div>
-                        )}
-                        </div>
-                      </details>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
 
             {uberLocked && order.payment_status === "paid" && (
               <section className="mt-8 rounded-[26px] border border-black/5 bg-white p-6 text-sm leading-6 text-muted-foreground shadow-sm">
