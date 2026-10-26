@@ -28,6 +28,7 @@ function pose(keys: Key[], p: number): Key {
 export function ProductStory({ product }: { product: ProductDef }) {
   const { layers, keys, chapters } = product;
   const sectionRef = useRef<HTMLElement>(null);
+  const pinRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const rigRef = useRef<HTMLDivElement>(null);
   const shadowRef = useRef<HTMLDivElement>(null);
@@ -77,7 +78,7 @@ export function ProductStory({ product }: { product: ProductDef }) {
     const frame = () => {
       raf = requestAnimationFrame(frame);
       const rect = section.getBoundingClientRect();
-      const run = rect.height - stage.clientHeight;
+      const run = rect.height - (pinRef.current?.clientHeight ?? stage.clientHeight);
       const target = clamp(-rect.top / Math.max(1, run));
       const next = current < 0 || reduce ? target : current + (target - current) * 0.09;
       if (Math.abs(next - current) < 0.00005) return;
@@ -138,8 +139,8 @@ export function ProductStory({ product }: { product: ProductDef }) {
   }, [chapters, keys, layers]);
 
   return (
-    <section ref={sectionRef} className="relative h-[620vh] bg-ink text-white" aria-label={`${product.tab}: inside view`}>
-      <div className="sticky top-[var(--cm-top,72px)] h-[calc(100svh-var(--cm-top,72px))] overflow-hidden">
+    <section ref={sectionRef} className="relative h-[460vh] bg-ink text-white md:h-[620vh]" aria-label={`${product.tab}: inside view`}>
+      <div ref={pinRef} className="sticky top-[var(--cm-top,72px)] h-[calc(100svh-var(--cm-top,72px))] overflow-hidden">
         {/* Backdrop */}
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_68%_45%,rgba(214,40,40,0.22),transparent_55%)]" />
         <div className="pointer-events-none absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,255,255,.6)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.6)_1px,transparent_1px)] [background-size:64px_64px] [mask-image:radial-gradient(ellipse_at_center,#000_30%,transparent_75%)]" />

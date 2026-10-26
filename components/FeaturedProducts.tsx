@@ -5,7 +5,7 @@ import { cacheLife, cacheTag } from "next/cache";
 import { createPublicClient } from "@/lib/supabase/public";
 import { ProductCard } from "@/components/ProductCard";
 import { isVideo } from "@/lib/product-images";
-import { PRODUCT_TYPE_ORDER } from "@/lib/product-order";
+import { PRODUCT_TYPE_ORDER, typeRank } from "@/lib/product-order";
 
 type FeaturedProduct = {
   id: number;
@@ -86,8 +86,18 @@ async function getFeaturedProducts(): Promise<FeaturedProduct[]> {
   return chosen.slice(0, TOTAL);
 }
 
+// Phones only: show 2 water pumps, 2 brake pads and 1 timing belt kit so the page is short.
+const PHONE_LIMIT: Record<number, number> = { 0: 2, 1: 2, 2: 1 };
+
 export async function FeaturedProducts() {
   const products = await getFeaturedProducts();
+  const seenByType: Record<number, number> = {};
+  const showOnPhone = new Set<number>();
+  for (const p of products) {
+    const rank = typeRank(p.product_name);
+    seenByType[rank] = (seenByType[rank] ?? 0) + 1;
+    if (seenByType[rank] <= (PHONE_LIMIT[rank] ?? 0)) showOnPhone.add(p.id);
+  }
 
   return (
     <section
@@ -128,8 +138,18 @@ export async function FeaturedProducts() {
         ) : (
           <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {products.map((product) => (
-              <ProductCard key={product.id} product={product} />
+              <div key={product.id} className={showOnPhone.has(product.id) ? "" : "max-sm:hidden"}>
+                <ProductCard product={product} />
+              </div>
             ))}
+          </div>
+        )}
+
+        {products.length > 0 && (
+          <div className="mt-8 text-center sm:hidden">
+            <Link href="/products" className="cm-button-primary">
+              View all products
+            </Link>
           </div>
         )}
       </div>

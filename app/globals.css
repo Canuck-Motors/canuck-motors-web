@@ -320,7 +320,13 @@
   text-shadow: 0 0 28px hsl(var(--brand) / 0.55), 0 0 70px hsl(var(--brand) / 0.35);
 }
 @media (max-width: 640px) {
-  .cm-neon { opacity: 0.25; right: -8%; }
+  /* Phones: keep the whole brand name on screen (word width = letters x ~0.6em). */
+  .cm-neon { opacity: 0.35; right: 4%; left: auto; max-width: 92%; }
+  .cm-neon::before {
+    font-size: min(24vw, calc(150vw / var(--neon-len, 5)));
+    -webkit-text-stroke-width: 1.5px;
+    letter-spacing: -0.02em;
+  }
 }
 
 /* Hide the browser's built-in clear (x) on search boxes; we draw our own */

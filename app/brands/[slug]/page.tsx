@@ -66,7 +66,12 @@ export default async function BrandPage({ params }: PageProps) {
     <>
       <main className="min-h-screen bg-white">
         <section className="relative overflow-hidden bg-ink text-white">
-          <div className="cm-neon" aria-hidden="true" data-brand={result.brand.manufacturer_name} />
+          <div
+            className="cm-neon"
+            aria-hidden="true"
+            data-brand={result.brand.manufacturer_name}
+            style={{ "--neon-len": Math.max(4, result.brand.manufacturer_name.length) } as React.CSSProperties}
+          />
           <div className="cm-container relative z-10 py-14 md:py-20">
             <Link href="/brands" className="text-sm font-bold text-brand hover:underline">
               All vehicle brands
