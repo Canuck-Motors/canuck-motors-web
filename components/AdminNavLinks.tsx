@@ -33,9 +33,11 @@ const baseLinks: NavItem[] = [
 export function AdminNavLinks({
   showStripe,
   returnAttentionCount = 0,
+  orderAttentionCount = 0,
 }: {
   showStripe: boolean;
   returnAttentionCount?: number;
+  orderAttentionCount?: number;
 }) {
   const pathname = usePathname() ?? "";
   // Admins manage Categories inside the Top menu page; staff (no Top menu) keep it as a normal item.
@@ -86,6 +88,16 @@ export function AdminNavLinks({
               <Icon className={`h-[17px] w-[17px] ${active ? "text-white" : "text-brand"}`} aria-hidden="true" />
             </span>
             <span className="flex-1">{label}</span>
+            {href === "/admin/orders" && orderAttentionCount > 0 && (
+              <span
+                aria-label={`${orderAttentionCount} orders need fulfillment`}
+                className={`inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-black ${
+                  active ? "bg-white text-brand" : "bg-brand text-white"
+                }`}
+              >
+                {orderAttentionCount > 99 ? "99+" : orderAttentionCount}
+              </span>
+            )}
             {href === "/admin/returns" && returnAttentionCount > 0 && (
               <span
                 aria-label={`${returnAttentionCount} returns need attention`}
