@@ -1061,9 +1061,10 @@ export default function ReturnsManager({
                               return (
                                 <li
                                   key={st}
-                                  className={`relative rounded-xl px-1.5 py-2 text-center transition ${
+                                  className={`relative rounded-xl px-1.5 py-2.5 text-center transition-all duration-300 ${
+
                                     me === "current"
-                                      ? "bg-brand-tint shadow-[0_6px_18px_rgba(220,38,38,0.10)]"
+                                      ? "bg-brand-tint shadow-[0_8px_24px_rgba(220,38,38,0.12)]"
                                       : me === "done"
                                         ? "bg-emerald-50/70"
                                         : me === "bad"
@@ -1073,7 +1074,8 @@ export default function ReturnsManager({
                                 >
                                   <div className="flex items-center">
                                     <span
-                                      className={`h-[3px] flex-1 rounded-full ${
+                                      className={`h-[3px] flex-1 rounded-full transition-all duration-500 ${
+
                                         n === 0
                                           ? "bg-transparent"
                                           : me !== "todo" && prev === "done"
@@ -1088,7 +1090,7 @@ export default function ReturnsManager({
                                           : me === "done"
                                             ? "bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.10)]"
                                             : me === "current"
-                                              ? "bg-brand shadow-[0_0_0_5px_rgba(220,38,38,0.14)]"
+                                              ? "bg-brand shadow-[0_0_0_5px_rgba(220,38,38,0.14)] animate-pulse"
                                               : "bg-black/15"
                                       }`}
                                     >
@@ -1101,7 +1103,8 @@ export default function ReturnsManager({
                                       )}
                                     </span>
                                     <span
-                                      className={`h-[3px] flex-1 rounded-full ${
+                                      className={`h-[3px] flex-1 rounded-full transition-all duration-500 ${
+
                                         n === steps.length - 1
                                           ? "bg-transparent"
                                           : me === "done" && next !== "todo"
@@ -1125,27 +1128,7 @@ export default function ReturnsManager({
                                     {stepLabel}
                                   </p>
 
-                                  <span
-                                    className={`mt-0.5 block text-[9px] font-bold uppercase tracking-[0.12em] ${
-                                      me === "current"
-                                        ? "text-brand/70"
-                                        : me === "done"
-                                          ? "text-emerald-700/65"
-                                          : me === "bad"
-                                            ? "text-red-500/70"
-                                            : "text-black/30"
-                                    }`}
-                                  >
-                                    {me === "done"
-                                      ? "Complete"
-                                      : me === "current"
-                                        ? "Current"
-                                        : me === "bad"
-                                          ? "Stopped"
-                                          : n === stepIdx + 1
-                                            ? "Next"
-                                            : "Pending"}
-                                  </span>
+
                                 </li>
                               );
                             })}
