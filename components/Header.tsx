@@ -295,13 +295,13 @@ export default function Header() {
           <Link
             href="/cart"
             data-cart-target
-            className="relative inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 pr-9 text-sm font-bold text-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-brand"
+            className="relative inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-bold text-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-brand"
           >
             <ShoppingCart className="h-4 w-4" aria-hidden="true" />
             <span className="hidden sm:inline">Cart</span>
             <span
               aria-label={`${cartCount} item${cartCount === 1 ? "" : "s"} in cart`}
-              className="absolute right-1.5 top-1/2 inline-flex min-w-5 -translate-y-1/2 items-center justify-center rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-black leading-none text-white ring-2 ring-ink"
+              className="absolute -right-1.5 -top-1.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 text-[10px] font-black leading-none text-white shadow-md ring-2 ring-white"
             >
               {cartCount > 99 ? "99+" : cartCount}
             </span>
