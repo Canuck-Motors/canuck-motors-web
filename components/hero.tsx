@@ -511,23 +511,23 @@ export function Hero() {
       <div className="absolute inset-x-0 bottom-0 -z-10 h-48 bg-gradient-to-t from-black/70 to-transparent" />
       <div className="absolute -right-24 top-10 -z-10 h-80 w-80 rounded-full bg-brand/20 blur-[100px]" />
 
-      <div className="cm-container pb-16 pt-8 md:pb-24 md:pt-10">
+      <div className="cm-container pb-10 pt-5 sm:pb-16 sm:pt-8 md:pb-24 md:pt-10">
         {/* Hero text */}
         <div className="max-w-3xl">
-          <div className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-3.5 py-2 text-xs font-black uppercase tracking-[0.2em] text-brand backdrop-blur">
+          <div className="inline-flex items-center gap-2 rounded-full border border-brand/25 bg-brand/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.2em] text-brand backdrop-blur sm:px-3.5 sm:py-2 sm:text-xs">
             <span className="h-2 w-2 rounded-full bg-brand shadow-[0_0_16px_rgba(249,115,22,0.8)]" />
             Canuck Motors
           </div>
 
-          <h1 className="mt-5 max-w-4xl text-4xl font-black leading-[0.98] tracking-[-0.045em] text-white sm:text-5xl md:text-7xl">
+          <h1 className="mt-3 max-w-4xl text-[1.65rem] font-black leading-[1.05] tracking-[-0.04em] text-white sm:mt-5 sm:text-5xl sm:leading-[0.98] md:text-7xl">
             Find the right part. <span className="text-brand">Fit it with confidence.</span>
           </h1>
 
-          <p className="mt-6 max-w-2xl text-base leading-7 text-white/70 md:text-lg">
+          <p className="mt-2.5 max-w-2xl text-[13px] leading-5 text-white/70 sm:mt-6 sm:text-base sm:leading-7 md:text-lg">
             Search by vehicle, Canuck Motors part number, OE number, or interchange and get to compatible parts without the guesswork.
           </p>
 
-          <div className="mt-7 flex flex-wrap gap-x-6 gap-y-3 text-sm font-semibold text-white/75">
+          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold text-white/75 sm:mt-7 sm:gap-x-6 sm:gap-y-3 sm:text-sm">
             <span>Vehicle fitment catalog</span>
             <span className="text-brand">•</span>
             <span>OE & interchange search</span>
@@ -537,7 +537,7 @@ export function Hero() {
         </div>
 
         {/* Finder card */}
-        <div className="mt-10 overflow-hidden rounded-[30px] border border-white/20 bg-black/40 shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-[6px] md:mt-12">
+        <div className="mt-6 overflow-hidden rounded-[30px] border border-white/20 sm:mt-10 bg-black/40 shadow-[0_30px_80px_rgba(0,0,0,0.35)] backdrop-blur-[6px] md:mt-12">
           <div className="border-b border-black/5 bg-[linear-gradient(90deg,#0d0d0d,#181818)] px-6 py-5 text-white md:px-8">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>

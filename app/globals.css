@@ -807,7 +807,7 @@ a, button, summary, label, select, input, textarea, [role="button"], [role="tab"
 .cm-photo {
   mix-blend-mode: multiply;
   /* deeper blacks, whites stay white */
-  filter: brightness(0.95) contrast(1.4) saturate(1.08);
+  filter: brightness(0.95) contrast(1.4) saturate(1.35);
 }
 .cm-photo-stage {
   background: #f4f4f5;
@@ -823,4 +823,12 @@ a, button, summary, label, select, input, textarea, [role="button"], [role="tab"
 
 .cm-photo.cm-photo-plain {
   filter: none;
+}
+
+/* Phones: never let the page be wider than the screen (cards stay fully visible, no sideways scroll) */
+@media (max-width: 639px) {
+  html, body { width: 100%; max-width: 100vw; overflow-x: clip; }
+  main { max-width: 100vw; overflow-x: clip; }
+  .cm-pgrid > * { min-width: 0; max-width: 100%; }
+  .cm-pgrid article { width: 100%; }
 }
