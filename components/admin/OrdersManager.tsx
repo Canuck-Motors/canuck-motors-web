@@ -788,7 +788,6 @@ export default function OrdersManager({
                                 </div>
                               </div>
                             </div>
-                            </div>
                           </section>
                         </td>
                       </tr>
