@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   runAmazonMcfSyncNow,
   saveFulfillmentSettings,
+  setReturnGoEnabled,
   setUberEnabled,
 } from "@/app/admin/fulfillment/actions";
 
@@ -32,16 +33,19 @@ const MODES: { id: Mode; title: string; text: string }[] = [
 export default function FulfillmentSettings({
   initialSettings,
   amazonConfigured,
+  returnGoConfigured,
 }: {
   initialSettings: {
     amazonRedirectEnabled: boolean;
     uberEnabled: boolean;
     amazonMcfEnabled: boolean;
+    returnGoEnabled: boolean;
     deliveryPartnerEnabled: boolean;
     preferredProvider: Provider;
     amazonShippingSpeed: Speed;
   };
   amazonConfigured: boolean;
+  returnGoConfigured: boolean;
   jobs: unknown[];
 }) {
   const [settings] = useState(initialSettings);
@@ -53,6 +57,7 @@ export default function FulfillmentSettings({
         : "standard",
   );
   const [uberOn, setUberOn] = useState(initialSettings.uberEnabled);
+  const [returnGoOn, setReturnGoOn] = useState(initialSettings.returnGoEnabled);
   const [message, setMessage] = useState("");
   const [pending, start] = useTransition();
 
@@ -104,6 +109,81 @@ export default function FulfillmentSettings({
               </button>
             );
           })}
+        </div>
+      </section>
+
+      <section className="rounded-[26px] border bg-white p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="max-w-3xl">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-black">ReturnGO</h2>
+              <span className={`rounded-full px-2.5 py-1 text-xs font-black ${
+                returnGoConfigured ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
+              }`}>
+                {returnGoConfigured ? "API configured" : "Setup required"}
+              </span>
+            </div>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Use ReturnGO to manage return authorizations while keeping the Canuck Motors customer experience.
+              This is independent from outbound fulfillment, so Amazon MCF can remain on or off separately.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={returnGoOn}
+            disabled={pending}
+            onClick={() => {
+              const next = !returnGoOn;
+              setReturnGoOn(next);
+              start(async () => {
+                try {
+                  const saved = await setReturnGoEnabled(next);
+                  setReturnGoOn(saved);
+                  setMessage(
+                    saved
+                      ? returnGoConfigured
+                        ? "ReturnGO is ON."
+                        : "ReturnGO is ON, but API setup is still required before live RMAs can be created."
+                      : "ReturnGO is OFF. Existing Canuck Motors return handling remains active."
+                  );
+                } catch (e) {
+                  setReturnGoOn(!next);
+                  setMessage(e instanceof Error ? e.message : "Unable to change ReturnGO setting.");
+                }
+              });
+            }}
+            className={`relative h-8 w-14 shrink-0 rounded-full transition ${
+              returnGoOn ? "bg-brand" : "bg-black/20"
+            }`}
+          >
+            <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-all ${
+              returnGoOn ? "left-7" : "left-1"
+            }`} />
+            <span className="sr-only">{returnGoOn ? "ReturnGO on" : "ReturnGO off"}</span>
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-2xl bg-secondary/60 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.12em] text-brand">When ON</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Approved returns can be sent to ReturnGO for authorization and status tracking.
+            </p>
+          </div>
+          <div className="rounded-2xl bg-secondary/60 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.12em] text-brand">When OFF</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              The current manual / Amazon MCF return flow continues unchanged.
+            </p>
+          </div>
+          <div className="rounded-2xl bg-secondary/60 p-4">
+            <p className="text-xs font-black uppercase tracking-[0.12em] text-brand">Credentials</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Stored only in server environment variables, never in the browser.
+            </p>
+          </div>
         </div>
       </section>
 
