@@ -79,8 +79,8 @@ const money = (n: number, c = "CAD") =>
   new Intl.NumberFormat("en-CA", { style: "currency", currency: c }).format(n);
 const days = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
 
-// New requests and problems. Returns you already marked "under review" have their own tab.
-const NEEDS_ACTION = ["requested", "inspection_failed", "exchange_processing"];
+// New return requests and exchange work that need admin review.
+const NEEDS_ACTION = ["requested", "exchange_processing"];
 const UNDER_REVIEW = ["under_review"];
 const WAITING = ["approved", "label_issued", "in_transit"];
 const CLOSED = ["completed", "rejected", "cancelled", "canceled", "refunded", "denied", "resolved"];
@@ -88,7 +88,8 @@ const REJECTED = ["rejected", "cancelled", "canceled", "denied"];
 const needsAction = (r: ReturnRow) =>
   NEEDS_ACTION.includes(r.status) || (r.type === "exchange" && r.status === "received");
 const isUnderReview = (r: ReturnRow) => UNDER_REVIEW.includes(r.status);
-const isRefundDue = (r: ReturnRow) => r.type === "return" && ["received", "refund_pending"].includes(r.status);
+const isRefundDue = (r: ReturnRow) =>
+  r.type === "return" && ["received", "refund_pending", "inspection_failed"].includes(r.status);
 const isOpen = (r: ReturnRow) => !CLOSED.includes(r.status);
 const OVERDUE_DAYS = 5;
 
@@ -970,21 +971,7 @@ export default function ReturnsManager({
                                   >
                                     Reject return
                                   </button>
-                                  {r.status === "requested" && (
-                                    <button
-                                      type="button"
-                                      disabled={pending}
-                                      onClick={() =>
-                                        run(async () => {
-                                          await updateReturnRequest(r.id, "under_review", "", r.carrier, r.tracking, { notify: false, message: "" });
-                                          setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "under_review" } : x)));
-                                        }, `${r.orderNumber} is now under review.`)
-                                      }
-                                      className="rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground underline disabled:opacity-60"
-                                    >
-                                      Mark as under review
-                                    </button>
-                                  )}
+
                                 </div>
                               </form>
                             )}
