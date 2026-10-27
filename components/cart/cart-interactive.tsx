@@ -204,12 +204,30 @@ export default function CartInteractive({
     if (!Number.isFinite(nextValue)) return;
 
     const quantity = Math.max(1, Math.min(99, Math.trunc(nextValue)));
+    const line = lines.find((item) => item.id === itemId);
+    const overStock = line?.available != null && quantity > line.available;
 
     setLines((current) =>
-      current.map((line) =>
-        line.id === itemId ? { ...line, quantity } : line,
+      current.map((item) =>
+        item.id === itemId ? { ...item, quantity } : item,
       ),
     );
+
+    // Keep an over-stock quantity visible locally so the warning stays on screen.
+    // Do not send an invalid quantity to the server.
+    if (overStock) {
+      const timer = timersRef.current.get(itemId);
+      if (timer) {
+        clearTimeout(timer);
+        timersRef.current.delete(itemId);
+      }
+      setSaveStates((current) => {
+        const next = { ...current };
+        delete next[itemId];
+        return next;
+      });
+      return;
+    }
 
     scheduleQuantitySave(itemId, quantity);
   }
@@ -256,8 +274,6 @@ export default function CartInteractive({
     <div className="mt-8 grid gap-8 lg:grid-cols-[1fr_340px]">
       <section aria-label="Cart items" className="space-y-4">
         {lines.map((line) => {
-          const saveState = saveStates[line.id] ?? "saved";
-
           return (
             <article
               key={line.id}
@@ -302,7 +318,7 @@ export default function CartInteractive({
                 {line.available != null && line.quantity > line.available && (
                   <p role="alert" className="mt-1 text-sm font-semibold text-red-700">
                     {line.available > 0
-                      ? `Only ${line.available} left. Lower the quantity to continue.`
+                      ? `Only ${line.available} left in stock. Lower the quantity to continue.`
                       : "Out of stock. Remove it to continue."}
                   </p>
                 )}
@@ -339,24 +355,16 @@ export default function CartInteractive({
                       onClick={() => changeQuantity(line.id, line.quantity + 1)}
                       disabled={line.quantity >= 99}
                       aria-label="Increase quantity"
+                      title={
+                        line.available != null && line.quantity >= line.available
+                          ? `Only ${line.available} left in stock`
+                          : undefined
+                      }
                       className="flex h-9 w-9 items-center justify-center rounded-full text-ink transition hover:bg-brand-tint hover:text-brand disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-ink"
                     >
                       <Plus className="h-4 w-4" />
                     </button>
                   </div>
-
-                  <span
-                    className={`inline-flex items-center gap-1 text-xs ${
-                      saveState === "error" ? "text-red-600" : "text-muted-foreground"
-                    }`}
-                    aria-live="polite"
-                  >
-                    {saveState === "saved" && <Check className="h-3.5 w-3.5 text-emerald-600" />}
-                    {saveState === "idle" && "Updating…"}
-                    {saveState === "saving" && "Saving…"}
-                    {saveState === "saved" && "Saved"}
-                    {saveState === "error" && "Could not save"}
-                  </span>
 
                   <button
                     type="button"
