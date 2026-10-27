@@ -545,18 +545,25 @@ export default function OrdersManager({
                       </td>
                       {isDev && (
                         <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                          <select
-                            disabled={pending}
-                            value=""
-                            onChange={(e) => applyStatus([o.id], e.target.value)}
-                            className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold"
-                          >
-                            <option value="">Choose...</option>
-                            <option value="shipped">Shipped</option>
-                            <option value="out_for_delivery">Out for delivery</option>
-                            <option value="delivered">Delivered</option>
-                            <option value="cancelled">Cancel</option>
-                          </select>
+                          <div className="relative inline-flex min-w-[168px] items-center">
+                            <select
+                              aria-label={`Set status for ${o.number}`}
+                              disabled={pending}
+                              value=""
+                              onChange={(e) => applyStatus([o.id], e.target.value)}
+                              className="w-full appearance-none rounded-full border border-black/10 bg-white py-2.5 pl-4 pr-10 text-sm font-bold text-ink shadow-sm outline-none transition hover:border-brand/50 hover:shadow-md focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <option value="">Update status</option>
+                              <option value="shipped">Mark as shipped</option>
+                              <option value="out_for_delivery">Out for delivery</option>
+                              <option value="delivered">Mark as delivered</option>
+                              <option value="cancelled">Cancel order</option>
+                            </select>
+                            <ChevronDown
+                              className="pointer-events-none absolute right-3 h-4 w-4 text-muted-foreground"
+                              aria-hidden="true"
+                            />
+                          </div>
                         </td>
                       )}
                     </tr>
