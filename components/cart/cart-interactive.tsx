@@ -177,6 +177,7 @@ export default function CartInteractive({
           if (versionsRef.current.get(itemId) === nextVersion) {
             savedQuantitiesRef.current.set(itemId, quantity);
             setSaveStates((current) => ({ ...current, [itemId]: "saved" }));
+            window.dispatchEvent(new Event("cm-cart-changed"));
           }
         })
         .catch(() => {
@@ -225,6 +226,7 @@ export default function CartInteractive({
     try {
       await removeCartItem(itemId);
       setLines((current) => current.filter((line) => line.id !== itemId));
+      window.dispatchEvent(new Event("cm-cart-changed"));
       savedQuantitiesRef.current.delete(itemId);
       setSaveStates((current) => {
         const next = { ...current };
