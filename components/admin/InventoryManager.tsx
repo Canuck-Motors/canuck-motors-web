@@ -402,9 +402,11 @@ export default function InventoryManager({
                           }`}
                         />
                       </button>
-                      <span className="ml-2 text-xs text-muted-foreground">
-                        {r.isActive ? "Visible" : "Hidden"}
-                      </span>
+                      {!r.isActive && (
+                        <span className="ml-2 text-xs font-semibold text-brand">
+                          Hidden
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3">
                       <Link
