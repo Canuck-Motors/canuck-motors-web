@@ -8,6 +8,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createClient } from "@/lib/supabase/client";
 import SearchBox from "@/components/SearchBox";
+import { getMiniCart } from "@/app/cart/mini-actions";
 
 function initialOf(user: { user_metadata?: Record<string, unknown>; email?: string | null } | null) {
   const first = user?.user_metadata?.first_name;
@@ -33,6 +34,7 @@ export default function Header() {
   const [authLoading, setAuthLoading] = useState(true);
   const [isStaff, setIsStaff] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [cartCount, setCartCount] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -61,6 +63,35 @@ export default function Header() {
 
   useEffect(() => {
     setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadCartCount = async () => {
+      try {
+        const cart = await getMiniCart();
+        if (active) {
+          setCartCount(cart.lines.reduce((total, line) => total + Number(line.quantity || 0), 0));
+        }
+      } catch {
+        if (active) setCartCount(0);
+      }
+    };
+
+    const refreshCartCount = () => {
+      void loadCartCount();
+    };
+
+    void loadCartCount();
+    window.addEventListener("cm-cart-added", refreshCartCount);
+    window.addEventListener("cm-cart-changed", refreshCartCount);
+
+    return () => {
+      active = false;
+      window.removeEventListener("cm-cart-added", refreshCartCount);
+      window.removeEventListener("cm-cart-changed", refreshCartCount);
+    };
   }, [pathname]);
 
   // The header lives in the layout, so its text would otherwise stay on every
@@ -264,10 +295,16 @@ export default function Header() {
           <Link
             href="/cart"
             data-cart-target
-            className="relative inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-bold text-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-brand"
+            className="relative inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 pr-9 text-sm font-bold text-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:bg-brand"
           >
             <ShoppingCart className="h-4 w-4" aria-hidden="true" />
             <span className="hidden sm:inline">Cart</span>
+            <span
+              aria-label={`${cartCount} item${cartCount === 1 ? "" : "s"} in cart`}
+              className="absolute right-1.5 top-1/2 inline-flex min-w-5 -translate-y-1/2 items-center justify-center rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-black leading-none text-white ring-2 ring-ink"
+            >
+              {cartCount > 99 ? "99+" : cartCount}
+            </span>
           </Link>
         </div>
       </div>
