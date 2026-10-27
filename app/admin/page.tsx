@@ -29,7 +29,7 @@ const dayKey = (d: Date | string) =>
   new Date(d).toLocaleDateString("en-CA", { timeZone: TZ });
 
 const TO_SHIP = ["paid", "processing", "packed", "ready_to_ship"];
-const RETURN_NEEDS_REVIEW = ["requested", "under_review", "inspection_failed", "exchange_processing"];
+const RETURN_NEEDS_REVIEW = ["requested", "under_review", "exchange_processing"];
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
 
