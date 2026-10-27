@@ -509,3 +509,24 @@ export async function setUberEnabled(enabled: boolean) {
   return Boolean(data?.uber_enabled);
 }
 
+
+
+// Instant on/off for ReturnGO return management.
+// This switch is independent from outbound fulfillment (Amazon MCF / delivery partner).
+export async function setReturnGoEnabled(enabled: boolean) {
+  await requireAdmin();
+  const { data, error } = await createAdminClient()
+    .from("fulfillment_settings")
+    .update({ returngo_enabled: enabled, updated_on: new Date().toISOString() })
+    .eq("id", 1)
+    .select("returngo_enabled")
+    .single();
+
+  if (error) {
+    throw new Error(`${error.message}. Ensure the ReturnGO database fields are installed.`);
+  }
+
+  revalidatePath("/admin/fulfillment");
+  revalidatePath("/admin/returns");
+  return Boolean(data?.returngo_enabled);
+}
