@@ -27,7 +27,7 @@ export default async function ReturnsAdminPage() {
   const { data: requests, error } = await supabase
     .from("return_requests")
     .select(
-      "id, order_id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_carrier, return_tracking_number, fulfillment_provider, amazon_return_status, amazon_rma_id, amazon_rma_page_url, amazon_return_error, amazon_return_synced_on, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due, orders!order_id!inner(order_number, customer_name, customer_email, currency, shipping_address), return_request_items(id, quantity, received_quantity, amazon_seller_sku, amazon_return_reason_code, amazon_return_item_status, amazon_return_condition, amazon_fulfillment_center_id, order_items!inner(product_id, product_name, sku, unit_price))"
+      "id, order_id, request_type, status, reason_code, reason_text, resolution_notes, requested_on, return_carrier, return_tracking_number, fulfillment_provider, amazon_return_status, amazon_rma_id, amazon_rma_page_url, amazon_return_error, amazon_return_synced_on, returngo_rma_id, returngo_status, returngo_label_url, returngo_error, returngo_synced_on, replacement_order_id, replacement_payment_url, replacement_amount_due, replacement_refund_due, orders!order_id!inner(order_number, customer_name, customer_email, currency, shipping_address), return_request_items(id, quantity, received_quantity, amazon_seller_sku, amazon_return_reason_code, amazon_return_item_status, amazon_return_condition, amazon_fulfillment_center_id, order_items!inner(product_id, product_name, sku, unit_price))"
     )
     .order("requested_on", { ascending: false })
     .limit(1000);
@@ -58,6 +58,12 @@ export default async function ReturnsAdminPage() {
   } catch {
     // optional
   }
+
+  const { data: returnGoSettings } = await createAdminClient()
+    .from("fulfillment_settings")
+    .select("returngo_enabled")
+    .eq("id", 1)
+    .maybeSingle();
 
   const { data: products } = await supabase
     .from("products")
@@ -131,6 +137,11 @@ export default async function ReturnsAdminPage() {
       amazonRmaPageUrl: (r.amazon_rma_page_url as string) ?? "",
       amazonReturnError: (r.amazon_return_error as string) ?? "",
       amazonReturnSyncedOn: (r.amazon_return_synced_on as string) ?? "",
+      returnGoRmaId: (r.returngo_rma_id as string) ?? "",
+      returnGoStatus: (r.returngo_status as string) ?? "",
+      returnGoLabelUrl: (r.returngo_label_url as string) ?? "",
+      returnGoError: (r.returngo_error as string) ?? "",
+      returnGoSyncedOn: (r.returngo_synced_on as string) ?? "",
       replacementOrderId: (r.replacement_order_id as string) ?? null,
       replacementPaymentUrl: (r.replacement_payment_url as string) ?? "",
       replacementAmountDue: Number(r.replacement_amount_due ?? 0),
@@ -164,6 +175,11 @@ export default async function ReturnsAdminPage() {
         <ReturnsManager
           initial={rows}
           needsSql={needsSql}
+          returnGoEnabled={Boolean(returnGoSettings?.returngo_enabled)}
+          returnGoConfigured={Boolean(
+            process.env.RETURNGO_API_KEY &&
+              process.env.RETURNGO_SHOP_NAME
+          )}
           products={(products ?? []).map((p) => ({
             id: p.id,
             sku: p.sku ?? "",
