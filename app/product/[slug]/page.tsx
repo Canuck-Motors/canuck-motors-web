@@ -305,7 +305,7 @@ export default async function ProductDetailPage({
         }}
       />
 
-      <div className="cm-container py-10 md:py-14">
+      <div className="mx-auto w-full max-w-[1640px] px-4 py-10 sm:px-6 md:py-14 lg:px-8 xl:px-10">
         <nav aria-label="Breadcrumb" className="mb-8 text-sm text-muted-foreground">
           <ol className="flex flex-wrap items-center gap-2">
             <li>
@@ -326,10 +326,10 @@ export default async function ProductDetailPage({
           </ol>
         </nav>
 
-        <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="grid gap-8 lg:grid-cols-[1.06fr_0.94fr] xl:gap-12 2xl:grid-cols-[1.08fr_0.92fr]">
           <section
             aria-label={`${product.product_name} image`}
-            className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-[30px] border border-black/5 bg-white p-8 shadow-[0_18px_55px_rgba(0,0,0,0.07)] before:absolute before:-right-24 before:-top-24 before:h-72 before:w-72 before:rounded-full before:bg-brand/10 before:blur-3xl"
+            className="relative flex min-h-[440px] items-center justify-center overflow-hidden rounded-[30px] border border-black/5 bg-white p-6 shadow-[0_18px_55px_rgba(0,0,0,0.07)] sm:p-8 xl:min-h-[500px]" before:absolute before:-right-24 before:-top-24 before:h-72 before:w-72 before:rounded-full before:bg-brand/10 before:blur-3xl"
           >
             <ProductGallery images={images} name={withMaterial(product.product_name, product.sku)} plain={isPlainPhoto(product.sku)} />
           </section>
