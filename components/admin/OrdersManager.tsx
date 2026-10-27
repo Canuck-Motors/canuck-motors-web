@@ -456,7 +456,10 @@ export default function OrdersManager({
                       onClick={() => setOpen(isOpen ? null : o.id)}
                     >
                       {isDev && (
-                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                        <td
+                          className={`border-l-4 px-3 py-3 ${isOpen ? "border-brand" : "border-transparent"}`}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <input
                             type="checkbox"
                             aria-label={`Select ${o.number}`}
@@ -465,7 +468,9 @@ export default function OrdersManager({
                           />
                         </td>
                       )}
-                      <td className={`border-l-4 px-3 py-3 ${isOpen ? "border-brand" : "border-transparent"}`}>
+                      <td className={`${isDev ? "" : "border-l-4"} px-3 py-3 ${
+                        !isDev && isOpen ? "border-brand" : !isDev ? "border-transparent" : ""
+                      }`}>
                         <div className="flex items-center gap-2 font-bold text-ink">
                           {isOpen ? (
                             <ChevronDown className="h-4 w-4" aria-hidden="true" />
@@ -575,232 +580,214 @@ export default function OrdersManager({
                               </div>
                             </div>
 
-                            <div className="grid gap-0 xl:grid-cols-[1.15fr_.9fr_1.35fr_1.2fr_1fr]">
-                              <div className="p-5 xl:border-r xl:border-black/5">
-                                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Customer</p>
-                                <p className="mt-2 text-base font-black text-ink">{o.name || "Customer"}</p>
-                                {o.email && (
-                                  <a href={`mailto:${o.email}`} className="mt-1 block break-all text-sm text-muted-foreground hover:text-brand">
-                                    {o.email}
-                                  </a>
-                                )}
-                                {o.address ? (
-                                  <>
-                                    <address className="mt-3 text-sm not-italic leading-6 text-muted-foreground">
-                                      {addressLines(o.address).map((line, n) => (
-                                        <div key={n}>{line}</div>
-                                      ))}
-                                    </address>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        navigator.clipboard?.writeText(addressLines(o.address).join("\n"));
-                                        setMsg("Address copied.");
-                                      }}
-                                      className="mt-3 text-xs font-bold text-brand hover:underline"
-                                    >
-                                      Copy address
-                                    </button>
-                                  </>
-                                ) : (
-                                  <p className="mt-3 text-sm text-muted-foreground">No shipping address saved.</p>
-                                )}
-                              </div>
-
-                              <div className="border-t border-black/5 p-5 xl:border-r xl:border-t-0 xl:border-black/5">
-                                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Order</p>
-                                <dl className="mt-3 space-y-3 text-sm">
-                                  <div>
-                                    <dt className="text-xs text-muted-foreground">Placed</dt>
-                                    <dd className="mt-0.5 font-semibold text-ink">
-                                      {new Date(o.createdOn).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}
-                                    </dd>
-                                  </div>
-                                  <div>
-                                    <dt className="text-xs text-muted-foreground">Payment</dt>
-                                    <dd className="mt-0.5 font-semibold capitalize text-ink">{label(o.payment)}</dd>
-                                  </div>
-                                  <div>
-                                    <dt className="text-xs text-muted-foreground">Total</dt>
-                                    <dd className="mt-0.5 text-lg font-black text-ink">
-                                      {money(o.total + o.shippingFee + o.salesTax, o.currency)}
-                                    </dd>
-                                  </div>
-                                </dl>
-                              </div>
-
-                              <div className="border-t border-black/5 p-5 xl:border-r xl:border-t-0 xl:border-black/5">
-                                <div className="flex items-center justify-between gap-3">
+                            <div className="px-6 py-6">
+                              <div className="grid gap-x-10 gap-y-7 md:grid-cols-3">
+                                <div>
                                   <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Items</p>
-                                  <span className="text-xs font-semibold text-muted-foreground">
-                                    {qty} item{qty === 1 ? "" : "s"}
-                                  </span>
-                                </div>
-                                <ul className="mt-3 space-y-2">
-                                  {o.items.map((i, n) => (
-                                    <li key={n} className="rounded-xl bg-secondary/55 px-3 py-2.5 text-sm">
-                                      <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                          <p className="truncate font-bold text-ink">{i.product_name}</p>
-                                          <p className="mt-0.5 text-xs text-muted-foreground">{i.sku}</p>
-                                        </div>
-                                        <div className="shrink-0 text-right">
-                                          <p className="font-bold text-ink">{i.quantity}×</p>
-                                          <p className="text-xs text-muted-foreground">{money(i.unit_price, o.currency)}</p>
-                                        </div>
+                                  <div className="mt-3 space-y-2">
+                                    {o.items.slice(0, 3).map((item, n) => (
+                                      <div key={n}>
+                                        <p className="font-black text-ink">{item.product_name}</p>
+                                        <p className="mt-0.5 text-sm text-muted-foreground">
+                                          {item.sku} · Qty {item.quantity}
+                                        </p>
                                       </div>
-                                    </li>
-                                  ))}
-                                </ul>
-
-                                {(o.cancelReason || o.cancelledItems.length > 0) && (
-                                  <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
-                                    {o.cancelReason && <p><b>Cancellation:</b> {o.cancelReason}</p>}
-                                    {o.cancelledItems.map((item, n) => (
-                                      <p key={n} className="mt-1">
-                                        {item.sku} × {item.quantity}: {item.reason || "No reason given"}
-                                      </p>
                                     ))}
-                                  </div>
-                                )}
-                              </div>
-
-                              <div className="border-t border-black/5 p-5 xl:border-r xl:border-t-0 xl:border-black/5">
-                                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Fulfillment</p>
-
-                                {closed ? (
-                                  <div className="mt-3 rounded-xl bg-secondary/60 p-3 text-sm">
-                                    <p className="font-bold text-ink">No shipment needed</p>
-                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                      This order is {label(o.status)}.
-                                    </p>
-                                  </div>
-                                ) : o.provider === "amazon_mcf" ? (
-                                  <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-sm">
-                                    <p className="font-bold text-ink">Amazon MCF</p>
-                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                      Amazon handles packing and delivery. Upload tracking from the Orders page when available.
-                                    </p>
-                                    {o.shipment?.tracking && (
-                                      <p className="mt-2 text-xs font-bold text-ink">
-                                        Tracking: {o.shipment.tracking}
-                                      </p>
+                                    {o.items.length > 3 && (
+                                      <p className="text-sm font-semibold text-brand">+{o.items.length - 3} more item{o.items.length - 3 === 1 ? "" : "s"}</p>
                                     )}
                                   </div>
-                                ) : !deliveryPartnerEnabled ? (
-                                  <div className="mt-3 rounded-xl bg-secondary/60 p-3 text-sm">
-                                    <p className="font-bold text-ink">Manual shipment disabled</p>
-                                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                                      Delivery Partner is switched off.
-                                    </p>
-                                  </div>
-                                ) : (
-                                  <form
-                                    action={(fd) =>
-                                      run(async () => {
-                                        const emailNote = await createShipment(
-                                          o.id,
-                                          String(fd.get("carrier") || ""),
-                                          String(fd.get("tracking_number") || ""),
-                                          String(fd.get("tracking_url") || ""),
-                                          String(fd.get("service_level") || ""),
-                                          String(fd.get("estimated_delivery") || "")
-                                        );
-                                        return `Shipment saved for ${o.number}. ${emailNote ?? ""}`.trim();
-                                      })
-                                    }
-                                    className="mt-3 space-y-2"
-                                  >
-                                    <input name="carrier" list="carrier-list" defaultValue={o.shipment?.carrier ?? (o.deliveryMethod === "standard" ? "Chit Chats" : "")} placeholder="Carrier" required className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm" />
-                                    <datalist id="carrier-list">
-                                      <option value="Chit Chats" />
-                                      <option value="Canada Post" />
-                                      <option value="Purolator" />
-                                      <option value="UPS" />
-                                      <option value="FedEx" />
-                                      <option value="Canpar" />
-                                    </datalist>
-                                    <input name="tracking_number" defaultValue={o.shipment?.tracking ?? ""} placeholder="Tracking number" required className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm" />
-                                    <input name="tracking_url" defaultValue={o.shipment?.url ?? ""} placeholder="Tracking link" className="w-full rounded-xl border border-black/10 px-3 py-2 text-sm" />
-                                    <button className="cm-button-primary w-full">Save shipment</button>
-                                  </form>
-                                )}
+                                </div>
 
-                                {o.fulfillmentError && (
-                                  <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-700">
-                                    {o.fulfillmentError}
+                                <div>
+                                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Total</p>
+                                  <p className="mt-3 text-3xl font-black text-ink">
+                                    {money(o.total + o.shippingFee + o.salesTax, o.currency)}
                                   </p>
-                                )}
-                              </div>
+                                  <p className="mt-1 text-sm capitalize text-muted-foreground">
+                                    Payment: {label(o.payment)}
+                                  </p>
+                                </div>
 
-                              <div className="border-t border-black/5 p-5 xl:border-t-0">
-                                <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Actions & note</p>
+                                <div>
+                                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Ordered on</p>
+                                  <p className="mt-3 text-lg font-black text-ink">
+                                    {new Date(o.createdOn).toLocaleDateString("en-CA", { dateStyle: "medium" })}
+                                  </p>
+                                  <p className="mt-1 text-sm text-muted-foreground">
+                                    {new Date(o.createdOn).toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" })}
+                                  </p>
+                                </div>
 
-                                <div className="mt-3 flex flex-col gap-2">
-                                  {next && deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
-                                    <button
-                                      type="button"
-                                      disabled={pending || (next === "shipped" && o.deliveryMethod !== "uber" && !o.shipment?.tracking)}
-                                      title={next === "shipped" && o.deliveryMethod !== "uber" && !o.shipment?.tracking ? "Add tracking first" : undefined}
-                                      onClick={() =>
-                                        run(async () => {
-                                          await updateOrderStatus(o.id, next);
-                                          return `${o.number}: ${statusText(next)[0]}.`;
-                                        })
-                                      }
-                                      className="cm-button-dark w-full disabled:opacity-60"
-                                    >
-                                      {NEXT_BUTTON[o.status] ?? `Mark ${label(next)}`}
-                                    </button>
-                                  )}
-
-                                  {deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
-                                    <Link
-                                      href={`/admin/orders/${o.id}/packing-slip`}
-                                      target="_blank"
-                                      className="inline-flex items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:border-brand hover:text-brand"
-                                    >
-                                      <Printer className="h-4 w-4" aria-hidden="true" /> Packing slip
-                                    </Link>
-                                  )}
-
-                                  {o.shipment?.tracking && (
-                                    <div className="rounded-xl bg-secondary/60 p-3 text-xs">
-                                      <p className="font-bold text-ink">Tracking</p>
-                                      {o.shipment.url ? (
-                                        <a href={o.shipment.url} target="_blank" rel="noopener noreferrer" className="mt-1 block break-all font-semibold text-brand hover:underline">
-                                          {o.shipment.tracking}
-                                        </a>
-                                      ) : (
-                                        <p className="mt-1 font-semibold text-ink">{o.shipment.tracking}</p>
-                                      )}
-                                    </div>
+                                <div className="md:col-span-1">
+                                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Customer</p>
+                                  <p className="mt-3 font-black text-ink">{o.name || "Customer"}</p>
+                                  {o.email && (
+                                    <a href={`mailto:${o.email}`} className="mt-2 block text-sm text-muted-foreground hover:text-brand">
+                                      {o.email}
+                                    </a>
                                   )}
                                 </div>
 
-                                <form
-                                  className="mt-4"
-                                  action={(fd) =>
-                                    run(async () => {
-                                      const note = String(fd.get("note") || "");
-                                      await setOrderNote(o.id, note);
-                                      setRows((rs) => rs.map((r) => (r.id === o.id ? { ...r, note } : r)));
-                                      return "Note saved.";
-                                    })
-                                  }
-                                >
-                                  <textarea
-                                    name="note"
-                                    rows={3}
-                                    defaultValue={o.note}
-                                    placeholder="Private staff note"
-                                    className="w-full rounded-xl border border-black/10 px-3 py-2.5 text-sm"
-                                  />
-                                  <button className="mt-2 rounded-full bg-ink px-4 py-1.5 text-xs font-bold text-white hover:bg-brand">
-                                    Save note
-                                  </button>
-                                </form>
+                                <div className="md:col-span-2">
+                                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Customer address</p>
+                                  {o.address ? (
+                                    <div className="mt-3 flex flex-wrap items-center gap-3">
+                                      <address className="text-sm not-italic leading-6 text-ink">
+                                        {addressLines(o.address).join(" · ")}
+                                      </address>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          navigator.clipboard?.writeText(addressLines(o.address).join("\n"));
+                                          setMsg("Address copied.");
+                                        }}
+                                        className="rounded-full border border-black/5 bg-white px-3 py-1.5 text-xs font-bold text-ink shadow-sm hover:border-brand hover:text-brand"
+                                      >
+                                        Copy
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <p className="mt-3 text-sm text-muted-foreground">No shipping address saved.</p>
+                                  )}
+                                </div>
                               </div>
+
+                              {(o.cancelReason || o.cancelledItems.length > 0) && (
+                                <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                                  {o.cancelReason && <p><b>Cancellation:</b> {o.cancelReason}</p>}
+                                  {o.cancelledItems.map((item, n) => (
+                                    <p key={n} className="mt-1">
+                                      {item.sku} × {item.quantity}: {item.reason || "No reason given"}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="border-t border-black/5 bg-secondary/20 px-6 py-5">
+                              <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+                                <div>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Fulfillment</p>
+                                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusText(o.status)[1]}`}>
+                                      {statusText(o.status)[0]}
+                                    </span>
+                                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold capitalize text-ink/70 ring-1 ring-black/5">
+                                      {label(o.deliveryMethod)}
+                                    </span>
+                                  </div>
+
+                                  {closed ? (
+                                    <p className="mt-3 text-sm text-muted-foreground">
+                                      No shipment is needed because this order is {label(o.status)}.
+                                    </p>
+                                  ) : o.provider === "amazon_mcf" ? (
+                                    <div className="mt-3 rounded-xl border border-orange-200 bg-orange-50 p-4">
+                                      <p className="font-bold text-ink">Amazon MCF</p>
+                                      <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                                        Amazon handles packing and delivery. Upload tracking from the Orders page when available.
+                                      </p>
+                                      {o.shipment?.tracking && (
+                                        <p className="mt-2 text-sm font-bold text-ink">Tracking: {o.shipment.tracking}</p>
+                                      )}
+                                    </div>
+                                  ) : !deliveryPartnerEnabled ? (
+                                    <p className="mt-3 text-sm text-muted-foreground">Delivery Partner is switched off.</p>
+                                  ) : (
+                                    <form
+                                      action={(fd) =>
+                                        run(async () => {
+                                          const emailNote = await createShipment(
+                                            o.id,
+                                            String(fd.get("carrier") || ""),
+                                            String(fd.get("tracking_number") || ""),
+                                            String(fd.get("tracking_url") || ""),
+                                            String(fd.get("service_level") || ""),
+                                            String(fd.get("estimated_delivery") || "")
+                                          );
+                                          return `Shipment saved for ${o.number}. ${emailNote ?? ""}`.trim();
+                                        })
+                                      }
+                                      className="mt-3 grid gap-2 sm:grid-cols-2"
+                                    >
+                                      <input name="carrier" list="carrier-list" defaultValue={o.shipment?.carrier ?? (o.deliveryMethod === "standard" ? "Chit Chats" : "")} placeholder="Carrier" required className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm" />
+                                      <datalist id="carrier-list">
+                                        <option value="Chit Chats" />
+                                        <option value="Canada Post" />
+                                        <option value="Purolator" />
+                                        <option value="UPS" />
+                                        <option value="FedEx" />
+                                        <option value="Canpar" />
+                                      </datalist>
+                                      <input name="tracking_number" defaultValue={o.shipment?.tracking ?? ""} placeholder="Tracking number" required className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm" />
+                                      <input name="tracking_url" defaultValue={o.shipment?.url ?? ""} placeholder="Tracking link" className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm sm:col-span-2" />
+                                      <button className="cm-button-primary sm:col-span-2">Save shipment</button>
+                                    </form>
+                                  )}
+
+                                  {o.fulfillmentError && (
+                                    <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-700">
+                                      {o.fulfillmentError}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="lg:border-l lg:border-black/5 lg:pl-5">
+                                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Actions & note</p>
+                                  <div className="mt-3 flex flex-wrap gap-2">
+                                    {next && deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
+                                      <button
+                                        type="button"
+                                        disabled={pending || (next === "shipped" && o.deliveryMethod !== "uber" && !o.shipment?.tracking)}
+                                        title={next === "shipped" && o.deliveryMethod !== "uber" && !o.shipment?.tracking ? "Add tracking first" : undefined}
+                                        onClick={() =>
+                                          run(async () => {
+                                            await updateOrderStatus(o.id, next);
+                                            return `${o.number}: ${statusText(next)[0]}.`;
+                                          })
+                                        }
+                                        className="cm-button-dark disabled:opacity-60"
+                                      >
+                                        {NEXT_BUTTON[o.status] ?? `Mark ${label(next)}`}
+                                      </button>
+                                    )}
+                                    {deliveryPartnerEnabled && o.provider !== "amazon_mcf" && (
+                                      <Link
+                                        href={`/admin/orders/${o.id}/packing-slip`}
+                                        target="_blank"
+                                        className="inline-flex items-center justify-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-semibold hover:border-brand hover:text-brand"
+                                      >
+                                        <Printer className="h-4 w-4" aria-hidden="true" /> Packing slip
+                                      </Link>
+                                    )}
+                                  </div>
+
+                                  <form
+                                    className="mt-4"
+                                    action={(fd) =>
+                                      run(async () => {
+                                        const note = String(fd.get("note") || "");
+                                        await setOrderNote(o.id, note);
+                                        setRows((rs) => rs.map((r) => (r.id === o.id ? { ...r, note } : r)));
+                                        return "Note saved.";
+                                      })
+                                    }
+                                  >
+                                    <textarea
+                                      name="note"
+                                      rows={2}
+                                      defaultValue={o.note}
+                                      placeholder="Private staff note"
+                                      className="w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm"
+                                    />
+                                    <button className="mt-2 rounded-full bg-ink px-4 py-1.5 text-xs font-bold text-white hover:bg-brand">
+                                      Save note
+                                    </button>
+                                  </form>
+                                </div>
+                              </div>
+                            </div>
                             </div>
                           </section>
                         </td>
