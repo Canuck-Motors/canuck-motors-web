@@ -7,6 +7,7 @@ import Image from "next/image";
 import { Check, ChevronDown, ChevronRight, Copy, Download, Mail, Search, X } from "lucide-react";
 import {
   createAmazonReturnAuthorization,
+  createReturnGoAuthorization,
   createExchangeReplacement,
   getReturnPhotos,
   completeReturnInspection,
@@ -15,6 +16,7 @@ import {
   rejectAfterFailedInspection,
   sendReturnInstructions,
   syncAmazonReturnStatus,
+  syncReturnGoStatus,
   updateReturnRequest,
 } from "@/app/admin/returns/actions";
 
@@ -35,6 +37,11 @@ export type ReturnRow = {
   amazonRmaPageUrl: string;
   amazonReturnError: string;
   amazonReturnSyncedOn: string;
+  returnGoRmaId: string;
+  returnGoStatus: string;
+  returnGoLabelUrl: string;
+  returnGoError: string;
+  returnGoSyncedOn: string;
   replacementOrderId: string | null;
   replacementPaymentUrl: string;
   replacementAmountDue: number;
@@ -145,10 +152,14 @@ export default function ReturnsManager({
   initial,
   products,
   needsSql,
+  returnGoEnabled,
+  returnGoConfigured,
 }: {
   initial: ReturnRow[];
   products: Product[];
   needsSql: boolean;
+  returnGoEnabled: boolean;
+  returnGoConfigured: boolean;
 }) {
   const [rows, setRows] = useState(initial);
   useEffect(() => setRows(initial), [initial]);
@@ -524,6 +535,112 @@ export default function ReturnsManager({
                       : "The part came back and everything is finished. History is on the right.",
                   },
                 }[stage];
+                const returnGoBlock = returnGoEnabled && r.type === "return" && (
+                                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="font-bold text-ink">ReturnGO return</p>
+                                    <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${
+                                      returnGoConfigured
+                                        ? "bg-emerald-100 text-emerald-800"
+                                        : "bg-amber-100 text-amber-900"
+                                    }`}>
+                                      {returnGoConfigured ? "Connected" : "Setup required"}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                    ReturnGO can create the return authorization, generate the label and track the RMA while Canuck Motors keeps the customer-facing experience.
+                                  </p>
+
+                                  {r.returnGoRmaId ? (
+                                    <div className="mt-3 space-y-2 text-sm">
+                                      <p>
+                                        <span className="font-semibold">RMA:</span> {r.returnGoRmaId}
+                                      </p>
+                                      <p>
+                                        <span className="font-semibold">ReturnGO status:</span>{" "}
+                                        {r.returnGoStatus ? label(r.returnGoStatus) : "created"}
+                                      </p>
+                                      {r.returnGoLabelUrl && (
+                                        <a
+                                          href={r.returnGoLabelUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="inline-flex font-bold text-brand hover:underline"
+                                        >
+                                          Open ReturnGO label
+                                        </a>
+                                      )}
+                                      {r.returnGoSyncedOn && (
+                                        <p className="text-xs text-muted-foreground">
+                                          Last synced {new Date(r.returnGoSyncedOn).toLocaleString("en-CA")}
+                                        </p>
+                                      )}
+                                      <button
+                                        type="button"
+                                        disabled={pending || !returnGoConfigured}
+                                        onClick={() =>
+                                          run(async () => {
+                                            const result = await syncReturnGoStatus(r.id);
+                                            setRows((rs) =>
+                                              rs.map((x) =>
+                                                x.id === r.id
+                                                  ? {
+                                                      ...x,
+                                                      returnGoStatus: result.status || x.returnGoStatus,
+                                                      returnGoLabelUrl: result.labelUrl || x.returnGoLabelUrl,
+                                                      returnGoError: "",
+                                                      returnGoSyncedOn: new Date().toISOString(),
+                                                    }
+                                                  : x
+                                              )
+                                            );
+                                          }, "ReturnGO status synchronized.")
+                                        }
+                                        className="mt-2 w-full rounded-full border border-violet-300 px-4 py-2 text-sm font-bold text-violet-900 hover:bg-violet-100 disabled:opacity-50"
+                                      >
+                                        Sync ReturnGO status
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      disabled={pending || r.status !== "approved" || !returnGoConfigured}
+                                      onClick={() =>
+                                        run(async () => {
+                                          const result = await createReturnGoAuthorization(r.id);
+                                          setRows((rs) =>
+                                            rs.map((x) =>
+                                              x.id === r.id
+                                                ? {
+                                                    ...x,
+                                                    returnGoRmaId: result.rmaId,
+                                                    returnGoStatus: result.status || "Approved",
+                                                    returnGoLabelUrl: result.labelUrl || "",
+                                                    returnGoError: "",
+                                                    returnGoSyncedOn: new Date().toISOString(),
+                                                  }
+                                                : x
+                                            )
+                                          );
+                                        }, "ReturnGO RMA created.")
+                                      }
+                                      className="cm-button-primary mt-3 w-full disabled:opacity-50"
+                                    >
+                                      {!returnGoConfigured
+                                        ? "Configure ReturnGO API first"
+                                        : r.status === "approved"
+                                          ? "Create ReturnGO RMA"
+                                          : "Approve request before creating ReturnGO RMA"}
+                                    </button>
+                                  )}
+
+                                  {r.returnGoError && (
+                                    <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs leading-5 text-red-700">
+                                      {r.returnGoError}
+                                    </p>
+                                  )}
+                                </div>
+                              );
                 const amazonBlock = r.fulfillmentProvider === "amazon_mcf" && r.type === "return" && (
                                 <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4">
                                   <p className="font-bold text-ink">Amazon MCF return</p>
@@ -770,9 +887,16 @@ export default function ReturnsManager({
                                   </button>
                                 </form>
                               );
-                // Hide the Amazon return card on closed rejected returns (nothing to authorise) and during review.
-                const showAmazon = Boolean(amazonBlock) && stage !== "review" && !(rejectedLike && !r.amazonRmaId);
+                // ReturnGO takes priority when enabled. Amazon/manual tooling remains the fallback when it is off.
+                const showReturnGo =
+                  Boolean(returnGoBlock) && stage !== "review" && !(rejectedLike && !r.returnGoRmaId);
+                const showAmazon =
+                  !returnGoEnabled &&
+                  Boolean(amazonBlock) &&
+                  stage !== "review" &&
+                  !(rejectedLike && !r.amazonRmaId);
                 const tools = [
+                  showReturnGo ? returnGoBlock : null,
                   showAmazon ? amazonBlock : null,
                   stockBlock || null,
                   exchBlock || null,
