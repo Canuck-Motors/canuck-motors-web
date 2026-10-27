@@ -3,11 +3,11 @@
 import LanguageSwitch from "@/components/i18n/LanguageSwitch";
 import Image from "next/image";
 import Link from "next/link";
-import { Search, ShoppingCart, UserRound, LogOut, LayoutDashboard, Package, ChevronDown } from "lucide-react";
+import { ShoppingCart, UserRound, LogOut, LayoutDashboard, Package, ChevronDown } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import LoadingAnimation from "@/components/LoadingAnimation";
 import { createClient } from "@/lib/supabase/client";
+import SearchBox from "@/components/SearchBox";
 
 function initialOf(user: { user_metadata?: Record<string, unknown>; email?: string | null } | null) {
   const first = user?.user_metadata?.first_name;
@@ -164,27 +164,7 @@ export default function Header() {
           <label htmlFor="site-search" className="sr-only">
             Search Canuck Motors products
           </label>
-          <div className="flex w-full overflow-hidden rounded-full border border-black/10 bg-secondary shadow-inner transition focus-within:border-brand/60 focus-within:bg-white focus-within:ring-4 focus-within:ring-brand/10">
-            <div className="flex items-center pl-4 text-muted-foreground">
-              <Search className="h-4 w-4" aria-hidden="true" />
-            </div>
-            <input
-              id="site-search"
-              type="search"
-              placeholder="Search part number or product..."
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              className="min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted-foreground/75"
-            />
-            <button
-              type="button"
-              onClick={handleSearch}
-              className="bg-brand px-4 text-sm font-bold text-white transition hover:bg-brand-dark sm:px-5"
-            >
-              Search
-            </button>
-          </div>
+          <SearchBox value={searchText} onChange={setSearchText} onSubmit={handleSearch} />
         </div>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
@@ -292,7 +272,11 @@ export default function Header() {
         </div>
       </div>
     </header>
-    <LoadingAnimation variant="page" show={searching} message="Searching our catalog..." />
+    {searching && (
+      <div className="fixed inset-x-0 top-0 z-[120] h-1 overflow-hidden bg-brand/20" role="progressbar" aria-label="Searching">
+        <div className="cm-topbar h-full w-1/3 bg-brand" />
+      </div>
+    )}
     </>
   );
 }

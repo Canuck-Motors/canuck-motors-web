@@ -1,6 +1,6 @@
 "use server";
 
-import { isAmazonRedirectOn } from "@/lib/fulfillment-mode";
+import { isAmazonRedirectOn, isUberEnabled } from "@/lib/fulfillment-mode";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -47,6 +47,9 @@ export async function beginCheckout(formData: FormData) {
   let uberQuote: { id: string; feeCents: number } | null = null;
 
   if (wantsUber) {
+    if (!(await isUberEnabled())) {
+      redirect(`/cart?checkout_error=${encodeURIComponent("Uber same-day delivery is switched off right now. Please choose another delivery option.")}`);
+    }
     if (!uberDropoff.name || !uberDropoff.phone || !uberDropoff.street || !uberDropoff.city || !uberDropoff.state || !uberDropoff.zip) {
       redirect(`/cart?checkout_error=${encodeURIComponent("Please fill in the Uber delivery name, phone and address.")}`);
     }

@@ -131,7 +131,7 @@ export default function ChatLauncher() {
           }}
           aria-label="Chat with Axel, our parts assistant"
           onAnimationEnd={() => setBounce(false)}
-          className={`${bounce ? "cm-launch-bounce" : "cm-pulse"} group fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-50 flex h-14 sm:bottom-5 sm:right-5 items-center gap-2 rounded-full pl-3.5 pr-5 shadow-xl transition hover:scale-105 ${
+          className={`group fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-50 flex h-14 sm:bottom-5 sm:right-5 items-center gap-2 rounded-full pl-3.5 pr-5 shadow-xl transition hover:scale-105 ${
             hasChat
               ? "border-2 border-brand bg-white text-brand hover:bg-brand-tint"
               : "bg-brand text-white hover:bg-brand-dark"

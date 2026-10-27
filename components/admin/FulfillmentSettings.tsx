@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   runAmazonMcfSyncNow,
   saveFulfillmentSettings,
+  setUberEnabled,
 } from "@/app/admin/fulfillment/actions";
 
 type Provider = "amazon_mcf" | "delivery_partner";
@@ -34,6 +35,7 @@ export default function FulfillmentSettings({
 }: {
   initialSettings: {
     amazonRedirectEnabled: boolean;
+    uberEnabled: boolean;
     amazonMcfEnabled: boolean;
     deliveryPartnerEnabled: boolean;
     preferredProvider: Provider;
@@ -50,6 +52,7 @@ export default function FulfillmentSettings({
         ? "mcf"
         : "standard",
   );
+  const [uberOn, setUberOn] = useState(initialSettings.uberEnabled);
   const [message, setMessage] = useState("");
   const [pending, start] = useTransition();
 
@@ -102,6 +105,45 @@ export default function FulfillmentSettings({
             );
           })}
         </div>
+      </section>
+
+      <section className="rounded-[26px] border bg-white p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black">Uber same-day delivery</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Offered to customers in Vancouver and Burnaby. Turn it off and the Uber option disappears from the cart. Works with any option above.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={uberOn}
+            disabled={pending}
+            onClick={() => {
+              const next = !uberOn;
+              setUberOn(next);
+              start(async () => {
+                try {
+                  const saved = await setUberEnabled(next);
+                  setUberOn(saved);
+                  setMessage(saved ? "Uber delivery is ON." : "Uber delivery is OFF.");
+                } catch (e) {
+                  setUberOn(!next);
+                  setMessage(e instanceof Error ? e.message : "Unable to change Uber setting.");
+                }
+              });
+            }}
+            className={`relative h-8 w-14 shrink-0 rounded-full transition ${uberOn ? "bg-brand" : "bg-black/20"}`}
+          >
+            <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-all ${uberOn ? "left-7" : "left-1"}`} />
+            <span className="sr-only">{uberOn ? "Uber on" : "Uber off"}</span>
+          </button>
+        </div>
+        <p className="mt-2 text-xs font-bold">{uberOn ? "ON" : "OFF"}: changes apply instantly.</p>
+        {message && /uber/i.test(message) && (
+          <p className={`mt-2 rounded-xl p-3 text-sm font-semibold ${/unable|error|column|run /i.test(message) ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>{message}</p>
+        )}
       </section>
 
       <section className="rounded-[26px] border bg-white p-6">

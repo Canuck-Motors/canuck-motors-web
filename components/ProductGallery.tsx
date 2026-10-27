@@ -7,7 +7,9 @@ import { ChevronLeft, ChevronRight, X, ZoomIn } from "lucide-react";
 export default function ProductGallery({
   images,
   name,
+  plain = false,
 }: {
+  plain?: boolean;
   images: { id: number; url: string; video?: boolean }[];
   name: string;
 }) {
@@ -15,6 +17,8 @@ export default function ProductGallery({
   const [open, setOpen] = useState(false);
   const [zoomed, setZoomed] = useState(false);
   const [origin, setOrigin] = useState({ x: 50, y: 50 });
+  const [hover, setHover] = useState<{ x: number; y: number } | null>(null);
+  const [touchX, setTouchX] = useState<number | null>(null);
 
   const photoIdx = images.map((im, i) => (im.video ? -1 : i)).filter((i) => i >= 0);
 
@@ -64,7 +68,16 @@ export default function ProductGallery({
 
   return (
     <div className="w-full" data-product-image>
-      <div className="relative mx-auto aspect-square w-full max-w-[520px]">
+      <div
+        className="relative mx-auto aspect-square w-full max-w-[640px] overflow-hidden rounded-2xl cm-photo-stage"
+        onTouchStart={(e) => setTouchX(e.touches[0].clientX)}
+        onTouchEnd={(e) => {
+          if (touchX == null) return;
+          const dx = e.changedTouches[0].clientX - touchX;
+          setTouchX(null);
+          if (Math.abs(dx) > 50) step(dx < 0 ? 1 : -1);
+        }}
+      >
         {images[active].video ? (
           <video
             key={images[active].id}
@@ -82,6 +95,15 @@ export default function ProductGallery({
               setZoomed(false);
               setOpen(true);
             }}
+            onMouseMove={(e) => {
+              if (window.matchMedia("(hover: none)").matches) return;
+              const r = e.currentTarget.getBoundingClientRect();
+              setHover({
+                x: Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100)),
+                y: Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100)),
+              });
+            }}
+            onMouseLeave={() => setHover(null)}
             aria-label="Open large photo"
             className="group absolute inset-0 cursor-zoom-in"
           >
@@ -91,17 +113,28 @@ export default function ProductGallery({
               alt={`${name} - photo ${active + 1}`}
               fill
               priority={active === 0}
-              sizes="(min-width: 1024px) 520px, 90vw"
-              className="object-contain"
+              sizes="(min-width: 1024px) 640px, 92vw"
+              className={`cm-photo object-contain p-2 ${plain ? "cm-photo-plain" : ""}`}
             />
+            {hover && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-0 hidden bg-white bg-no-repeat md:block"
+                style={{
+                  backgroundImage: `url("${images[active].url}")`,
+                  backgroundSize: "230%",
+                  backgroundPosition: `${hover.x}% ${hover.y}%`,
+                }}
+              />
+            )}
             <span className="absolute bottom-2 right-2 inline-flex items-center gap-1.5 rounded-full bg-ink/80 px-3 py-1.5 text-xs font-bold text-white opacity-90 transition group-hover:bg-brand">
-              <ZoomIn className="h-4 w-4" /> Click to zoom
+              <ZoomIn className="h-4 w-4" /> <span className="md:hidden">Tap to zoom</span><span className="hidden md:inline">Hover to zoom, click for full size</span>
             </span>
           </button>
         )}
       </div>
       {images.length > 1 && (
-        <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:justify-center sm:overflow-visible">
           {images.map((img, i) => (
             <button
               key={img.id}
@@ -109,7 +142,7 @@ export default function ProductGallery({
               onClick={() => setActive(i)}
               aria-label={img.video ? "Play video" : `Show photo ${i + 1}`}
               aria-current={i === active}
-              className={`relative h-16 w-16 overflow-hidden rounded-xl border bg-white ${
+              className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border bg-white ${
                 i === active ? "border-brand ring-2 ring-brand/30" : "border-border hover:border-brand/50"
               }`}
             >

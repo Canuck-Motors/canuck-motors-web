@@ -131,7 +131,15 @@ function parseSheetXml(files: Map<string, Buffer>) {
   return rows;
 }
 
-function parseCsvLine(line: string) {
+// Comma, tab or semicolon separated: pick whichever the header line uses most.
+function detectDelimiter(text: string) {
+  const first = text.split(/\r?\n/).find((l) => l.trim()) ?? "";
+  const count = (d: string) => first.split(d).length - 1;
+  const best = [",", "\t", ";"].map((d) => [d, count(d)] as const).sort((a, b) => b[1] - a[1])[0];
+  return best[1] > 0 ? best[0] : ",";
+}
+
+function parseCsvLine(line: string, delimiter = ",") {
   const cells: string[] = [];
   let current = "";
   let quoted = false;
@@ -146,7 +154,7 @@ function parseCsvLine(line: string) {
       } else {
         quoted = !quoted;
       }
-    } else if (ch === "," && !quoted) {
+    } else if (ch === delimiter && !quoted) {
       cells.push(current.trim());
       current = "";
     } else {
@@ -164,7 +172,7 @@ function normalizeRows(rows: string[][]): ImportRow[] {
   }
 
   const headers = rows[0].map((value) => value?.trim().toLowerCase());
-  const skuIndex = headers.findIndex((value) => hasAlias(value, ["sku", "part_number", "part number", "partnumber"]));
+  const skuIndex = headers.findIndex((value) => hasAlias(value, ["sku", "part_number", "part number", "partnumber", "cm sku", "cm number", "item number"]));
   const quantityIndex = headers.findIndex((value) => hasAlias(value, QTY_ALIASES));
 
   if (skuIndex < 0 || quantityIndex < 0) {
@@ -200,10 +208,11 @@ export function parseInventoryFile(fileName: string, bytes: ArrayBuffer) {
 
   if (lower.endsWith(".csv")) {
     const text = Buffer.from(bytes).toString("utf8").replace(/^\uFEFF/, "");
+    const delim = detectDelimiter(text);
     const rows = text
       .split(/\r?\n/)
       .filter((line) => line.trim().length > 0)
-      .map(parseCsvLine);
+      .map((line) => parseCsvLine(line, delim));
 
     return normalizeRows(rows);
   }
@@ -233,7 +242,7 @@ const hasAlias = (header: unknown, aliases: string[]) => aliases.some((a) => nor
 const QTY_ALIASES = ["quantity", "qty", "stock", "on_hand", "on hand", "quentity", "quanity", "quantiy", "qnty"];
 
 const HEADER_ALIASES: Record<keyof Omit<ProductImportRow, "row_number">, string[]> = {
-  sku: ["sku", "part_number", "part number", "partnumber", "cm number", "cm_number"],
+  sku: ["sku", "part_number", "part number", "partnumber", "cm number", "cm_number", "cm sku", "cm_sku", "cm part number", "part no", "item number", "item sku", "product sku"],
   name: ["name", "product name", "product_name", "title"],
   price: ["price", "unit price", "unit_price", "price (cad)"],
   description: ["description", "details"],
@@ -249,10 +258,11 @@ export function parseProductFile(fileName: string, bytes: ArrayBuffer): ProductI
 
   if (lower.endsWith(".csv")) {
     const text = Buffer.from(bytes).toString("utf8").replace(/^﻿/, "");
+    const delim = detectDelimiter(text);
     rows = text
       .split(/\r?\n/)
       .filter((line) => line.trim().length > 0)
-      .map(parseCsvLine);
+      .map((line) => parseCsvLine(line, delim));
   } else if (lower.endsWith(".xlsx")) {
     rows = parseSheetXml(unzipEntries(Buffer.from(bytes)));
   } else {

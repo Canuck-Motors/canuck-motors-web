@@ -17,3 +17,18 @@ export async function isAmazonRedirectOn(): Promise<boolean> {
     return false;
   }
 }
+
+// True unless the admin switched Uber same-day delivery off (also true if the column is not installed yet).
+export async function isUberEnabled(): Promise<boolean> {
+  try {
+    const { data, error } = await createAdminClient()
+      .from("fulfillment_settings")
+      .select("uber_enabled")
+      .eq("id", 1)
+      .maybeSingle();
+    if (error) return true;
+    return data?.uber_enabled !== false;
+  } catch {
+    return true;
+  }
+}

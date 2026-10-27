@@ -264,6 +264,7 @@ export async function findPartsForVehicle(params: {
   trim?: string;
   part?: string;
   anyEngine?: boolean; // customer does not know the engine: show parts for every engine
+  cylinders?: number; // from a VIN: tells apart two engines of the same size
 }) {
   const supabase = createPublicClient();
 
@@ -450,7 +451,17 @@ export async function findPartsForVehicle(params: {
       "",
     );
 
-    let matched = groups.filter((g) => g.key === wanted);
+    // Litres from a VIN ("5.0") against our names ("5L | V8 | 4951cc"): compare as numbers
+    const litres = /^\d+(\.\d+)?\s*l?$/i.test(params.engine.trim()) ? parseFloat(params.engine) : NaN;
+    let matched = Number.isFinite(litres)
+      ? groups.filter((g) => Math.abs(parseFloat(g.name) - litres) < 0.05)
+      : [];
+    if (matched.length > 1 && params.cylinders) {
+      const cyl = (n: string) => Number(n.match(/\b[VLIHW](\d{1,2})\b/i)?.[1] ?? NaN);
+      const byCyl = matched.filter((g) => cyl(g.name) === params.cylinders);
+      if (byCyl.length) matched = byCyl;
+    }
+    if (!matched.length) matched = groups.filter((g) => g.key === wanted);
     if (!matched.length && wanted.length >= 2) {
       matched = groups.filter((g) => g.key.includes(wanted));
     }
@@ -687,6 +698,9 @@ type VinDecoded = {
   drive?: string;
   engine_liters?: string;
   engine_description: string;
+  engine_cylinders?: number;
+  /** GAS / FLEX / DIESEL / ELECTRIC / HYBRID, as our engine names write it */
+  fuel?: string;
   body?: string;
 };
 
@@ -761,6 +775,17 @@ export async function decodeVin(raw: string): Promise<VinDecoded | VinFailure> {
       ]
         .filter(Boolean)
         .join(" "),
+      engine_cylinders: Number(cylinders) || undefined,
+      fuel: (() => {
+        const f = `${r.FuelTypePrimary ?? ""} ${r.FuelTypeSecondary ?? ""}`.toLowerCase();
+        if (/flexible|ffv|e85|ethanol/.test(f)) return "FLEX";
+        if (/hybrid/.test(f)) return "HYBRID";
+        if (/diesel/.test(f)) return "DIESEL";
+        if (/electric/.test(f) && !/gasoline/.test(f)) return "ELECTRIC";
+        if (/natural gas|cng/.test(f)) return "CNG";
+        if (/gasoline/.test(f)) return "GAS";
+        return undefined;
+      })(),
       body: String(r.BodyClass ?? "").trim() || undefined,
     };
   } catch (error) {
@@ -801,6 +826,7 @@ export async function findPartsByVin(vin: string, part?: string) {
     make: decoded.make,
     model: decoded.model,
     engine: decoded.engine_liters,
+    cylinders: decoded.engine_cylinders,
     part,
   });
 

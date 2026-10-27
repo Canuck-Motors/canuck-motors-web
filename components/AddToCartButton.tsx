@@ -86,7 +86,8 @@ export default function AddToCartButton({
       ref={formRef}
       action={async () => {
         const result = await action();
-        setMessage(result && typeof result === "object" && result.error ? result.error : null);
+        const err = result && typeof result === "object" && result.error ? result.error : null;
+        setMessage(err);
       }}
       onSubmit={(e) => {
         if (ready.current) return; // the real submit, after the animation

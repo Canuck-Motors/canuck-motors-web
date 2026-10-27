@@ -39,7 +39,6 @@ export async function previewProductImport(formData: FormData): Promise<PreviewR
     const supabase = await requireStaff();
     const file = formData.get("file");
     if (!(file instanceof File) || file.size <= 0) throw new Error("Choose a file first.");
-    if (file.size > 5 * 1024 * 1024) throw new Error("Files are limited to 5 MB.");
 
     const parsed = parseProductFile(file.name, await file.arrayBuffer());
     if (!parsed.length) throw new Error("No product rows were found.");

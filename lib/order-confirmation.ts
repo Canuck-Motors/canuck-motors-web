@@ -1,9 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { grandTotal, storedTaxLines } from "@/lib/order-totals";
 import { isEmailConfigured, sendAppEmail } from "@/lib/email";
+import { brandedEmail } from "@/lib/email-template";
 
-const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const money = (n: number) => `$${n.toFixed(2)}`;
 
 // Emails the receipt once per order. Safe to call from both the webhook and the success page:
@@ -67,23 +66,25 @@ export async function sendOrderConfirmation(orderId: string): Promise<void> {
       .filter(Boolean)
       .join("\n\n");
 
-    const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:auto;color:#111">
-<h2 style="margin:0 0 8px">Thanks for your order</h2>
-<p>Hi ${esc(name)}, order <b>${esc(number)}</b> is confirmed. We are getting it ready to ship.</p>
-<table style="width:100%;border-collapse:collapse;margin:16px 0">${lines
-      .map(
-        (i) =>
-          `<tr><td style="padding:8px 0;border-bottom:1px solid #eee">${esc(String(i.product_name))}<div style="color:#777;font-size:12px">${esc(String(i.sku))} × ${Number(i.quantity)}</div></td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right">${money(Number(i.unit_price) * Number(i.quantity))}</td></tr>`
-      )
-      .join("")}${rows
-      .map(
-        ([k, v]) =>
-          `<tr><td style="padding:6px 0;color:#555">${esc(k)}</td><td style="padding:6px 0;text-align:right;font-weight:bold">${esc(v)}</td></tr>`
-      )
-      .join("")}</table>
-${addr.length ? `<p style="margin:0"><b>Shipping to</b><br>${addr.map(esc).join("<br>")}</p>` : ""}
-<p style="margin-top:16px"><a href="${esc(invoiceUrl)}" style="display:inline-block;background:#111;color:#fff;padding:10px 20px;border-radius:999px;text-decoration:none;font-weight:bold">View invoice / download PDF</a></p>
-<p style="color:#666;font-size:13px;margin-top:20px">We will email you again with tracking as soon as it ships. Questions? Reply to this email or call 604-445-0147.</p></div>`;
+    const html = brandedEmail({
+      preheader: `Order ${number} is confirmed. We are getting it ready to ship.`,
+      title: "Thanks for your order",
+      blocks: [
+        { type: "text", text: `Hi ${name}, order ${number} is confirmed. We are getting it ready to ship.` },
+        {
+          type: "items",
+          items: lines.map((i) => ({
+            name: String(i.product_name),
+            sub: `${i.sku} × ${Number(i.quantity)}`,
+            amount: money(Number(i.unit_price) * Number(i.quantity)),
+          })),
+        },
+        { type: "rows", rows, strongLast: true },
+        ...(addr.length ? [{ type: "box" as const, title: "Shipping to", lines: addr }] : []),
+        { type: "button", label: "View invoice / download PDF", url: invoiceUrl, dark: true },
+        { type: "note", text: "We will email you again with tracking as soon as it ships." },
+      ],
+    });
 
     await sendAppEmail({ to, subject: `Your Canuck Motors order ${number} is confirmed`, text, html });
   } catch (error) {

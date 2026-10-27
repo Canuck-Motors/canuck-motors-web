@@ -27,5 +27,15 @@ export async function getProductImages(productId: number): Promise<ProductImage[
     console.error("Product images lookup failed:", error.message);
     return [];
   }
-  return (data ?? []).map((r: any) => ({ id: r.id, path: r.path, url: imageUrl(r.path), video: isVideo(r.path) }));
+  return boxFirst((data ?? []).map((r: any) => ({ id: r.id, path: r.path, url: imageUrl(r.path), video: isVideo(r.path) })));
+}
+
+// Retail-box photo first (file name mentions "box", "pack" or "retail"), then the usual order.
+const BOX = /(^|[^a-z])(box|boxed|pack|packaging|retail)([^a-z]|$)/i;
+export function boxFirst<T extends { path: string }>(images: T[]): T[] {
+  const photos = images.filter((i) => !isVideo(i.path));
+  const idx = photos.findIndex((i) => BOX.test(i.path.split("/").pop() ?? ""));
+  if (idx <= 0) return images;
+  const box = photos[idx];
+  return [box, ...images.filter((i) => i !== box)];
 }

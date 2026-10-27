@@ -17,6 +17,7 @@ async function requireAdmin() {
 
 export async function saveFulfillmentSettings(input: {
   amazonRedirectEnabled?: boolean;
+  uberEnabled?: boolean;
   amazonMcfEnabled: boolean;
   deliveryPartnerEnabled: boolean;
   preferredProvider: "amazon_mcf" | "delivery_partner";
@@ -37,6 +38,13 @@ export async function saveFulfillmentSettings(input: {
     .update({ amazon_redirect_enabled: Boolean(input.amazonRedirectEnabled) })
     .eq("id", 1);
   if (redirectError) throw new Error(redirectError.message);
+  if (input.uberEnabled !== undefined) {
+    const { error: uberError } = await createAdminClient()
+      .from("fulfillment_settings")
+      .update({ uber_enabled: input.uberEnabled })
+      .eq("id", 1);
+    if (uberError) throw new Error(`${uberError.message} (run database/uber_toggle.sql in Supabase first)`);
+  }
   revalidatePath("/", "layout");
 
   // Keep already-paid, not-yet-shipped orders aligned with the current
@@ -482,3 +490,22 @@ export async function importAmazonTrackingSheet(formData: FormData) {
     errors: errors.slice(0, 25),
   };
 }
+
+// Instant on/off for Uber same-day delivery (no Save button needed).
+export async function setUberEnabled(enabled: boolean) {
+  await requireAdmin();
+  const { data, error } = await createAdminClient()
+    .from("fulfillment_settings")
+    .update({ uber_enabled: enabled })
+    .eq("id", 1)
+    .select("uber_enabled")
+    .single();
+  if (error) {
+    throw new Error(`${error.message}. Run database/uber_toggle.sql in Supabase first.`);
+  }
+  revalidatePath("/", "layout");
+  revalidatePath("/cart");
+  revalidatePath("/admin/fulfillment");
+  return Boolean(data?.uber_enabled);
+}
+

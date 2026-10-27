@@ -6,7 +6,8 @@ import { notFound } from "next/navigation";
 import { cacheLife, cacheTag } from "next/cache";
 import { createPublicClient } from "@/lib/supabase/public";
 import { ProductCard } from "@/components/ProductCard";
-import { sortByTypeOrder } from "@/lib/product-order";
+import { sortByTypeOrder, groupProducts } from "@/lib/product-order";
+import VehicleParts from "@/components/VehicleParts";
 
 export const instant = false;
 
@@ -61,7 +62,7 @@ async function getModelPage(brandSlug: string, modelSlug: string) {
   const { data: products } = await supabase
     .from("products")
     .select(
-      `id, product_name, price, slug, sku, title_tag,
+      `id, product_name, price, slug, sku, title_tag, position,
        product_images ( path, sort_order ),
        product_fitments!inner ( vehicle_fitments!inner ( id ) )`,
     )
@@ -153,11 +154,22 @@ export default async function BrandModelPage({ params }: PageProps) {
           </div>
         ) : (
           <div className="mt-8">
-            <ProductGridView className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {result.products.map((product: any) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </ProductGridView>
+            <VehicleParts
+              vehicleName={name}
+              total={result.products.length}
+              groups={groupProducts(result.products as { product_name: string; sku?: string }[]).map((g) => ({
+                id: g.id,
+                label: g.label,
+                count: g.items.length,
+                content: (
+                  <ProductGridView toggle className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                    {g.items.map((product: any) => (
+                      <ProductCard key={product.id} product={product} />
+                    ))}
+                  </ProductGridView>
+                ),
+              }))}
+            />
           </div>
         )}
 

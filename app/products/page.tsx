@@ -22,7 +22,7 @@ async function getProducts() {
   const supabase = createPublicClient();
   const { data, error } = await supabase
     .from("products")
-    .select("id, product_name, price, slug, sku, title_tag, product_images ( path, sort_order )")
+    .select("id, product_name, price, slug, sku, title_tag, position, product_images ( path, sort_order )")
     .eq("is_active", true)
     .eq("is_delete", false)
     .order("product_name")

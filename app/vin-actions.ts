@@ -72,18 +72,33 @@ export async function lookupVin(raw: string): Promise<Result> {
 
   let url = `/products/${decoded.year}/${make.slug}/${model.slug}`;
 
-  // Add the engine only when exactly one engine matches the VIN's size.
+  // Same engine as the VIN, so the page shows the same parts as the chatbot.
+  // Our engine names look like "5L | V8 | 4951cc | GAS": compare litres as numbers
+  // (the VIN says "5.0"), then cylinders, then fuel.
   if (decoded.engine_liters) {
     const engines = new Map<number, any>();
     for (const r of (fit ?? []) as any[]) {
-      if (r.models?.id === model.id && r.engine_sizes) {
-        engines.set(r.engine_sizes.id, r.engine_sizes);
-      }
+      if (r.models?.id === model.id && r.engine_sizes) engines.set(r.engine_sizes.id, r.engine_sizes);
     }
-    const hits = Array.from(engines.values()).filter((e) =>
-      String(e.engine_name).startsWith(`${decoded.engine_liters}L`),
-    );
-    if (hits.length === 1) url += `/${hits[0].slug}`;
+    const litres = Number(decoded.engine_liters);
+    const cylOf = (name: string) => Number(name.match(/\b[VLIHW](\d{1,2})\b/i)?.[1] ?? NaN);
+    const fuelOf = (name: string) => name.split("|").pop()?.trim().toUpperCase() ?? "";
+    let hits = Array.from(engines.values()).filter((e) => {
+      const l = parseFloat(String(e.engine_name));
+      return Number.isFinite(l) && Math.abs(l - litres) < 0.05;
+    });
+    if (hits.length > 1 && decoded.engine_cylinders) {
+      const byCyl = hits.filter((e) => cylOf(e.engine_name) === decoded.engine_cylinders);
+      if (byCyl.length) hits = byCyl;
+    }
+    if (hits.length > 1 && decoded.fuel) {
+      const byFuel = hits.filter((e) => fuelOf(e.engine_name) === decoded.fuel);
+      if (byFuel.length) hits = byFuel;
+    }
+    if (hits.length === 1) {
+      url += `/${hits[0].slug}`;
+
+    }
   }
 
   return {

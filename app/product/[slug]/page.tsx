@@ -7,9 +7,15 @@ import { notFound } from "next/navigation";
 import { createPublicClient } from "@/lib/supabase/public";
 import ProductTabs from "@/components/ProductTabs";
 import AddToCartSlot from "@/components/AddToCartSlot";
+import FitCheck from "@/components/product/FitCheck";
+import StickyBuyBar from "@/components/product/StickyBuyBar";
+import ProductReviews from "@/components/ProductReviews";
+import StarRating from "@/components/StarRating";
+import { ratingForSku } from "@/lib/amazon-reviews";
 import ProductGallery from "@/components/ProductGallery";
 import { getProductImages } from "@/lib/product-images";
 import { getFitments, getInterchanges, getOeNumbers, getSpecs } from "@/lib/product-details";
+import { isPlainPhoto } from "@/lib/plain-photos";
 import { safeJsonLd } from "@/lib/json-ld";
 
 type PageProps = {
@@ -301,7 +307,7 @@ export default async function ProductDetailPage({
             aria-label={`${product.product_name} image`}
             className="relative flex min-h-[420px] items-center justify-center overflow-hidden rounded-[30px] border border-black/5 bg-white p-8 shadow-[0_18px_55px_rgba(0,0,0,0.07)] before:absolute before:-right-24 before:-top-24 before:h-72 before:w-72 before:rounded-full before:bg-brand/10 before:blur-3xl"
           >
-            <ProductGallery images={images} name={withMaterial(product.product_name, product.sku)} />
+            <ProductGallery images={images} name={withMaterial(product.product_name, product.sku)} plain={isPlainPhoto(product.sku)} />
           </section>
 
           <section>
@@ -318,6 +324,18 @@ export default async function ProductDetailPage({
                 Part number: <span className="font-medium text-ink">{product.sku}</span>
               </p>
             )}
+
+            {(() => {
+              const rating = ratingForSku(product.sku);
+              return rating ? (
+                <a href="#product-reviews-heading" className="mt-3 inline-flex items-center gap-2 text-sm font-semibold text-ink/80 hover:text-brand">
+                  <StarRating rating={rating.average} />
+                  <span>
+                    {rating.average.toFixed(1)} ({rating.count} {rating.count === 1 ? "review" : "reviews"})
+                  </span>
+                </a>
+              ) : null;
+            })()}
 
             {product.position && (
               <p className="mt-2 text-sm text-muted-foreground">
@@ -337,28 +355,12 @@ export default async function ProductDetailPage({
               )}
             </div>
 
-            <div className="mt-8 rounded-[24px] border border-brand/15 bg-brand-tint/55 p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-ink">
-                Vehicle compatibility
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {compatibilityCount === null
-                  ? "Use the vehicle finder to confirm compatibility for your vehicle."
-                  : compatibilityCount > 0
-                    ? `Mapped to ${compatibilityCount.toLocaleString()} vehicle configuration${compatibilityCount === 1 ? "" : "s"} in our catalog. See the Vehicle Compatibility list below to confirm your exact year, make, model, engine, and trim.`
-                    : "Compatibility mappings are not currently available for this product."}
-              </p>
-              {/* ProductTabs opens the Vehicle Compatibility tab on click */}
-              <a
-                href="#compatibility"
-                data-open-tab="compatibility"
-                className="mt-4 inline-flex text-sm font-semibold text-brand hover:underline"
-              >
-                Check vehicle fitment
-              </a>
-            </div>
+            <FitCheck
+              count={compatibilityCount}
+              rows={[...new Map(fitments.map((f) => [`${f.year}|${f.make}|${f.model}`, { year: f.year, make: f.make, model: f.model }])).values()]}
+            />
 
-            <div className="mt-6 flex flex-wrap gap-3">
+            <div data-main-buy className="mt-6 flex flex-wrap gap-3">
               <Suspense
                 fallback={
                   <span className="inline-flex rounded-full bg-secondary px-6 py-3 text-sm font-bold text-muted-foreground">
@@ -381,6 +383,11 @@ export default async function ProductDetailPage({
           oe={oe}
           interchanges={interchanges}
         />
+
+        <ProductReviews sku={product.sku} />
+
+        <StickyBuyBar name={withMaterial(product.product_name, product.sku)} price={product.price} />
+        <div className="h-20 md:hidden" aria-hidden="true" />
       </div>
     </main>
   );

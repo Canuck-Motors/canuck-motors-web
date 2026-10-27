@@ -1,4 +1,6 @@
 import nodemailer from "nodemailer";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 type EmailMessage = {
   to: string;
@@ -51,13 +53,27 @@ export async function sendAppEmail(message: EmailMessage) {
   const from = process.env.EMAIL_FROM;
   if (!from) throw new Error("EMAIL_FROM is not configured.");
 
+  // Attach the logo inside the email itself, so it shows even when the site address is not public
+  // (localhost) and when the mail app blocks remote images. Falls back to the hosted logo.
+  let html = message.html;
+  let attachments: Array<Record<string, unknown>> = [...(message.attachments ?? [])];
+  if (html && /\/logo\/Canuck-Motors\.png"/.test(html)) {
+    try {
+      const logo = await readFile(path.join(process.cwd(), "public", "logo", "Canuck-Motors.png"));
+      html = html.replace(/src="[^"]*\/logo\/Canuck-Motors\.png"/, 'src="cid:cm-logo"');
+      attachments = [{ filename: "canuck-motors.png", content: logo, contentType: "image/png", cid: "cm-logo", contentDisposition: "inline" }, ...attachments];
+    } catch {
+      /* keep the hosted logo link */
+    }
+  }
+
   const result = await getTransporter().sendMail({
     from,
     to: message.to,
     subject: message.subject,
     text: message.text,
-    html: message.html,
-    attachments: message.attachments,
+    html,
+    attachments: attachments as never,
     ...(process.env.EMAIL_REPLY_TO
       ? { replyTo: process.env.EMAIL_REPLY_TO }
       : {}),

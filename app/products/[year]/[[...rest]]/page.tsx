@@ -1,20 +1,17 @@
 import ProductGridView from "@/components/ProductGridView";
+import BrandNeon from "@/components/BrandNeon";
+import VehicleParts from "@/components/VehicleParts";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createPublicClient } from "@/lib/supabase/public";
 import Link from "next/link";
 import { ProductCard } from "@/components/ProductCard";
-import { typeRank } from "@/lib/product-order";
+import { groupProducts } from "@/lib/product-order";
 import { safeJsonLd } from "@/lib/json-ld";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL ||
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
-
-// "Engine Water Pump - CM1204350" -> "Engine Water Pump"
-const groupLabel = (name: string) =>
-  String(name ?? "").split(" - ")[0].replace(/\s*\(.*?\)\s*$/, "").trim() || "Other parts";
-const groupId = (label: string) => "g-" + label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 // Route: app/products/[year]/[[...rest]]/page.tsx
 // rest = [make, model, engine, trim], every part optional
@@ -213,6 +210,7 @@ export default async function VehicleProductsPage({ params }: PageProps) {
       product_name,
       price,
       sku,
+      position,
       slug,
       meta_description,
       title_tag,
@@ -269,14 +267,7 @@ export default async function VehicleProductsPage({ params }: PageProps) {
     .join(" ");
 
   // Group the parts by type (water pumps, brake pads, ...) so the page is easy to scan.
-  const groupMap = new Map<string, any[]>();
-  for (const product of products) {
-    const label = groupLabel(product.product_name);
-    groupMap.set(label, [...(groupMap.get(label) ?? []), product]);
-  }
-  const groups = [...groupMap.entries()]
-    .map(([label, items]) => ({ label, id: groupId(label), items }))
-    .sort((a, b) => typeRank(a.label) - typeRank(b.label) || a.label.localeCompare(b.label));
+  const groups = groupProducts(products);
 
   const canonicalPath = ["/products", yearRow.year, ...(rest ?? [])].join("/");
   const itemList = {
@@ -303,8 +294,9 @@ export default async function VehicleProductsPage({ params }: PageProps) {
     <main className="min-h-screen bg-secondary">
       {/* Vehicle header */}
       <section className="relative overflow-hidden bg-ink text-white">
+        {manufacturer && <BrandNeon name={manufacturer.manufacturer_name} />}
         <div className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand/25 blur-3xl" />
-        <div className="cm-container relative py-10 md:py-14">
+        <div className="cm-container relative z-10 py-10 md:py-14">
           <nav aria-label="Breadcrumb" className="mb-5 text-sm text-white/60">
             <ol className="flex flex-wrap gap-2">
               <li>
@@ -358,19 +350,6 @@ export default async function VehicleProductsPage({ params }: PageProps) {
             </span>
           </div>
 
-          {groups.length > 1 && (
-            <nav aria-label="Jump to a part type" className="mt-6 flex flex-wrap gap-2">
-              {groups.map((g) => (
-                <a
-                  key={g.id}
-                  href={`#${g.id}`}
-                  className="rounded-full border border-white/15 px-4 py-2 text-sm font-semibold text-white transition hover:border-brand hover:bg-brand"
-                >
-                  {g.label} <span className="opacity-60">{g.items.length}</span>
-                </a>
-              ))}
-            </nav>
-          )}
         </div>
       </section>
 
@@ -392,26 +371,25 @@ export default async function VehicleProductsPage({ params }: PageProps) {
             </div>
           ) : (
             <div className="space-y-12">
-              {groups.map((g) => (
-                <div key={g.id} id={g.id} className="scroll-mt-28">
-                  <div className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-black/10 pb-3">
-                    <h3 className="text-2xl font-black tracking-[-0.03em] text-ink">
-                      {g.label}
-                    </h3>
-                    <p className="text-sm font-semibold text-muted-foreground">
-                      {g.items.length} {g.items.length === 1 ? "option" : "options"} for your {vehicleName}
-                    </p>
-                  </div>
-                  <ProductGridView
-                    toggle={g.id === groups[0]?.id}
-                    className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                  >
-                    {g.items.map((product) => (
-                      <ProductCard key={product.id} product={product} />
-                    ))}
-                  </ProductGridView>
-                </div>
-              ))}
+              <VehicleParts
+                vehicleName={vehicleName}
+                total={products.length}
+                groups={groups.map((g) => ({
+                  id: g.id,
+                  label: g.label,
+                  count: g.items.length,
+                  content: (
+                    <ProductGridView
+                      toggle
+                      className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3"
+                    >
+                      {g.items.map((product) => (
+                        <ProductCard key={product.id} product={product} />
+                      ))}
+                    </ProductGridView>
+                  ),
+                }))}
+              />
 
               <aside className="rounded-[26px] border border-brand/15 bg-white p-6 shadow-[0_14px_40px_rgba(0,0,0,0.05)] md:flex md:items-center md:justify-between md:gap-6 md:p-8">
                 <div>

@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendAppEmail } from "@/lib/email";
 import { buildReturnLabelPdf, loadReturnLabelData } from "@/lib/return-label";
+import { brandedEmail, type EmailBlock } from "@/lib/email-template";
 
 type OutboxRow = {
   id: string;
@@ -132,6 +133,114 @@ function messageFor(row: OutboxRow) {
   };
 }
 
+// Branded HTML version of the same message (the plain-text version above stays as the fallback).
+function htmlFor(row: OutboxRow): string {
+  const p = row.payload ?? {};
+  const order = String(p.order_number || "");
+  const returnItems = Array.isArray(p.return_items)
+    ? (p.return_items as Array<{ quantity?: number; name?: string; sku?: string }>)
+    : [];
+  const itemsBlock: EmailBlock[] = returnItems.length
+    ? [{
+        type: "items",
+        items: returnItems.map((i) => ({
+          name: String(i.name || i.sku || "Item"),
+          sub: [i.sku, `Qty ${Number(i.quantity || 1)}`].filter(Boolean).join(" · "),
+        })),
+      }]
+    : [];
+
+  if (row.event_type === "exchange_payment_required") {
+    const amount = Number(p.amount_due || 0).toFixed(2);
+    const currency = String(p.currency || "CAD");
+    return brandedEmail({
+      preheader: "An extra payment is needed to complete your exchange.",
+      title: "Action required for your exchange",
+      blocks: [
+        { type: "text", text: "Your exchange requires an additional payment before we can send the replacement." },
+        { type: "rows", rows: [["Amount due", `$${amount} ${currency}`]], strongLast: true },
+        { type: "button", label: "Complete payment", url: String(p.payment_url || "") },
+      ],
+    });
+  }
+
+  if (row.event_type === "return_instructions") {
+    const labelUrl = String(p.return_label_url || "");
+    const amazonRmaPageUrl = String(p.amazon_rma_page_url || "");
+    const amazonRmaId = String(p.amazon_rma_id || "");
+    const address = String(p.return_address || "");
+    const rows: [string, string][] = [["Order", order]];
+    if (amazonRmaId) rows.push(["Amazon MCF RMA", amazonRmaId]);
+    const blocks: EmailBlock[] = [
+      { type: "text", text: String(p.message || "").trim() || `Here is how to send back your item for order ${order}.` },
+      { type: "rows", rows },
+      ...itemsBlock,
+    ];
+    if (amazonRmaPageUrl) {
+      blocks.push(
+        { type: "button", label: "Open Amazon return document", url: amazonRmaPageUrl },
+        { type: "steps", steps: [
+          "Print the Amazon document.",
+          "Attach the return-center mailing label to the package and place the authorization slip inside.",
+          "Pack the item securely and keep your carrier receipt and tracking number.",
+        ] },
+        { type: "note", text: "Return postage is not included." },
+      );
+    } else {
+      if (address) blocks.push({ type: "box", title: "Return destination", lines: address.split("\n").filter(Boolean) });
+      if (labelUrl) {
+        blocks.push(
+          { type: "box", title: "Your return label", lines: ["The label is attached to this email as a PDF."] },
+          { type: "button", label: "Open return label", url: labelUrl },
+          { type: "steps", steps: [
+            "Print the PDF at 100% (do not scale it).",
+            "Attach the label flat to the outside of the box without covering the barcode.",
+            "Pack the item securely and drop the box off with any carrier.",
+            "Keep your carrier receipt and tracking number until the return is completed.",
+          ] },
+          { type: "note", text: "Postage is not included." },
+        );
+      } else {
+        blocks.push({ type: "text", text: address ? "Pack the item securely and keep your carrier receipt and tracking number until the return is completed." : "Reply to this email and we will send you the return address." });
+      }
+    }
+    return brandedEmail({
+      preheader: labelUrl ? "Your return label is attached." : `How to send back your item for order ${order}.`,
+      title: labelUrl ? "Your return label is ready" : "How to send back your item",
+      blocks,
+    });
+  }
+
+  if (row.event_type === "return_update") {
+    const status = String(p.status || "");
+    const statusLabel = status.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()) || "Updated";
+    const reason = String(p.message || "").trim();
+    const isDecline = ["rejected", "inspection_failed", "denied", "cancelled", "canceled"].includes(status);
+    const rows: [string, string][] = [["Order", order], ["Status", statusLabel]];
+    if (p.tracking) rows.push(["Return tracking", `${String(p.carrier || "")} ${String(p.tracking)}`.trim()]);
+    return brandedEmail({
+      preheader: `Return update for order ${order}: ${statusLabel}.`,
+      title: "Your return request was updated",
+      blocks: [
+        { type: "text", text: "We are writing to let you know that the status of your return request has changed." },
+        { type: "rows", rows },
+        ...itemsBlock,
+        ...(reason ? [{ type: "box" as const, title: isDecline ? "Reason" : "Note from our team", lines: reason.split("\n"), tone: isDecline ? ("warn" as const) : ("neutral" as const) }] : []),
+        { type: "note", text: "If you have any questions, just reply to this email and our team will be happy to help." },
+      ],
+    });
+  }
+
+  const status = String(p.status || "updated").replaceAll("_", " ");
+  return brandedEmail({
+    preheader: `Order update: ${status}.`,
+    title: "Order update",
+    blocks: [
+      { type: "text", text: `${order ? `Your Canuck Motors order ${order}` : "Your Canuck Motors order"} is now: ${status}.` },
+    ],
+  });
+}
+
 async function sendEmail(row: OutboxRow) {
   const message = messageFor(row);
   const requestId = String(row.payload?.return_label_request_id || "");
@@ -159,6 +268,7 @@ async function sendEmail(row: OutboxRow) {
     to: row.recipient,
     subject: message.subject,
     text: message.text,
+    html: htmlFor(row),
     attachments,
   });
 }

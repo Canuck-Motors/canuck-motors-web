@@ -1,4 +1,4 @@
-import { isAmazonRedirectOn } from "@/lib/fulfillment-mode";
+import { isAmazonRedirectOn, isUberEnabled } from "@/lib/fulfillment-mode";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -173,7 +173,7 @@ export default async function CartPage({ searchParams }: PageProps) {
     const { data: fs } = await createAdminClient().from("fulfillment_settings").select("amazon_mcf_enabled").eq("id", 1).maybeSingle();
     mcfOn = Boolean(fs?.amazon_mcf_enabled);
   } catch {}
-  const uberEligible = !(await isAmazonRedirectOn()) && ["vancouver", "burnaby"].includes(savedCity.toLowerCase());
+  const uberEligible = !(await isAmazonRedirectOn()) && (await isUberEnabled()) && ["vancouver", "burnaby"].includes(savedCity.toLowerCase());
   // Fall back to the phone used on the customer's last Uber delivery if the profile has none.
   let lastUberPhone = "";
   if (!profile.phone_number) {

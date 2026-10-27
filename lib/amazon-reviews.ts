@@ -95,3 +95,24 @@ export function reviewUrl(r: AmazonReview): string {
 export function visibleReviews(): AmazonReview[] {
   return AMAZON_REVIEWS.filter((r) => r.rating >= MIN_REVIEW_STARS);
 }
+
+// ---- Matching reviews to products -------------------------------------------------------------
+// A review's `part` starts with the part number ("CM1253285 (Ford EcoBoost)", "CMK1084-967 Brake Pad Set").
+// Reviews that name no part number (e.g. "Ceramic Brake Pad Set") are not matched to any single product.
+export function reviewSku(r: AmazonReview): string | null {
+  const m = r.part.trim().match(/^(CMK?[A-Z0-9-]*\d[A-Z0-9-]*)/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
+export function reviewsForSku(sku: string | null | undefined): AmazonReview[] {
+  const key = String(sku ?? "").trim().toUpperCase();
+  if (!key) return [];
+  return AMAZON_REVIEWS.filter((r) => reviewSku(r) === key).sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export function ratingForSku(sku: string | null | undefined): { average: number; count: number } | null {
+  const list = reviewsForSku(sku);
+  if (!list.length) return null;
+  const average = list.reduce((t, r) => t + r.rating, 0) / list.length;
+  return { average: Math.round(average * 10) / 10, count: list.length };
+}

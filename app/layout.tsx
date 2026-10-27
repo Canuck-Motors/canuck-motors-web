@@ -3,6 +3,8 @@ import { Suspense } from "react";
 import Script from "next/script";
 import Header from "@/components/Header";
 import Navbar from "@/components/Navbar";
+import MiniCart from "@/components/MiniCart";
+import Footer from "@/components/Footer";
 import { Outfit } from "next/font/google";
 import ChatLauncher from "@/components/chat/ChatLauncher";
 import FrenchRuntime from "@/components/i18n/FrenchRuntime";
@@ -84,6 +86,8 @@ export default function RootLayout({
   </Suspense>
   <Navbar />
   {children}
+  <Footer />
+  <MiniCart />
   <ChatLauncher />
   <FrenchRuntime />
   <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(siteJsonLd) }} />

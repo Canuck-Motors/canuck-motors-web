@@ -60,6 +60,7 @@ export default async function FulfillmentAdminPage() {
         <FulfillmentSettings
           initialSettings={{
             amazonRedirectEnabled: Boolean(settingsRes.data.amazon_redirect_enabled),
+            uberEnabled: settingsRes.data.uber_enabled !== false,
             amazonMcfEnabled: Boolean(settingsRes.data.amazon_mcf_enabled),
             deliveryPartnerEnabled: Boolean(settingsRes.data.delivery_partner_enabled),
             preferredProvider:

@@ -1,8 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isEmailConfigured, sendAppEmail } from "@/lib/email";
+import { brandedEmail } from "@/lib/email-template";
 
-const esc = (s: string) =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 type Details = {
   orderId: string;
@@ -58,21 +57,16 @@ export async function emailShipmentToCustomer(d: Details): Promise<string> {
       .filter(Boolean)
       .join("\n\n");
 
-    const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;color:#111">
-<h2 style="margin:0 0 12px">Your order is on its way</h2>
-<p>Hi ${esc(name)}, your Canuck Motors order <b>${esc(number)}</b> has shipped.</p>
-<table style="width:100%;border-collapse:collapse;margin:16px 0">${rows
-      .map(
-        ([k, v]) =>
-          `<tr><td style="padding:8px 0;border-bottom:1px solid #eee;color:#666">${esc(k)}</td><td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right;font-weight:bold">${esc(v)}</td></tr>`
-      )
-      .join("")}</table>
-${
-  d.trackingUrl && /^https?:\/\//i.test(d.trackingUrl)
-    ? `<p><a href="${esc(d.trackingUrl)}" style="display:inline-block;background:#d62828;color:#fff;padding:12px 22px;border-radius:999px;text-decoration:none;font-weight:bold">Track your package</a></p>`
-    : ""
-}
-<p style="color:#666;font-size:13px">Thank you for shopping with Canuck Motors.</p></div>`;
+    const html = brandedEmail({
+      preheader: `Your order ${number} has shipped.`,
+      title: "Your order is on its way",
+      blocks: [
+        { type: "text", text: `Hi ${name}, your Canuck Motors order ${number} has shipped.` },
+        { type: "rows", rows },
+        { type: "button", label: "Track your package", url: d.trackingUrl },
+        { type: "note", text: "Thank you for shopping with Canuck Motors." },
+      ],
+    });
 
     await sendAppEmail({
       to,

@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { Hero } from "@/components/hero";
 import { FeaturedProducts } from "@/components/FeaturedProducts";
 import { AmazonReviews } from "@/components/AmazonReviews";
+import TrustStrip from "@/components/TrustStrip";
+import Reveal from "@/components/Reveal";
 
 // Fixed-height placeholder so the page does not jump when data arrives
 // (keeps Cumulative Layout Shift low, which helps SEO).
@@ -27,6 +29,10 @@ export default function Home() {
       <main id="main-content">
         <Hero />
 
+        <Reveal>
+          <TrustStrip />
+        </Reveal>
+
         <AmazonReviews />
 
         <Suspense
@@ -34,7 +40,9 @@ export default function Home() {
             <SectionSkeleton label="Loading products" heightClass="h-96" />
           }
         >
-          <FeaturedProducts />
+          <Reveal>
+            <FeaturedProducts />
+          </Reveal>
         </Suspense>
       </main>
     </>

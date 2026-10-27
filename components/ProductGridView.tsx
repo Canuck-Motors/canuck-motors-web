@@ -55,7 +55,7 @@ export default function ProductGridView({
   return (
     <div>
       {toggle && (
-        <div className="mb-4 flex justify-end sm:hidden">
+        <div data-pg-toggle className="mb-4 flex justify-end sm:hidden">
           <div className="inline-flex rounded-full border border-black/10 bg-white p-1">
             {btn("grid", "Grid", LayoutGrid)}
             {btn("list", "List", List)}

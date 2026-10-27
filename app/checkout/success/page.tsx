@@ -10,8 +10,9 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { retrieveStripeCheckoutSession } from "@/lib/stripe";
 import SuccessBadge from "@/components/checkout/SuccessBadge";
+import Confetti from "@/components/checkout/Confetti";
 import AutoRefresh from "@/components/checkout/AutoRefresh";
-import { Clock } from "lucide-react";
+import { Clock, PackageCheck, PackageOpen, Truck, Check } from "lucide-react";
 
 export const instant = false;
 
@@ -221,10 +222,13 @@ export default async function CheckoutSuccessPage({
   const items = order?.order_items ?? [];
 
   return (
-    <main className="min-h-screen bg-secondary/40">
-      <div className="mx-auto max-w-3xl px-6 py-16">
+    <main className="relative min-h-screen overflow-hidden bg-[linear-gradient(180deg,#fff1f1_0%,#ffffff_38%,#f7f7f8_100%)]">
+      {paid && <Confetti />}
+      <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-brand/10 blur-3xl" aria-hidden="true" />
+      <div className="pointer-events-none absolute -right-24 top-40 h-96 w-96 rounded-full bg-emerald-300/15 blur-3xl" aria-hidden="true" />
+      <div className="relative mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
         {paid && order?.delivery_method === "uber" && <UberTracking orderId={order.id} />}
-        <div className="mt-8 rounded-3xl border bg-white p-8 text-center md:p-12">
+        <div className="mt-8 overflow-hidden rounded-[32px] border border-black/5 bg-white p-6 text-center shadow-[0_24px_70px_rgba(0,0,0,0.08)] sm:p-8 md:p-12">
           {paid ? (
             <SuccessBadge />
           ) : (
@@ -237,15 +241,15 @@ export default async function CheckoutSuccessPage({
             </div>
           )}
 
-          <p className="mt-5 text-sm font-semibold uppercase tracking-[0.18em] text-brand">
+          <p className={`mt-5 text-sm font-semibold uppercase tracking-[0.18em] text-brand ${paid ? "cm-rise cm-rise-1" : ""}`}>
             {paid ? "Thank you" : "Checkout"}
           </p>
 
-          <h1 className="mt-3 text-3xl font-bold text-ink md:text-5xl">
+          <h1 className={`mt-3 text-4xl font-black tracking-[-0.04em] text-ink md:text-6xl ${paid ? "cm-rise cm-rise-2" : ""}`}>
             {paid ? "Order confirmed" : failed ? "Payment did not go through" : "Confirming your payment…"}
           </h1>
 
-          <p className="mt-4 leading-7 text-muted-foreground">
+          <p className={`mx-auto mt-4 max-w-xl leading-7 text-muted-foreground ${paid ? "cm-rise cm-rise-3" : ""}`}>
             {paid
               ? "Thanks for shopping with Canuck Motors. We are getting your order ready to ship."
               : failed
@@ -255,8 +259,44 @@ export default async function CheckoutSuccessPage({
 
           {!paid && !failed && <AutoRefresh />}
 
+          {paid && (
+            <ol className="cm-rise cm-rise-4 mx-auto mt-9 grid max-w-xl grid-cols-3 text-center" aria-label="What happens next">
+              {[
+                { icon: Check, title: "Confirmed", text: "Receipt sent to your email", state: "done" },
+                { icon: PackageOpen, title: "We pack it", text: "Your parts are being prepared", state: "now" },
+                {
+                  icon: order?.delivery_method === "uber" ? Truck : PackageCheck,
+                  title: order?.delivery_method === "uber" ? "On the road" : "Shipped",
+                  text: order?.delivery_method === "uber" ? "A driver brings it today" : "Tracking comes by email",
+                  state: "next",
+                },
+              ].map((step, i) => (
+                <li key={step.title} className="relative px-1">
+                  {i > 0 && (
+                    <span className="absolute left-[-50%] right-[50%] top-5 h-0.5 bg-black/10" aria-hidden="true">
+                      {i === 1 && <span className="cm-step-line absolute inset-0 bg-emerald-500" />}
+                    </span>
+                  )}
+                  <span
+                    className={`relative mx-auto grid h-10 w-10 place-items-center rounded-full ${
+                      step.state === "done"
+                        ? "bg-emerald-500 text-white"
+                        : step.state === "now"
+                          ? "cm-dot-pulse bg-brand text-white"
+                          : "bg-secondary text-muted-foreground"
+                    }`}
+                  >
+                    <step.icon className="h-5 w-5" aria-hidden="true" />
+                  </span>
+                  <p className="mt-2 text-sm font-black text-ink">{step.title}</p>
+                  <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{step.text}</p>
+                </li>
+              ))}
+            </ol>
+          )}
+
           {order && (
-            <div className="mx-auto mt-8 max-w-md rounded-2xl bg-secondary p-5 text-left">
+            <div className={`mx-auto mt-9 max-w-md rounded-2xl border border-black/5 bg-secondary p-5 text-left ${paid ? "cm-rise cm-rise-5" : ""}`}>
               <dl className="space-y-3 text-sm">
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Order number</dt>
@@ -311,11 +351,11 @@ export default async function CheckoutSuccessPage({
             </div>
           )}
 
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <div className={`mt-9 flex flex-wrap justify-center gap-3 ${paid ? "cm-rise cm-rise-6" : ""}`}>
             {order ? (
               <Link
                 href={`/account/orders/${order.id}`}
-                className="rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white"
+                className="rounded-full bg-brand px-7 py-3.5 text-sm font-bold text-white shadow-lg transition duration-200 hover:-translate-y-0.5 hover:bg-brand-dark"
               >
                 View my order
               </Link>
@@ -329,7 +369,7 @@ export default async function CheckoutSuccessPage({
             )}
             <Link
               href="/"
-              className="rounded-full border bg-white px-6 py-3 text-sm font-semibold text-ink"
+              className="rounded-full border border-black/15 bg-white px-7 py-3.5 text-sm font-bold text-ink transition duration-200 hover:-translate-y-0.5 hover:border-brand hover:text-brand"
             >
               Continue shopping
             </Link>
