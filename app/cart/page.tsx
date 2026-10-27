@@ -65,7 +65,7 @@ export default async function CartPage({ searchParams }: PageProps) {
               Find the right part for your vehicle and add it here.
             </p>
             <Link
-              href="/"
+              href="/products"
               className="mt-6 inline-flex rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white"
             >
               Continue shopping
@@ -210,7 +210,7 @@ export default async function CartPage({ searchParams }: PageProps) {
               Review your parts, then head to secure checkout.
             </p>
           </div>
-          <Link href="/" className="text-sm font-semibold text-brand hover:underline">
+          <Link href="/products" className="text-sm font-semibold text-brand hover:underline">
             Continue shopping
           </Link>
         </div>
