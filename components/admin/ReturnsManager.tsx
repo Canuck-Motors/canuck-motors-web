@@ -1043,37 +1043,109 @@ export default function ReturnsManager({
                       <tr className="bg-brand-tint/40">
                         <td colSpan={7} className="border-l-4 border-brand px-6 py-5">
                           {/* Step-by-step workflow */}
-                          <ol className="mb-5 grid grid-cols-5 gap-1" aria-label="Return progress">
+                          <ol
+                            className="mb-5 grid grid-cols-5 gap-1 rounded-2xl border border-black/5 bg-white/70 p-2 shadow-sm"
+                            aria-label="Return progress"
+                          >
                             {steps.map((st, n) => {
                               const me = stepState(n);
                               const next = n < steps.length - 1 ? stepState(n + 1) : "todo";
                               const prev = n > 0 ? stepState(n - 1) : "todo";
+                              const stepLabel =
+                                me === "bad"
+                                  ? r.status === "cancelled" || r.status === "canceled"
+                                    ? "Cancelled"
+                                    : "Rejected"
+                                  : st;
+
                               return (
-                                <li key={st} className="text-center">
+                                <li
+                                  key={st}
+                                  className={`relative rounded-xl px-1.5 py-2 text-center transition ${
+                                    me === "current"
+                                      ? "bg-brand-tint shadow-[0_6px_18px_rgba(220,38,38,0.10)]"
+                                      : me === "done"
+                                        ? "bg-emerald-50/70"
+                                        : me === "bad"
+                                          ? "bg-red-50"
+                                          : "bg-transparent"
+                                  }`}
+                                >
                                   <div className="flex items-center">
-                                    <span className={`h-0.5 flex-1 ${n === 0 ? "bg-transparent" : me !== "todo" && prev === "done" ? "bg-green-500" : "bg-black/10"}`} />
                                     <span
-                                      className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-black text-white ${
+                                      className={`h-[3px] flex-1 rounded-full ${
+                                        n === 0
+                                          ? "bg-transparent"
+                                          : me !== "todo" && prev === "done"
+                                            ? "bg-emerald-500"
+                                            : "bg-black/10"
+                                      }`}
+                                    />
+                                    <span
+                                      className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-black text-white transition ${
                                         me === "bad"
-                                          ? "bg-red-500"
+                                          ? "bg-red-500 shadow-[0_0_0_5px_rgba(239,68,68,0.12)]"
                                           : me === "done"
-                                            ? "bg-green-500"
+                                            ? "bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.10)]"
                                             : me === "current"
-                                              ? "bg-brand ring-4 ring-brand/20"
+                                              ? "bg-brand shadow-[0_0_0_5px_rgba(220,38,38,0.14)]"
                                               : "bg-black/15"
                                       }`}
                                     >
-                                      {me === "done" ? <Check className="h-4 w-4" strokeWidth={3} /> : me === "bad" ? <X className="h-4 w-4" strokeWidth={3} /> : n + 1}
+                                      {me === "done" ? (
+                                        <Check className="h-5 w-5" strokeWidth={3} />
+                                      ) : me === "bad" ? (
+                                        <X className="h-5 w-5" strokeWidth={3} />
+                                      ) : (
+                                        n + 1
+                                      )}
                                     </span>
-                                    <span className={`h-0.5 flex-1 ${n === steps.length - 1 ? "bg-transparent" : me === "done" && next !== "todo" ? "bg-green-500" : "bg-black/10"}`} />
+                                    <span
+                                      className={`h-[3px] flex-1 rounded-full ${
+                                        n === steps.length - 1
+                                          ? "bg-transparent"
+                                          : me === "done" && next !== "todo"
+                                            ? "bg-emerald-500"
+                                            : "bg-black/10"
+                                      }`}
+                                    />
                                   </div>
+
                                   <p
-                                    className={`mt-1.5 text-[11px] font-bold ${
-                                      me === "bad" ? "text-red-600" : me === "current" ? "text-brand" : me === "done" ? "text-ink" : "text-muted-foreground"
+                                    className={`mt-2 text-[11px] font-black ${
+                                      me === "bad"
+                                        ? "text-red-600"
+                                        : me === "current"
+                                          ? "text-brand"
+                                          : me === "done"
+                                            ? "text-emerald-800"
+                                            : "text-muted-foreground"
                                     }`}
                                   >
-                                    {me === "bad" ? (r.status === "cancelled" || r.status === "canceled" ? "Cancelled" : "Rejected") : st}
+                                    {stepLabel}
                                   </p>
+
+                                  <span
+                                    className={`mt-0.5 block text-[9px] font-bold uppercase tracking-[0.12em] ${
+                                      me === "current"
+                                        ? "text-brand/70"
+                                        : me === "done"
+                                          ? "text-emerald-700/65"
+                                          : me === "bad"
+                                            ? "text-red-500/70"
+                                            : "text-black/30"
+                                    }`}
+                                  >
+                                    {me === "done"
+                                      ? "Complete"
+                                      : me === "current"
+                                        ? "Current"
+                                        : me === "bad"
+                                          ? "Stopped"
+                                          : n === stepIdx + 1
+                                            ? "Next"
+                                            : "Pending"}
+                                  </span>
                                 </li>
                               );
                             })}
