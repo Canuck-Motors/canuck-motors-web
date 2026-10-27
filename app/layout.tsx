@@ -86,7 +86,9 @@ export default function RootLayout({
   </Suspense>
   <Navbar />
   {children}
-  <Footer />
+  <Suspense fallback={null}>
+    <Footer />
+  </Suspense>
   <MiniCart />
   <ChatLauncher />
   <FrenchRuntime />
