@@ -62,6 +62,7 @@ export default async function FulfillmentAdminPage() {
             amazonRedirectEnabled: Boolean(settingsRes.data.amazon_redirect_enabled),
             uberEnabled: settingsRes.data.uber_enabled !== false,
             amazonMcfEnabled: Boolean(settingsRes.data.amazon_mcf_enabled),
+            returnGoEnabled: Boolean(settingsRes.data.returngo_enabled),
             deliveryPartnerEnabled: Boolean(settingsRes.data.delivery_partner_enabled),
             preferredProvider:
               settingsRes.data.preferred_provider === "amazon_mcf"
@@ -77,6 +78,11 @@ export default async function FulfillmentAdminPage() {
             process.env.AMAZON_SP_API_CLIENT_ID &&
               process.env.AMAZON_SP_API_CLIENT_SECRET &&
               process.env.AMAZON_SP_API_REFRESH_TOKEN
+          )}
+          returnGoConfigured={Boolean(
+            process.env.RETURNGO_API_KEY &&
+              process.env.RETURNGO_SHOP_NAME &&
+              process.env.RETURNGO_API_BASE_URL
           )}
           jobs={jobs}
         />
