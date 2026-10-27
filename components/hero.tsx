@@ -86,14 +86,18 @@ function HeroVideo() {
     const tryPlay = () => v.play().catch(() => {});
     tryPlay();
     v.addEventListener("loadeddata", tryPlay);
+    // iOS only counts a finished tap (touchend / click) as permission to play.
     const resume = () => {
       tryPlay();
-      window.removeEventListener("touchstart", resume);
+      window.removeEventListener("touchend", resume);
+      window.removeEventListener("click", resume);
     };
-    window.addEventListener("touchstart", resume, { passive: true });
+    window.addEventListener("touchend", resume, { passive: true });
+    window.addEventListener("click", resume);
     return () => {
       v.removeEventListener("loadeddata", tryPlay);
-      window.removeEventListener("touchstart", resume);
+      window.removeEventListener("touchend", resume);
+      window.removeEventListener("click", resume);
     };
   }, [src]);
   useEffect(() => {
