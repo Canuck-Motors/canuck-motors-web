@@ -157,6 +157,10 @@ export default function ReturnsManager({
   const [limit, setLimit] = useState(50);
   const [photos, setPhotos] = useState<Record<string, string[] | "loading">>({});
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [inspectionConfirm, setInspectionConfirm] = useState<{
+    requestId: string;
+    outcome: "restock" | "damaged" | "fail";
+  } | null>(null);
   const [pending, start] = useTransition();
 
   const run = (fn: () => Promise<void>, ok: string) =>
@@ -171,6 +175,7 @@ export default function ReturnsManager({
 
   const toggleRow = (id: string) => {
     const next = open === id ? null : id;
+    setInspectionConfirm(null);
     setOpen(next);
     if (next && !photos[next]) {
       setPhotos((p) => ({ ...p, [next]: "loading" }));
@@ -1034,20 +1039,7 @@ export default function ReturnsManager({
                                       type="button"
                                       disabled={pending || Boolean(r.stock)}
                                       onClick={() =>
-                                        run(async () => {
-                                          await completeReturnInspection(r.id, "restock", r.type);
-                                          setRows((rs) =>
-                                            rs.map((x) =>
-                                              x.id === r.id
-                                                ? {
-                                                    ...x,
-                                                    stock: "restocked",
-                                                    status: r.type === "exchange" ? "exchange_processing" : "refund_pending",
-                                                  }
-                                                : x
-                                            )
-                                          );
-                                        }, "Inspection passed. Item restocked and workflow advanced.")
+                                        setInspectionConfirm({ requestId: r.id, outcome: "restock" })
                                       }
                                       className="flex w-full items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left font-black text-emerald-800 transition hover:border-emerald-400 hover:bg-emerald-100 disabled:opacity-50"
                                     >
@@ -1070,20 +1062,7 @@ export default function ReturnsManager({
                                       type="button"
                                       disabled={pending || Boolean(r.stock)}
                                       onClick={() =>
-                                        run(async () => {
-                                          await completeReturnInspection(r.id, "damaged", r.type);
-                                          setRows((rs) =>
-                                            rs.map((x) =>
-                                              x.id === r.id
-                                                ? {
-                                                    ...x,
-                                                    stock: "damaged",
-                                                    status: r.type === "exchange" ? "exchange_processing" : "refund_pending",
-                                                  }
-                                                : x
-                                            )
-                                          );
-                                        }, "Inspection passed. Item accepted as damaged and workflow advanced.")
+                                        setInspectionConfirm({ requestId: r.id, outcome: "damaged" })
                                       }
                                       className="flex w-full items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left font-black text-amber-900 transition hover:border-amber-400 hover:bg-amber-100 disabled:opacity-50"
                                     >
@@ -1102,7 +1081,14 @@ export default function ReturnsManager({
                                   </div>
 
                                   <div className="group relative">
-                                    <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 font-black text-red-800">
+                                    <button
+                                      type="button"
+                                      disabled={pending}
+                                      onClick={() =>
+                                        setInspectionConfirm({ requestId: r.id, outcome: "fail" })
+                                      }
+                                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-left font-black text-red-800 transition hover:border-red-400 hover:bg-red-100 disabled:opacity-50"
+                                    >
                                       <span>Fail inspection</span>
                                       <span
                                         tabIndex={0}
@@ -1111,40 +1097,129 @@ export default function ReturnsManager({
                                       >
                                         ⓘ
                                       </span>
-                                    </div>
+                                    </button>
                                     <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-72 -translate-x-1/2 rounded-xl bg-ink px-3 py-2 text-xs font-medium leading-5 text-white shadow-xl group-hover:block group-focus-within:block">
                                       Use only when the return itself is ineligible, such as the wrong item being sent back, incorrect quantity, or a policy violation. No refund or replacement is issued automatically.
                                     </div>
                                   </div>
                                 </div>
 
-                                <form className="mt-3 flex flex-col gap-2 rounded-xl border border-red-200 bg-red-50/60 p-3 md:flex-row md:items-end">
-                                  <div className="min-w-0 flex-1">
-                                    <label className="text-xs font-bold text-red-800">
-                                      Failure reason
-                                    </label>
-                                    <textarea
-                                      name="why"
-                                      placeholder="Required only if inspection fails. This reason is emailed to the customer."
-                                      className="mt-1 w-full min-h-14 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm"
-                                    />
-                                  </div>
-                                  <button
-                                    type="button"
-                                    disabled={pending}
-                                    onClick={(e) => {
-                                      const why = String(new FormData(e.currentTarget.form as HTMLFormElement).get("why") || "").trim();
-                                      run(async () => {
-                                        if (!why) throw new Error("Please describe what failed inspection.");
-                                        await updateReturnRequest(r.id, "inspection_failed", why, r.carrier, r.tracking, { notify: true, message: why });
-                                        setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "inspection_failed", notes: why } : x)));
-                                      }, `${r.orderNumber} marked as failed inspection. The customer was emailed.`);
-                                    }}
-                                    className="shrink-0 rounded-full border border-red-300 bg-white px-5 py-2.5 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                                {inspectionConfirm?.requestId === r.id && (
+                                  <form
+                                    className={`mt-3 rounded-xl border p-3 ${
+                                      inspectionConfirm.outcome === "restock"
+                                        ? "border-emerald-200 bg-emerald-50/70"
+                                        : inspectionConfirm.outcome === "damaged"
+                                          ? "border-amber-200 bg-amber-50/70"
+                                          : "border-red-200 bg-red-50/70"
+                                    }`}
                                   >
-                                    Record failure
-                                  </button>
-                                </form>
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <div>
+                                        <p className="text-sm font-black text-ink">
+                                          {inspectionConfirm.outcome === "restock"
+                                            ? "Confirm: Pass inspection and restock?"
+                                            : inspectionConfirm.outcome === "damaged"
+                                              ? "Confirm: Pass inspection without restocking?"
+                                              : "Confirm: Fail inspection?"}
+                                        </p>
+                                        <p className="mt-0.5 text-xs text-muted-foreground">
+                                          No changes are saved until you confirm.
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    {inspectionConfirm.outcome === "fail" && (
+                                      <div className="mt-3">
+                                        <label className="text-xs font-bold text-red-800">
+                                          Failure reason
+                                        </label>
+                                        <textarea
+                                          name="why"
+                                          placeholder="Required. This reason is emailed to the customer."
+                                          className="mt-1 w-full min-h-14 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm"
+                                        />
+                                      </div>
+                                    )}
+
+                                    <div className="mt-3 flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        disabled={pending}
+                                        onClick={(e) => {
+                                          const outcome = inspectionConfirm.outcome;
+                                          const why =
+                                            outcome === "fail"
+                                              ? String(
+                                                  new FormData(e.currentTarget.form as HTMLFormElement).get("why") || ""
+                                                ).trim()
+                                              : "";
+
+                                          run(async () => {
+                                            if (outcome === "fail") {
+                                              if (!why) throw new Error("Please describe what failed inspection.");
+                                              await updateReturnRequest(
+                                                r.id,
+                                                "inspection_failed",
+                                                why,
+                                                r.carrier,
+                                                r.tracking,
+                                                { notify: true, message: why }
+                                              );
+                                              setRows((rs) =>
+                                                rs.map((x) =>
+                                                  x.id === r.id
+                                                    ? { ...x, status: "inspection_failed", notes: why }
+                                                    : x
+                                                )
+                                              );
+                                            } else {
+                                              await completeReturnInspection(r.id, outcome, r.type);
+                                              setRows((rs) =>
+                                                rs.map((x) =>
+                                                  x.id === r.id
+                                                    ? {
+                                                        ...x,
+                                                        stock: outcome === "restock" ? "restocked" : "damaged",
+                                                        status:
+                                                          r.type === "exchange"
+                                                            ? "exchange_processing"
+                                                            : "refund_pending",
+                                                      }
+                                                    : x
+                                                )
+                                              );
+                                            }
+                                            setInspectionConfirm(null);
+                                          },
+                                          outcome === "restock"
+                                            ? "Inspection passed. Item restocked and workflow advanced."
+                                            : outcome === "damaged"
+                                              ? "Inspection passed. Item accepted without restocking and workflow advanced."
+                                              : `${r.orderNumber} marked as failed inspection. The customer was emailed.`
+                                          );
+                                        }}
+                                        className={`rounded-full px-5 py-2 text-sm font-bold text-white disabled:opacity-60 ${
+                                          inspectionConfirm.outcome === "restock"
+                                            ? "bg-emerald-700"
+                                            : inspectionConfirm.outcome === "damaged"
+                                              ? "bg-amber-700"
+                                              : "bg-red-700"
+                                        }`}
+                                      >
+                                        Confirm
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={pending}
+                                        onClick={() => setInspectionConfirm(null)}
+                                        className="rounded-full border border-black/15 bg-white px-5 py-2 text-sm font-bold text-ink hover:border-brand hover:text-brand disabled:opacity-60"
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </form>
+                                )}
                               </div>
                             )}
 
