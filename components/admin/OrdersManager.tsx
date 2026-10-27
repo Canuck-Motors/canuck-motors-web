@@ -58,7 +58,7 @@ const label = (s: string) => s.replaceAll("_", " ");
 
 // Plain-words status for the shop owner
 const STATUS_TEXT: Record<string, [string, string]> = {
-  paid: ["New order", "bg-blue-100 text-blue-800"],
+  paid: ["New order", "bg-brand-tint text-brand"],
   processing: ["Being prepared", "bg-amber-100 text-amber-800"],
   packed: ["Packed", "bg-amber-100 text-amber-800"],
   ready_to_ship: ["Ready to ship", "bg-amber-100 text-amber-800"],
@@ -454,7 +454,7 @@ export default function OrdersManager({
                 return (
                   <Fragment key={o.id}>
                     <tr
-                      className={`cursor-pointer hover:bg-black/[0.02] ${isOpen ? "bg-brand-tint/40" : ""}`}
+                      className={`cursor-pointer ${isOpen ? "bg-brand-tint" : "hover:bg-black/[0.02]"}`}
                       onClick={() => setOpen(isOpen ? null : o.id)}
                     >
                       {isDev && (
@@ -467,7 +467,7 @@ export default function OrdersManager({
                           />
                         </td>
                       )}
-                      <td className="px-3 py-3">
+                      <td className={`border-l-4 px-3 py-3 ${isOpen ? "border-brand" : "border-transparent"}`}>
                         <div className="flex items-center gap-2 font-bold text-ink">
                           {isOpen ? (
                             <ChevronDown className="h-4 w-4" aria-hidden="true" />
@@ -492,8 +492,8 @@ export default function OrdersManager({
                         })()}
                       </td>
                       <td className="px-3 py-3">
-                        <div className="font-medium text-ink">{o.name || "Customer"}</div>
-                        <div className="text-xs text-muted-foreground">{o.email}</div>
+                        <div className="font-bold text-ink">{o.name || "Customer"}</div>
+                        <div className="mt-0.5 text-xs text-muted-foreground">{o.email}</div>
                       </td>
                       <td className="px-3 py-3 text-muted-foreground">
                         {qty} item{qty === 1 ? "" : "s"}
@@ -514,6 +514,11 @@ export default function OrdersManager({
                         {o.payment !== "paid" && o.status !== "cancelled" && (
                           <span className="ml-2 rounded-full bg-secondary px-3 py-1 text-xs font-bold text-ink/70">
                             Not paid
+                          </span>
+                        )}
+                        {next && !closed && (
+                          <span className="mt-1 block text-[11px] font-semibold text-muted-foreground">
+                            Next: {NEXT_BUTTON[o.status] ?? `Mark ${label(next)}`}
                           </span>
                         )}
                       </td>
@@ -554,12 +559,94 @@ export default function OrdersManager({
                     </tr>
 
                     {isOpen && (
-                      <tr className="bg-secondary/40">
-                        <td colSpan={cols} className="px-6 py-5">
-                          <div className="grid gap-5 lg:grid-cols-[1.2fr_1fr_1fr]">
-                            <div>
+                      <tr className="bg-brand-tint/40">
+                        <td colSpan={cols} className="border-l-4 border-brand px-6 py-5">
+                          <div className="mb-5 grid gap-4 lg:grid-cols-3">
+                            <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm">
+                              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Customer</p>
+                              <p className="mt-2 text-lg font-black text-ink">{o.name || "Customer"}</p>
+                              {o.email && (
+                                <a href={`mailto:${o.email}`} className="mt-1 block text-sm text-muted-foreground hover:text-brand">
+                                  {o.email}
+                                </a>
+                              )}
+                              {o.address ? (
+                                <>
+                                  <address className="mt-3 text-sm not-italic leading-6 text-muted-foreground">
+                                    {addressLines(o.address).map((line, n) => (
+                                      <div key={n}>{line}</div>
+                                    ))}
+                                  </address>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      navigator.clipboard?.writeText(addressLines(o.address).join("\n"));
+                                      setMsg("Address copied.");
+                                    }}
+                                    className="mt-3 text-xs font-bold text-brand hover:underline"
+                                  >
+                                    Copy address
+                                  </button>
+                                </>
+                              ) : (
+                                <p className="mt-3 text-sm text-muted-foreground">No shipping address saved.</p>
+                              )}
+                            </section>
+
+                            <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm">
+                              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Order</p>
+                              <p className="mt-2 text-lg font-black text-ink">{o.number}</p>
+                              <dl className="mt-3 space-y-2 text-sm">
+                                <div className="flex justify-between gap-4">
+                                  <dt className="text-muted-foreground">Placed</dt>
+                                  <dd className="font-semibold text-ink">
+                                    {new Date(o.createdOn).toLocaleString("en-CA", { dateStyle: "medium", timeStyle: "short" })}
+                                  </dd>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                  <dt className="text-muted-foreground">Payment</dt>
+                                  <dd className="font-semibold capitalize text-ink">{label(o.payment)}</dd>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                  <dt className="text-muted-foreground">Total</dt>
+                                  <dd className="font-black text-ink">{money(o.total + o.shippingFee + o.salesTax, o.currency)}</dd>
+                                </div>
+                              </dl>
+                            </section>
+
+                            <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm">
+                              <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Fulfillment</p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <span className={`rounded-full px-3 py-1 text-xs font-bold ${statusText(o.status)[1]}`}>
+                                  {statusText(o.status)[0]}
+                                </span>
+                                <span className="rounded-full bg-secondary px-3 py-1 text-xs font-bold capitalize text-ink/70">
+                                  {label(o.deliveryMethod)}
+                                </span>
+                              </div>
+                              <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                                {o.provider === "amazon_mcf"
+                                  ? "Amazon MCF is handling this order."
+                                  : deliveryPartnerEnabled
+                                    ? "Manage packing, tracking and delivery below."
+                                    : "Manual delivery partner controls are disabled."}
+                              </p>
+                              {o.fulfillmentError && (
+                                <p className="mt-3 rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-700">
+                                  {o.fulfillmentError}
+                                </p>
+                              )}
+                            </section>
+                          </div>
+
+                          <div className="mb-3 flex items-center justify-between">
+                            <p className="text-xs font-black uppercase tracking-[0.14em] text-brand">Order details</p>
+                            <span className="text-xs font-semibold text-muted-foreground">Click the row again to collapse</span>
+                          </div>
+                          <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr_1fr]">
+                            <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm">
                               <p className="font-bold text-ink">Items</p>
-                              <ul className="mt-2 divide-y rounded-xl border bg-white text-sm">
+                              <ul className="mt-3 divide-y rounded-xl bg-secondary/50 text-sm">
                                 {o.items.map((i, n) => (
                                   <li key={n} className="flex justify-between gap-3 px-3 py-2">
                                     <span>
@@ -628,32 +715,9 @@ export default function OrdersManager({
                               )}
                             </div>
 
-                            <div>
-                              <p className="font-bold text-ink">Ship to</p>
-                              {o.address ? (
-                                <>
-                                  <address className="mt-2 rounded-xl border bg-white p-3 text-sm not-italic leading-6">
-                                    {addressLines(o.address).map((l, n) => (
-                                      <div key={n}>{l}</div>
-                                    ))}
-                                  </address>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      navigator.clipboard?.writeText(addressLines(o.address).join("\n"));
-                                      setMsg("Address copied.");
-                                    }}
-                                    className="mt-2 text-xs font-bold text-brand hover:underline"
-                                  >
-                                    Copy address
-                                  </button>
-                                </>
-                              ) : (
-                                <p className="mt-2 text-sm text-muted-foreground">No address saved.</p>
-                              )}
-
-                              <p className="mt-5 font-bold text-ink">Shipping</p>
-                              <div className="mt-2 rounded-xl border bg-white p-3 text-sm leading-6">
+                            <div className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm">
+                              <p className="font-bold text-ink">Shipping</p>
+                              <div className="mt-3 rounded-xl bg-secondary/50 p-3 text-sm leading-6">
                                 <div>
                                   {o.deliveryMethod === "uber" ? "Uber same-day" : "Standard shipping"}
                                   {": customer paid "}
@@ -709,7 +773,7 @@ export default function OrdersManager({
                                 )}
                               </div>
 
-                              <p className="mt-5 font-bold text-ink">Private note</p>
+                              <p className="mt-5 text-[11px] font-black uppercase tracking-[0.14em] text-brand">Private note</p>
                               <form
                                 action={(fd) =>
                                   run(async () => {
@@ -734,14 +798,14 @@ export default function OrdersManager({
                             </div>
 
                             {closed ? (
-                              <div className="rounded-2xl border border-black/5 bg-white p-4 text-sm text-muted-foreground">
+                              <div className="rounded-2xl border border-black/5 bg-white p-5 text-sm text-muted-foreground shadow-sm">
                                 <p className="font-bold text-ink">No shipment needed</p>
                                 <p className="mt-1">
                                   This order is {o.status.replaceAll("_", " ")}, so there is nothing to ship.
                                 </p>
                               </div>
                             ) : !deliveryPartnerEnabled || o.provider === "amazon_mcf" ? (
-                              <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm">
+                              <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5 text-sm shadow-sm">
                                 <p className="font-bold text-ink">
                                   {o.provider === "amazon_mcf"
                                     ? "Amazon MCF shipment"
@@ -773,7 +837,7 @@ export default function OrdersManager({
                                     return `Shipment saved for ${o.number}. ${emailNote ?? ""}`.trim();
                                   })
                                 }
-                                className="rounded-2xl border border-black/5 bg-white p-4"
+                                className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm"
                               >
                                 <p className="font-bold text-ink">Create / update shipment</p>
                                 <input name="carrier" list="carrier-list" defaultValue={o.shipment?.carrier ?? (o.deliveryMethod === "standard" ? "Chit Chats" : "")} placeholder="Carrier" required className={input} />
