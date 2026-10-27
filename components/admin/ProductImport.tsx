@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { CircleAlert, CircleCheck, Download, FileSpreadsheet, ImageIcon } from "lucide-react";
+import { ChevronDown, CircleAlert, CircleCheck, Download, FileSpreadsheet, ImageIcon } from "lucide-react";
 import {
   applyProductImport,
   previewProductImport,
@@ -94,14 +94,21 @@ export default function ProductImport() {
           }
           className="mt-5 flex flex-wrap items-center gap-3"
         >
-          <select
-            name="mode"
-            defaultValue="replace"
-            className="rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold"
-          >
-            <option value="replace">Replace stock (set to the file&apos;s quantity)</option>
-            <option value="add">Add to current stock (current + file&apos;s quantity)</option>
-          </select>
+          <label className="group relative min-w-[290px] flex-1 sm:max-w-[460px]">
+            <span className="sr-only">Stock update method</span>
+            <select
+              name="mode"
+              defaultValue="replace"
+              className="w-full appearance-none rounded-2xl border border-black/10 bg-white px-4 py-3.5 pr-11 text-sm font-bold text-ink shadow-sm outline-none transition hover:border-brand/40 focus:border-brand focus:ring-4 focus:ring-brand/10"
+            >
+              <option value="replace">Replace stock · use file quantity</option>
+              <option value="add">Add stock · current + file quantity</option>
+            </select>
+            <ChevronDown
+              className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition group-focus-within:rotate-180 group-focus-within:text-brand"
+              aria-hidden="true"
+            />
+          </label>
           <input
             name="file"
             type="file"
