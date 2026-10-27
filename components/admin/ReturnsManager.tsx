@@ -1018,79 +1018,117 @@ export default function ReturnsManager({
                             )}
 
                             {stage === "inspect" && (
-                              <div className="mt-4 space-y-4">
-                                <ul className="list-disc space-y-1 pl-5 text-sm text-ink">
-                                  <li>Is it the right part, and is the quantity correct?</li>
-                                  <li>Does it match the customer&apos;s return request?</li>
-                                  <li>Is it sellable, damaged, or ineligible for return?</li>
-                                </ul>
-
-                                <div className="grid gap-3 md:grid-cols-2">
-                                  <button
-                                    type="button"
-                                    disabled={pending || Boolean(r.stock)}
-                                    onClick={() =>
-                                      run(async () => {
-                                        await completeReturnInspection(r.id, "restock", r.type);
-                                        setRows((rs) =>
-                                          rs.map((x) =>
-                                            x.id === r.id
-                                              ? {
-                                                  ...x,
-                                                  stock: "restocked",
-                                                  status: r.type === "exchange" ? "exchange_processing" : "refund_pending",
-                                                }
-                                              : x
-                                          )
-                                        );
-                                      }, "Inspection passed. Item restocked and workflow advanced.")
-                                    }
-                                    className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-left hover:border-emerald-400 disabled:opacity-50"
-                                  >
-                                    <p className="font-black text-emerald-800">Pass inspection · Restock</p>
-                                    <p className="mt-1 text-xs leading-5 text-emerald-800/75">
-                                      Use when the part is correct and sellable. Inventory is increased, then the return moves to {r.type === "exchange" ? "replacement" : "refund"}.
-                                    </p>
-                                  </button>
-
-                                  <button
-                                    type="button"
-                                    disabled={pending || Boolean(r.stock)}
-                                    onClick={() =>
-                                      run(async () => {
-                                        await completeReturnInspection(r.id, "damaged", r.type);
-                                        setRows((rs) =>
-                                          rs.map((x) =>
-                                            x.id === r.id
-                                              ? {
-                                                  ...x,
-                                                  stock: "damaged",
-                                                  status: r.type === "exchange" ? "exchange_processing" : "refund_pending",
-                                                }
-                                              : x
-                                          )
-                                        );
-                                      }, "Inspection passed. Item accepted as damaged and workflow advanced.")
-                                    }
-                                    className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-left hover:border-amber-400 disabled:opacity-50"
-                                  >
-                                    <p className="font-black text-amber-900">Pass inspection · Don&apos;t restock</p>
-                                    <p className="mt-1 text-xs leading-5 text-amber-900/75">
-                                      Use when the return is valid but the part is damaged or not sellable. Inventory is not increased, but the {r.type === "exchange" ? "replacement" : "refund"} can still continue.
-                                    </p>
-                                  </button>
+                              <div className="mt-4">
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-sm font-semibold text-ink">
+                                    Choose the inspection result.
+                                  </p>
+                                  <span className="text-xs text-muted-foreground">
+                                    Hover or focus the ⓘ for guidance.
+                                  </span>
                                 </div>
 
-                                <form className="rounded-2xl border border-red-200 bg-red-50 p-4">
-                                  <p className="font-black text-red-800">Fail inspection</p>
-                                  <p className="mt-1 text-xs leading-5 text-red-800/75">
-                                    Use only when the return itself is not eligible—for example, the wrong item was sent back, the quantity is incorrect, or the return violates policy. No refund or replacement is issued automatically.
-                                  </p>
-                                  <textarea
-                                    name="why"
-                                    placeholder="Explain why the return failed inspection. This reason is emailed to the customer."
-                                    className="mt-3 w-full min-h-20 rounded-xl border border-red-200 bg-white px-3 py-2.5 text-sm"
-                                  />
+                                <div className="grid gap-2 lg:grid-cols-3">
+                                  <div className="group relative">
+                                    <button
+                                      type="button"
+                                      disabled={pending || Boolean(r.stock)}
+                                      onClick={() =>
+                                        run(async () => {
+                                          await completeReturnInspection(r.id, "restock", r.type);
+                                          setRows((rs) =>
+                                            rs.map((x) =>
+                                              x.id === r.id
+                                                ? {
+                                                    ...x,
+                                                    stock: "restocked",
+                                                    status: r.type === "exchange" ? "exchange_processing" : "refund_pending",
+                                                  }
+                                                : x
+                                            )
+                                          );
+                                        }, "Inspection passed. Item restocked and workflow advanced.")
+                                      }
+                                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-left font-black text-emerald-800 transition hover:border-emerald-400 hover:bg-emerald-100 disabled:opacity-50"
+                                    >
+                                      <span>Pass · Restock</span>
+                                      <span
+                                        tabIndex={0}
+                                        aria-label="When to use Pass and Restock"
+                                        className="cursor-help rounded-full border border-emerald-300 px-1.5 text-xs"
+                                      >
+                                        ⓘ
+                                      </span>
+                                    </button>
+                                    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-64 -translate-x-1/2 rounded-xl bg-ink px-3 py-2 text-xs font-medium leading-5 text-white shadow-xl group-hover:block group-focus-within:block">
+                                      Use when the returned part is correct and sellable. Inventory increases, then the {r.type === "exchange" ? "replacement" : "refund"} can continue.
+                                    </div>
+                                  </div>
+
+                                  <div className="group relative">
+                                    <button
+                                      type="button"
+                                      disabled={pending || Boolean(r.stock)}
+                                      onClick={() =>
+                                        run(async () => {
+                                          await completeReturnInspection(r.id, "damaged", r.type);
+                                          setRows((rs) =>
+                                            rs.map((x) =>
+                                              x.id === r.id
+                                                ? {
+                                                    ...x,
+                                                    stock: "damaged",
+                                                    status: r.type === "exchange" ? "exchange_processing" : "refund_pending",
+                                                  }
+                                                : x
+                                            )
+                                          );
+                                        }, "Inspection passed. Item accepted as damaged and workflow advanced.")
+                                      }
+                                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left font-black text-amber-900 transition hover:border-amber-400 hover:bg-amber-100 disabled:opacity-50"
+                                    >
+                                      <span>Pass · Don&apos;t restock</span>
+                                      <span
+                                        tabIndex={0}
+                                        aria-label="When to use Pass and Don't restock"
+                                        className="cursor-help rounded-full border border-amber-300 px-1.5 text-xs"
+                                      >
+                                        ⓘ
+                                      </span>
+                                    </button>
+                                    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-64 -translate-x-1/2 rounded-xl bg-ink px-3 py-2 text-xs font-medium leading-5 text-white shadow-xl group-hover:block group-focus-within:block">
+                                      Use when the return is valid, but the part is damaged or not sellable. Inventory does not increase, but the {r.type === "exchange" ? "replacement" : "refund"} can still continue.
+                                    </div>
+                                  </div>
+
+                                  <div className="group relative">
+                                    <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 font-black text-red-800">
+                                      <span>Fail inspection</span>
+                                      <span
+                                        tabIndex={0}
+                                        aria-label="When to use Fail inspection"
+                                        className="cursor-help rounded-full border border-red-300 px-1.5 text-xs"
+                                      >
+                                        ⓘ
+                                      </span>
+                                    </div>
+                                    <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-72 -translate-x-1/2 rounded-xl bg-ink px-3 py-2 text-xs font-medium leading-5 text-white shadow-xl group-hover:block group-focus-within:block">
+                                      Use only when the return itself is ineligible, such as the wrong item being sent back, incorrect quantity, or a policy violation. No refund or replacement is issued automatically.
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <form className="mt-3 flex flex-col gap-2 rounded-xl border border-red-200 bg-red-50/60 p-3 md:flex-row md:items-end">
+                                  <div className="min-w-0 flex-1">
+                                    <label className="text-xs font-bold text-red-800">
+                                      Failure reason
+                                    </label>
+                                    <textarea
+                                      name="why"
+                                      placeholder="Required only if inspection fails. This reason is emailed to the customer."
+                                      className="mt-1 w-full min-h-14 rounded-xl border border-red-200 bg-white px-3 py-2 text-sm"
+                                    />
+                                  </div>
                                   <button
                                     type="button"
                                     disabled={pending}
@@ -1102,9 +1140,9 @@ export default function ReturnsManager({
                                         setRows((rs) => rs.map((x) => (x.id === r.id ? { ...x, status: "inspection_failed", notes: why } : x)));
                                       }, `${r.orderNumber} marked as failed inspection. The customer was emailed.`);
                                     }}
-                                    className="mt-3 rounded-full border border-red-300 bg-white px-5 py-2 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                                    className="shrink-0 rounded-full border border-red-300 bg-white px-5 py-2.5 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-60"
                                   >
-                                    Record failed inspection
+                                    Record failure
                                   </button>
                                 </form>
                               </div>
