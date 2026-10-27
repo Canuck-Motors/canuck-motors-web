@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { ChevronDown } from "lucide-react";
 import LoadingAnimation from "@/components/LoadingAnimation";
 import { createClient } from "@/lib/supabase/client";
@@ -74,6 +74,28 @@ async function fetchAllRows(
 // Phones get their own (portrait) background video; larger screens keep the wide one.
 function HeroVideo() {
   const [src, setSrc] = useState("/hero/hero.mp4");
+  const ref = useRef<HTMLVideoElement>(null);
+  // Phones only autoplay a video that is really muted; React does not always set that attribute, so force it and call play().
+  useEffect(() => {
+    const v = ref.current;
+    if (!v) return;
+    v.muted = true;
+    v.defaultMuted = true;
+    v.setAttribute("muted", "");
+    v.setAttribute("playsinline", "");
+    const tryPlay = () => v.play().catch(() => {});
+    tryPlay();
+    v.addEventListener("loadeddata", tryPlay);
+    const resume = () => {
+      tryPlay();
+      window.removeEventListener("touchstart", resume);
+    };
+    window.addEventListener("touchstart", resume, { passive: true });
+    return () => {
+      v.removeEventListener("loadeddata", tryPlay);
+      window.removeEventListener("touchstart", resume);
+    };
+  }, [src]);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 767px)");
     const apply = () => setSrc(mq.matches ? "/hero/hero-mobile.mp4" : "/hero/hero.mp4");
@@ -83,6 +105,7 @@ function HeroVideo() {
   }, []);
   return (
     <video
+      ref={ref}
       key={src}
       autoPlay
       muted
