@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, CircleAlert } from "lucide-react";
+import { Check, ChevronDown, CircleAlert } from "lucide-react";
 
 type Row = { year: number; make: string; model: string };
 
@@ -21,7 +21,7 @@ export default function FitCheck({ rows, count }: { rows: Row[]; count: number |
   const fits = ready && rows.some((r) => r.year === Number(year) && r.make === make && r.model === model);
 
   const select =
-    "w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm font-semibold text-ink outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10";
+    "w-full appearance-none bg-transparent py-2 pr-8 text-sm font-black text-ink outline-none disabled:cursor-not-allowed disabled:text-muted-foreground";
 
   return (
     <div className="mt-6 rounded-[24px] border border-brand/15 bg-brand-tint/55 p-5 shadow-sm">
@@ -31,22 +31,84 @@ export default function FitCheck({ rows, count }: { rows: Row[]; count: number |
       </p>
 
       {rows.length > 0 && (
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          <label className="sr-only" htmlFor="fit-year">Year</label>
-          <select id="fit-year" className={select} value={year} onChange={(e) => { setYear(e.target.value); setMake(""); setModel(""); }}>
-            <option value="">Year</option>
-            {years.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-          <label className="sr-only" htmlFor="fit-make">Make</label>
-          <select id="fit-make" className={select} value={make} onChange={(e) => { setMake(e.target.value); setModel(""); }}>
-            <option value="">Make</option>
-            {makes.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
-          <label className="sr-only" htmlFor="fit-model">Model</label>
-          <select id="fit-model" className={select} value={model} onChange={(e) => setModel(e.target.value)}>
-            <option value="">Model</option>
-            {models.map((m) => <option key={m} value={m}>{m}</option>)}
-          </select>
+        <div className="mt-4 grid gap-2 sm:grid-cols-3">
+          <label
+            htmlFor="fit-year"
+            className={`group rounded-2xl border bg-white px-4 py-2.5 shadow-sm transition focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/10 ${
+              year ? "border-brand/25" : "border-black/10"
+            }`}
+          >
+            <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-brand">
+              1 · Year
+            </span>
+            <span className="relative mt-0.5 block">
+              <select
+                id="fit-year"
+                className={select}
+                value={year}
+                onChange={(e) => {
+                  setYear(e.target.value);
+                  setMake("");
+                  setModel("");
+                }}
+              >
+                <option value="">Select year</option>
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition group-focus-within:rotate-180 group-focus-within:text-brand" aria-hidden="true" />
+            </span>
+          </label>
+
+          <label
+            htmlFor="fit-make"
+            className={`group rounded-2xl border px-4 py-2.5 shadow-sm transition focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/10 ${
+              !year ? "border-black/5 bg-black/[0.03]" : make ? "border-brand/25 bg-white" : "border-black/10 bg-white"
+            }`}
+          >
+            <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-brand">
+              2 · Make
+            </span>
+            <span className="relative mt-0.5 block">
+              <select
+                id="fit-make"
+                className={select}
+                value={make}
+                disabled={!year}
+                onChange={(e) => {
+                  setMake(e.target.value);
+                  setModel("");
+                }}
+              >
+                <option value="">{year ? "Select make" : "Choose year first"}</option>
+                {makes.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition group-focus-within:rotate-180 group-focus-within:text-brand" aria-hidden="true" />
+            </span>
+          </label>
+
+          <label
+            htmlFor="fit-model"
+            className={`group rounded-2xl border px-4 py-2.5 shadow-sm transition focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/10 ${
+              !make ? "border-black/5 bg-black/[0.03]" : model ? "border-brand/25 bg-white" : "border-black/10 bg-white"
+            }`}
+          >
+            <span className="block text-[10px] font-black uppercase tracking-[0.14em] text-brand">
+              3 · Model
+            </span>
+            <span className="relative mt-0.5 block">
+              <select
+                id="fit-model"
+                className={select}
+                value={model}
+                disabled={!make}
+                onChange={(e) => setModel(e.target.value)}
+              >
+                <option value="">{make ? "Select model" : "Choose make first"}</option>
+                {models.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-0 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground transition group-focus-within:rotate-180 group-focus-within:text-brand" aria-hidden="true" />
+            </span>
+          </label>
         </div>
       )}
 
