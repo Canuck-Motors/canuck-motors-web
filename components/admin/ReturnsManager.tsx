@@ -189,15 +189,17 @@ export default function ReturnsManager({
 
   const scoped = useMemo(() => rows.filter((r) => inRange(r.requestedOn, range)), [rows, range]);
 
-  const counts = useMemo(
+  const counts = useMemo<Record<Filter, number>>(
     () => ({
       action: scoped.filter((r) => needsAction(r) || isUnderReview(r)).length,
       review: scoped.filter(isUnderReview).length,
       waiting: scoped.filter((r) => WAITING.includes(r.status)).length,
       refund: scoped.filter(isRefundDue).length,
-      exchange: 0,
+      exchange: scoped.filter((r) => r.type === "exchange").length,
       done: scoped.filter((r) => CLOSED.includes(r.status) && !REJECTED.includes(r.status)).length,
       rejected: scoped.filter((r) => REJECTED.includes(r.status)).length,
+      overdue: scoped.filter((r) => isOpen(r) && days(r.requestedOn) > OVERDUE_DAYS).length,
+      open: scoped.filter(isOpen).length,
       all: scoped.length,
     }),
     [scoped]
