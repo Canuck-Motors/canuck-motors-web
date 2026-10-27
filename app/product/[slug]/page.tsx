@@ -207,6 +207,30 @@ export default async function ProductDetailPage({
     product.meta_description?.trim() ||
     "Product details from Canuck Motors.";
 
+  const descriptionLines = description
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const overviewText =
+    descriptionLines.find(
+      (line) =>
+        !/^[A-Z][A-Z\s&/-]{2,}$/.test(line) &&
+        !/^[•·*-]/.test(line)
+    ) || descriptionLines[0] || description;
+
+  const keyFeaturesIndex = descriptionLines.findIndex(
+    (line) => line.toUpperCase() === "KEY FEATURES"
+  );
+  const descriptionHighlights =
+    keyFeaturesIndex >= 0
+      ? descriptionLines
+          .slice(keyFeaturesIndex + 1)
+          .filter((line) => !/^[A-Z][A-Z\s&/-]{2,}$/.test(line))
+          .slice(0, 4)
+          .map((line) => line.replace(/^[•·*\-]\s*/, ""))
+      : specs.slice(0, 4).map((spec) => `${spec.name}: ${spec.value}`);
+
   const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -354,6 +378,36 @@ export default async function ProductDetailPage({
                 </p>
               )}
             </div>
+
+            <section className="mt-6 rounded-2xl border border-black/5 bg-secondary/45 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-brand">
+                  Product overview
+                </p>
+                <a
+                  href="#description"
+                  data-open-tab="description"
+                  className="text-xs font-bold text-brand hover:underline"
+                >
+                  Full details
+                </a>
+              </div>
+
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {overviewText}
+              </p>
+
+              {descriptionHighlights.length > 0 && (
+                <ul className="mt-3 grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+                  {descriptionHighlights.map((feature) => (
+                    <li key={feature} className="flex items-start gap-2 text-sm text-ink">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" aria-hidden="true" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
 
             <FitCheck
               count={compatibilityCount}
