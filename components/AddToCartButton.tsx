@@ -88,6 +88,9 @@ export default function AddToCartButton({
         const result = await action();
         const err = result && typeof result === "object" && result.error ? result.error : null;
         setMessage(err);
+        if (!err) {
+          window.dispatchEvent(new Event("cm-cart-added"));
+        }
       }}
       onSubmit={(e) => {
         if (ready.current) return; // the real submit, after the animation
