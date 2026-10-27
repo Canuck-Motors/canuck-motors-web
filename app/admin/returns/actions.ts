@@ -7,6 +7,12 @@ import { processNotificationOutbox } from "@/lib/notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeAmountCheckoutSession, createStripeRefund } from "@/lib/stripe";
 import { createAmazonMcfReturn, syncAmazonMcfReturn } from "@/lib/amazon-mcf-returns";
+import {
+  createReturnGoRmaByPolicy,
+  getReturnGoEligiblePolicies,
+  getReturnGoRma,
+  returnGoReason,
+} from "@/lib/returngo";
 import { formatReturnAddress, saveReturnLabelSnapshot } from "@/lib/return-label";
 
 async function requireAuthenticatedStaff() {
@@ -721,6 +727,204 @@ export async function syncAmazonReturnStatus(requestId: string) {
       })
       .eq("id", requestId);
 
+    throw error;
+  }
+}
+
+
+export async function createReturnGoAuthorization(requestId: string) {
+  await requireAuthenticatedStaff();
+
+  const admin = createAdminClient();
+  const [{ data: settings }, { data: request }] = await Promise.all([
+    admin
+      .from("fulfillment_settings")
+      .select("returngo_enabled")
+      .eq("id", 1)
+      .maybeSingle(),
+    admin
+      .from("return_requests")
+      .select(
+        "id, order_id, status, reason_code, returngo_rma_id, orders!order_id(order_number), return_request_items(quantity, order_items!inner(id))"
+      )
+      .eq("id", requestId)
+      .maybeSingle(),
+  ]);
+
+  if (!settings?.returngo_enabled) {
+    throw new Error("ReturnGO is switched off in Fulfillment settings.");
+  }
+  if (!request) throw new Error("Return request was not found.");
+  if (request.status !== "approved") {
+    throw new Error("Approve the return before creating a ReturnGO RMA.");
+  }
+  if (request.returngo_rma_id) {
+    throw new Error("A ReturnGO RMA already exists for this return.");
+  }
+
+  const order = Array.isArray(request.orders) ? request.orders[0] : request.orders;
+  const entries = (request.return_request_items ?? []) as Array<{
+    quantity?: number;
+    order_items?: { id?: number } | { id?: number }[];
+  }>;
+
+  if (entries.length !== 1) {
+    throw new Error(
+      "ReturnGO automation currently supports one returned line item per request. Multi-item returns can continue through the existing Canuck Motors flow."
+    );
+  }
+
+  const orderItem = Array.isArray(entries[0].order_items)
+    ? entries[0].order_items[0]
+    : entries[0].order_items;
+  const lineItemId = String(orderItem?.id ?? "");
+  if (!lineItemId) throw new Error("The returned order item could not be identified.");
+
+  const reason = returnGoReason(String(request.reason_code ?? ""));
+  if (!reason) {
+    throw new Error(
+      "This return reason is not mapped to ReturnGO. Add RETURNGO_DEFAULT_REASON or update the ReturnGO reason mapping."
+    );
+  }
+
+  try {
+    const eligible = await getReturnGoEligiblePolicies({
+      orderId: String(request.order_id),
+      lineItemId,
+      quantity: Number(entries[0].quantity ?? 1),
+      reason,
+    });
+
+    const preferred = process.env.RETURNGO_POLICY_NAME?.trim();
+    const policyName =
+      preferred && eligible.policyNames.includes(preferred)
+        ? preferred
+        : eligible.policyNames[0];
+
+    if (!policyName) {
+      throw new Error(
+        "ReturnGO did not return an eligible policy for this item and reason."
+      );
+    }
+
+    const result = await createReturnGoRmaByPolicy({
+      orderId: String(request.order_id),
+      lineItemId,
+      quantity: Number(entries[0].quantity ?? 1),
+      reason,
+      policyName,
+    });
+
+    if (!result.id) {
+      throw new Error("ReturnGO created no RMA ID.");
+    }
+
+    await admin
+      .from("return_requests")
+      .update({
+        returngo_rma_id: result.id,
+        returngo_status: result.status || "Approved",
+        returngo_label_url: result.labelUrl || null,
+        returngo_error: null,
+        returngo_synced_on: new Date().toISOString(),
+        updated_on: new Date().toISOString(),
+      })
+      .eq("id", requestId);
+
+    if (result.labelUrl) {
+      await queueReturnEmail(requestId, "return_instructions", {
+        message:
+          "Your return has been approved. ReturnGO has generated your return shipping label. Print the label, attach it securely to the outside of the package, and follow the instructions shown on the label.",
+        return_label_url: result.labelUrl,
+        returngo_rma_id: result.id,
+      });
+    }
+
+    await logActivity(
+      requestId,
+      "returngo",
+      `ReturnGO RMA created${result.id ? ` (${result.id})` : ""}${policyName ? ` using policy ${policyName}` : ""}`
+    );
+
+    revalidatePath("/admin/returns");
+    revalidatePath(`/account/orders/${request.order_id}`);
+
+    return {
+      rmaId: result.id,
+      status: result.status,
+      labelUrl: result.labelUrl,
+      policyName,
+      orderNumber: String((order as { order_number?: string } | undefined)?.order_number ?? ""),
+    };
+  } catch (rawError) {
+    const error = rawError instanceof Error ? rawError : new Error("ReturnGO RMA creation failed.");
+    await admin
+      .from("return_requests")
+      .update({
+        returngo_error: error.message.slice(0, 2000),
+        returngo_synced_on: new Date().toISOString(),
+        updated_on: new Date().toISOString(),
+      })
+      .eq("id", requestId);
+
+    if (/not found|order/i.test(error.message)) {
+      throw new Error(
+        "ReturnGO could not find this Canuck Motors order. For a custom storefront, ReturnGO must first be configured to receive/sync your orders through its platform integration. The existing manual/Amazon return flow is still available."
+      );
+    }
+    throw error;
+  }
+}
+
+export async function syncReturnGoStatus(requestId: string) {
+  await requireAuthenticatedStaff();
+  const admin = createAdminClient();
+
+  const { data: request } = await admin
+    .from("return_requests")
+    .select("order_id, returngo_rma_id")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (!request?.returngo_rma_id) {
+    throw new Error("No ReturnGO RMA exists for this return.");
+  }
+
+  try {
+    const result = await getReturnGoRma(String(request.returngo_rma_id));
+    if (!result.id) throw new Error("ReturnGO could not find this RMA.");
+
+    await admin
+      .from("return_requests")
+      .update({
+        returngo_status: result.status || null,
+        returngo_label_url: result.labelUrl || null,
+        returngo_error: null,
+        returngo_synced_on: new Date().toISOString(),
+        updated_on: new Date().toISOString(),
+      })
+      .eq("id", requestId);
+
+    await logActivity(
+      requestId,
+      "returngo_sync",
+      `ReturnGO status synchronized${result.status ? ` (${result.status})` : ""}`
+    );
+
+    revalidatePath("/admin/returns");
+    revalidatePath(`/account/orders/${request.order_id}`);
+
+    return result;
+  } catch (rawError) {
+    const error = rawError instanceof Error ? rawError : new Error("ReturnGO sync failed.");
+    await admin
+      .from("return_requests")
+      .update({
+        returngo_error: error.message.slice(0, 2000),
+        returngo_synced_on: new Date().toISOString(),
+        updated_on: new Date().toISOString(),
+      })
+      .eq("id", requestId);
     throw error;
   }
 }
