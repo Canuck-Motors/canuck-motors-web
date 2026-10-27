@@ -8,6 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import Image from "next/image";
 import { imageUrl, isVideo } from "@/lib/product-images";
 import ReturnPhotos from "@/components/account/ReturnPhotos";
+import { deliveryCarrierLabel } from "@/lib/delivery-carrier";
 import ItemActionToggle from "@/components/account/ItemActionToggle";
 import {
   cancelOrderItem,
@@ -170,6 +171,12 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
     }
   }
 
+  const firstShipment = (shipments ?? [])[0] as { carrier?: string | null; tracking_number?: string | null } | undefined;
+  const orderDeliveryCarrier = deliveryCarrierLabel({
+    carrier: firstShipment?.carrier,
+    tracking: firstShipment?.tracking_number,
+    deliveryMethod: order.delivery_method,
+  });
   const orderItemById = new Map((items ?? []).map((item) => [Number(item.id), item]));
   const returnNumberById = new Map(
     [...(returnRequests ?? [])]
@@ -555,7 +562,7 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                       const canPrint =
                         ["approved", "label_issued", "in_transit"].includes(status) &&
                         request.request_type === "return" &&
-                        request.fulfillment_provider !== "amazon_mcf";
+                        !request.amazon_rma_id;
                       return (
                         <div key={request.id} className="rounded-2xl border border-black/5 bg-secondary/40 p-4">
                           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -569,6 +576,33 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                               {status.replaceAll("_", " ")}
                             </span>
                           </div>
+                          <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                            <div className="sm:col-span-2">
+                              <dt className="text-xs font-semibold text-muted-foreground">Item to return</dt>
+                              <dd className="mt-0.5 space-y-0.5 font-semibold text-ink">
+                                {(request.return_request_items ?? []).map((ri: { order_item_id: number; quantity: number }) => {
+                                  const it = orderItemById.get(Number(ri.order_item_id));
+                                  if (!it) return null;
+                                  return (
+                                    <p key={ri.order_item_id}>
+                                      {ri.quantity} × {String(it.product_name)}
+                                      <span className="float-right">${(Number(it.unit_price ?? 0) * Number(ri.quantity)).toFixed(2)}</span>
+                                    </p>
+                                  );
+                                })}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-xs font-semibold text-muted-foreground">Requested on</dt>
+                              <dd className="font-semibold text-ink">
+                                {new Date(request.requested_on).toLocaleDateString("en-CA", { dateStyle: "medium" })}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt className="text-xs font-semibold text-muted-foreground">Delivered by</dt>
+                              <dd className="font-semibold text-ink">{orderDeliveryCarrier}</dd>
+                            </div>
+                          </dl>
                           {(request.return_tracking_number || request.return_carrier) && (
                             <p className="mt-2 text-xs text-muted-foreground">
                               Return shipping: {[request.return_carrier, request.return_tracking_number].filter(Boolean).join(" · ")}
@@ -577,12 +611,22 @@ export default async function AccountOrderDetailPage({ params }: PageProps) {
                           {(canPrint || canWithdraw || request.amazon_rma_page_url) && (
                             <div className="mt-3 flex flex-wrap items-center gap-2">
                               {canPrint && (
-                                <Link
-                                  href={`/account/orders/${order.id}/return-label/${request.id}`}
-                                  className="rounded-full bg-ink px-4 py-2 text-sm font-bold text-white"
-                                >
-                                  Print return label
-                                </Link>
+                                <>
+                                  <a
+                                    href={`/account/returns/${request.id}/label`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="rounded-full bg-ink px-4 py-2 text-sm font-bold text-white"
+                                  >
+                                    View / print return label
+                                  </a>
+                                  <a
+                                    href={`/account/returns/${request.id}/label?download=1`}
+                                    className="rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-ink hover:border-brand"
+                                  >
+                                    Download PDF
+                                  </a>
+                                </>
                               )}
                               {request.amazon_rma_page_url && (
                                 <a

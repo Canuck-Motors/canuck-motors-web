@@ -71,6 +71,31 @@ async function fetchAllRows(
   return { data: all, error: null };
 }
 
+// Phones get their own (portrait) background video; larger screens keep the wide one.
+function HeroVideo() {
+  const [src, setSrc] = useState("/hero/hero.mp4");
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const apply = () => setSrc(mq.matches ? "/hero/hero-mobile.mp4" : "/hero/hero.mp4");
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  return (
+    <video
+      key={src}
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="auto"
+      className="absolute inset-0 -z-20 h-full w-full scale-105 object-cover"
+    >
+      <source src={src} type="video/mp4" />
+    </video>
+  );
+}
+
 export function Hero() {
   const [supabase] = useState(() => createClient());
   const router = useRouter();
@@ -452,16 +477,7 @@ export function Hero() {
       {/* Search, VIN and vehicle-fitment lookups: fades in while loading, fades out when done */}
       <LoadingAnimation variant="page" show={pending} />
       {/* Background video */}
-      <video
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        className="absolute inset-0 -z-20 h-full w-full scale-105 object-cover"
-      >
-        <source src="/hero/hero.mp4" type="video/mp4" />
-      </video>
+      <HeroVideo />
 
       {/* Dark overlay */}
       <div className="absolute inset-0 -z-10 bg-[linear-gradient(90deg,rgba(8,8,8,0.96)_0%,rgba(8,8,8,0.82)_44%,rgba(8,8,8,0.44)_100%)]" />

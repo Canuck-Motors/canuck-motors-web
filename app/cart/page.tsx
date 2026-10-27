@@ -174,9 +174,24 @@ export default async function CartPage({ searchParams }: PageProps) {
     mcfOn = Boolean(fs?.amazon_mcf_enabled);
   } catch {}
   const uberEligible = !(await isAmazonRedirectOn()) && ["vancouver", "burnaby"].includes(savedCity.toLowerCase());
+  // Fall back to the phone used on the customer's last Uber delivery if the profile has none.
+  let lastUberPhone = "";
+  if (!profile.phone_number) {
+    try {
+      const { data: lastOrder } = await createAdminClient()
+        .from("orders")
+        .select("delivery_phone")
+        .eq("user_id", profile.id)
+        .not("delivery_phone", "is", null)
+        .order("created_on", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      lastUberPhone = String(lastOrder?.delivery_phone ?? "");
+    } catch {}
+  }
   const uberDefaults = {
     name: String(saved.name || [profile.first_name, profile.last_name].filter(Boolean).join(" ") || ""),
-    phone: String(profile.phone_number ?? ""),
+    phone: String(profile.phone_number || lastUberPhone || authData.user.phone || (authData.user.user_metadata as Record<string, unknown> | null)?.phone || ""),
     street: String(saved.line1 ?? ""),
     city: uberEligible ? (savedCity.toLowerCase() === "burnaby" ? "Burnaby" : "Vancouver") : "",
     state: "BC",

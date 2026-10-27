@@ -121,7 +121,10 @@ export function UberDelivery({ value, onChange, mcfOn = false }: { value: Delive
         <div className="mt-4 grid gap-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <input className={field} placeholder="Full name" value={value.fields.name} onChange={(e) => set("name", e.target.value)} autoComplete="name" />
-            <input className={field} placeholder="Phone (for the driver)" value={value.fields.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" />
+            <div>
+              <input className={field} placeholder="Phone (for the driver) *" required value={value.fields.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" inputMode="tel" aria-label="Phone number for the driver" />
+              <p className="mt-1 px-1 text-[11px] text-muted-foreground">{value.fields.phone.trim() ? "Filled in from your account. You can change it for this delivery." : "Required: the driver will call this number."}</p>
+            </div>
           </div>
           <div className="relative">
             <input

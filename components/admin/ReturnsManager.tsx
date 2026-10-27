@@ -39,6 +39,7 @@ export type ReturnRow = {
   replacementPaymentUrl: string;
   replacementAmountDue: number;
   replacementRefundDue: number;
+  deliveryCarrier: string;
   orderNumber: string;
   customerName: string;
   customerEmail: string;
@@ -190,7 +191,7 @@ export default function ReturnsManager({
 
   const counts = useMemo(
     () => ({
-      action: scoped.filter(needsAction).length,
+      action: scoped.filter((r) => needsAction(r) || isUnderReview(r)).length,
       review: scoped.filter(isUnderReview).length,
       waiting: scoped.filter((r) => WAITING.includes(r.status)).length,
       refund: scoped.filter(isRefundDue).length,
@@ -227,7 +228,7 @@ export default function ReturnsManager({
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
     return scoped.filter((r) => {
-      if (filter === "action" && !needsAction(r)) return false;
+      if (filter === "action" && !(needsAction(r) || isUnderReview(r))) return false;
       if (filter === "review" && !isUnderReview(r)) return false;
       if (filter === "waiting" && !WAITING.includes(r.status)) return false;
       if (filter === "refund" && !isRefundDue(r)) return false;
@@ -277,7 +278,6 @@ export default function ReturnsManager({
 
   const tabs: [Filter, string][] = [
     ["action", "Needs review"],
-    ["review", "Under review"],
     ["waiting", "Waiting for item"],
     ["refund", "Refund due"],
     ["done", "Completed"],
@@ -757,7 +757,7 @@ export default function ReturnsManager({
                 const detailsBlock = (
                   <div className="space-y-3">
                     <section className="rounded-2xl border border-black/5 bg-white p-5 shadow-sm">
-                      <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2 xl:grid-cols-3">
+                      <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
                         <Field label="Item to return">
                           <ul className="space-y-1.5">
                             {r.items.map((i) => (
@@ -784,7 +784,11 @@ export default function ReturnsManager({
                             {when.toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" })}
                           </span>
                         </Field>
-                        <Field label="Reason" className="sm:col-span-2 xl:col-span-3">
+                        <Field label="Delivery carrier">
+                          <span className="font-bold">{r.deliveryCarrier || "Standard shipping"}</span>
+                          <span className="block text-xs text-muted-foreground">How the order was delivered</span>
+                        </Field>
+                        <Field label="Reason" className="sm:col-span-2 xl:col-span-4">
                           <span className="inline-flex rounded-full bg-brand-tint px-3 py-0.5 text-sm font-bold capitalize text-brand">
                             {label(r.reasonCode)}
                           </span>
@@ -978,7 +982,7 @@ export default function ReturnsManager({
 
                             {stage === "receive" && (
                               <div className="mt-4 flex flex-wrap gap-2">
-                                {r.fulfillmentProvider !== "amazon_mcf" && (
+                                {(
                                   <button
                                     type="button"
                                     disabled={pending}
@@ -992,6 +996,16 @@ export default function ReturnsManager({
                                     <Mail className="h-4 w-4" aria-hidden="true" />
                                     Email return instructions
                                   </button>
+                                )}
+                                {(
+                                  <a
+                                    href={`/account/returns/${r.id}/label`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 rounded-full border border-black/15 bg-white px-5 py-2 text-sm font-bold text-ink hover:border-brand hover:text-brand"
+                                  >
+                                    View / print the return label
+                                  </a>
                                 )}
                                 <button
                                   type="button"
@@ -1103,6 +1117,36 @@ export default function ReturnsManager({
                                   >
                                     <div className="flex flex-wrap items-center justify-between gap-2">
                                       <div>
+                              <div className="mb-3 rounded-2xl border border-black/5 bg-white p-4 text-sm">
+                                <p className="text-xs font-black uppercase tracking-[0.14em] text-brand">Return details</p>
+                                <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-3">
+                                  <div className="col-span-2">
+                                    <dt className="text-xs font-semibold text-muted-foreground">Items to return</dt>
+                                    <dd className="mt-0.5 space-y-0.5 font-semibold text-ink">
+                                      {r.items.map((i) => (
+                                        <p key={i.id}>
+                                          {i.quantity} × {i.name} <span className="text-muted-foreground">({i.sku})</span>
+                                          <span className="float-right">{money(i.unitPrice * i.quantity, r.currency)}</span>
+                                        </p>
+                                      ))}
+                                    </dd>
+                                  </div>
+                                  <div>
+                                    <dt className="text-xs font-semibold text-muted-foreground">Price to refund (items)</dt>
+                                    <dd className="font-black text-ink">{money(r.subtotal, r.currency)}</dd>
+                                  </div>
+                                  <div>
+                                    <dt className="text-xs font-semibold text-muted-foreground">Requested on</dt>
+                                    <dd className="font-semibold text-ink">
+                                      {new Date(r.requestedOn).toLocaleDateString("en-CA", { dateStyle: "medium" })}
+                                    </dd>
+                                  </div>
+                                  <div className="col-span-2">
+                                    <dt className="text-xs font-semibold text-muted-foreground">Originally delivered by</dt>
+                                    <dd className="font-semibold text-ink">{r.deliveryCarrier || "Standard shipping"}</dd>
+                                  </div>
+                                </dl>
+                              </div>
                                         <p className="text-sm font-black text-ink">
                                           {inspectionConfirm.outcome === "restock"
                                             ? "Confirm: Pass inspection and restock?"

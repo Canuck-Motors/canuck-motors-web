@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendAppEmail } from "@/lib/email";
-import { buildReturnLabelPdf } from "@/lib/return-label";
+import { buildReturnLabelPdf, loadReturnLabelData } from "@/lib/return-label";
 
 type OutboxRow = {
   id: string;
@@ -49,7 +49,7 @@ function messageFor(row: OutboxRow) {
         if (labelUrl) {
           lines.push(`Your return-label PDF is attached to this email. You can also open it here: ${labelUrl}`);
           lines.push(
-            "Print the PDF, fill in the blank FROM section with your address, attach the label flat to the outside of the box, and do not write anything else on the box."
+            "Print the PDF at 100% (do not scale it), attach the label flat to the outside of the box without covering the barcode, and drop the box off with any carrier. Postage is not included."
           );
         }
         lines.push("Pack the item securely and keep your carrier receipt and tracking number until the return is completed.");
@@ -136,16 +136,24 @@ async function sendEmail(row: OutboxRow) {
   const message = messageFor(row);
   const requestId = String(row.payload?.return_label_request_id || "");
   const orderNumber = String(row.payload?.order_number || "");
-  const attachments =
-    row.event_type === "return_instructions" && requestId
-      ? [
-          {
-            filename: `return-${orderNumber || "order"}.pdf`,
-            content: buildReturnLabelPdf({ orderNumber, requestId }),
-            contentType: "application/pdf",
-          },
-        ]
-      : undefined;
+  let labelData: Awaited<ReturnType<typeof loadReturnLabelData>> = null;
+  if (row.event_type === "return_instructions" && requestId) {
+    try {
+      labelData = await loadReturnLabelData(requestId);
+    } catch (e) {
+      console.error("[notifications] could not build return label:", e);
+    }
+    if (!labelData) console.error("[notifications] no return label data for request", requestId);
+  }
+  const attachments = labelData
+    ? [
+        {
+          filename: `return-label-${labelData.returnRef}.pdf`,
+          content: buildReturnLabelPdf(labelData),
+          contentType: "application/pdf",
+        },
+      ]
+    : undefined;
 
   return sendAppEmail({
     to: row.recipient,
@@ -236,6 +244,7 @@ export async function processNotificationOutbox(limit = 50) {
         .eq("id", row.id);
 
       failed++;
+      console.error("[notifications] send failed:", row.event_type, row.recipient, sendError instanceof Error ? sendError.message : sendError);
     }
   }
 

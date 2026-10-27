@@ -49,6 +49,15 @@ export type OrderRow = {
   cancelledItems: { product_name: string; sku: string; quantity: number; reason: string }[];
   items: { product_name: string; sku: string; quantity: number; unit_price: number }[];
   shipment: { carrier: string; tracking: string; url: string; status: string } | null;
+  returnLabels?: {
+    id: string;
+    status: string;
+    ref: string;
+    type: string;
+    requestedOn: string;
+    hasLabel: boolean;
+    items: { name: string; sku: string; qty: number; price: number }[];
+  }[];
 };
 
 type Filter = "all" | "toship" | "shipped" | "delivered" | "cancelled" | "unpaid";
@@ -587,8 +596,82 @@ export default function OrdersManager({
                               </div>
                             </div>
 
+                            {(o.returnLabels ?? []).length > 0 && (
+                              <div className="space-y-6 border-b px-6 py-6">
+                                {(o.returnLabels ?? []).map((rl) => {
+                                  const rTotal = rl.items.reduce((t, it) => t + it.price * it.qty, 0);
+                                  const carrierText = o.shipment?.carrier
+                                    ? [o.shipment.carrier, o.shipment.tracking && `#${o.shipment.tracking}`].filter(Boolean).join(" ")
+                                    : o.deliveryMethod === "uber"
+                                      ? "Uber same-day courier"
+                                      : o.provider === "amazon_mcf"
+                                        ? "Amazon MCF"
+                                        : "Standard shipping";
+                                  return (
+                                    <div key={rl.id} className="grid gap-x-10 gap-y-7 md:grid-cols-3">
+                                      <div>
+                                        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Item to return</p>
+                                        <div className="mt-3 space-y-2">
+                                          {rl.items.map((it, n) => (
+                                            <div key={n}>
+                                              <p className="font-black text-ink">{it.name}</p>
+                                              <p className="mt-0.5 text-sm text-muted-foreground">
+                                                {it.sku} · Qty {it.qty}
+                                              </p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Price</p>
+                                        <p className="mt-3 text-3xl font-black text-ink">{money(rTotal, o.currency)}</p>
+                                        <p className="mt-1 text-sm capitalize text-muted-foreground">
+                                          {rl.ref} · {label(rl.status)}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Requested on</p>
+                                        <p className="mt-3 text-lg font-black text-ink">
+                                          {new Date(rl.requestedOn).toLocaleDateString("en-CA", { dateStyle: "medium" })}
+                                        </p>
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                          {new Date(rl.requestedOn).toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" })}
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Delivery carrier</p>
+                                        <p className="mt-3 text-lg font-black text-ink">{carrierText}</p>
+                                        <p className="mt-1 text-sm text-muted-foreground">How the order was originally delivered</p>
+                                      </div>
+                                      {rl.hasLabel && (
+                                        <div>
+                                          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Return label</p>
+                                          <div className="mt-3 flex flex-wrap gap-2">
+                                            <a
+                                              href={`/account/returns/${rl.id}/label`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="rounded-full bg-ink px-4 py-2 text-sm font-bold text-white"
+                                            >
+                                              View / print
+                                            </a>
+                                            <a
+                                              href={`/account/returns/${rl.id}/label?download=1`}
+                                              className="rounded-full border border-black/15 bg-white px-4 py-2 text-sm font-bold text-ink hover:border-brand hover:text-brand"
+                                            >
+                                              Download PDF
+                                            </a>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+
                             <div className="px-6 py-6">
-                              <div className="grid gap-x-10 gap-y-7 md:grid-cols-3">
+                              <div className="grid gap-x-10 gap-y-7 md:grid-cols-4">
                                 <div>
                                   <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Items</p>
                                   <div className="mt-3 space-y-2">
@@ -626,6 +709,20 @@ export default function OrdersManager({
                                   </p>
                                 </div>
 
+                                <div>
+                                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Delivery carrier</p>
+                                  <p className="mt-3 text-lg font-black text-ink">
+                                    {o.shipment?.carrier
+                                      ? [o.shipment.carrier, o.shipment.tracking && `#${o.shipment.tracking}`].filter(Boolean).join(" ")
+                                      : o.deliveryMethod === "uber"
+                                        ? "Uber same-day courier"
+                                        : o.provider === "amazon_mcf"
+                                          ? "Amazon MCF"
+                                          : "Standard shipping"}
+                                  </p>
+                                  <p className="mt-1 text-sm text-muted-foreground">How the order is delivered</p>
+                                </div>
+
                                 <div className="md:col-span-1">
                                   <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Customer</p>
                                   <p className="mt-3 font-black text-ink">{o.name || "Customer"}</p>
@@ -636,7 +733,7 @@ export default function OrdersManager({
                                   )}
                                 </div>
 
-                                <div className="md:col-span-2">
+                                <div className="md:col-span-3">
                                   <p className="text-[11px] font-black uppercase tracking-[0.14em] text-brand">Customer address</p>
                                   {o.address ? (
                                     <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -672,6 +769,7 @@ export default function OrdersManager({
                               )}
                             </div>
 
+                            {o.provider !== "amazon_mcf" && (
                             <div className="border-t border-black/5 bg-secondary/20 px-6 py-5">
                               <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
                                 <div>
@@ -795,6 +893,7 @@ export default function OrdersManager({
                                 </div>
                               </div>
                             </div>
+                            )}
                           </section>
                         </td>
                       </tr>

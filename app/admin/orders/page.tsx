@@ -91,10 +91,50 @@ export default async function OrdersAdminPage() {
     .eq("id", 1)
     .single();
 
+  // Returns for these orders, shown in each order's details (with the label when one was issued).
+  type RL = NonNullable<OrderRow["returnLabels"]>[number];
+  const returnsByOrder = new Map<string, RL[]>();
+  try {
+    const ids = ((res.data ?? []) as unknown as { id: string }[]).map((o) => String(o.id));
+    if (ids.length) {
+      const { data: rr, error: rrErr } = await adminForSettings
+        .from("return_requests")
+        .select("id, order_id, status, request_type, requested_on, fulfillment_provider, amazon_rma_id, return_request_items(quantity, order_items!inner(product_name, sku, unit_price))")
+        .in("order_id", ids)
+        .order("requested_on", { ascending: false });
+      if (rrErr) console.error("Return lookup error:", rrErr.message);
+      for (const r of rr ?? []) {
+        const items = ((r.return_request_items ?? []) as unknown as {
+          quantity: number;
+          order_items: { product_name: string; sku: string; unit_price: number } | { product_name: string; sku: string; unit_price: number }[] | null;
+        }[]).map((it) => {
+          const oi = Array.isArray(it.order_items) ? it.order_items[0] : it.order_items;
+          return { name: String(oi?.product_name ?? ""), sku: String(oi?.sku ?? ""), qty: Number(it.quantity ?? 0), price: Number(oi?.unit_price ?? 0) };
+        });
+        const list = returnsByOrder.get(String(r.order_id)) ?? [];
+        list.push({
+          id: String(r.id),
+          status: String(r.status),
+          type: String(r.request_type ?? "return"),
+          ref: `RET-${String(r.id).replace(/-/g, "").slice(0, 8).toUpperCase()}`,
+          requestedOn: String(r.requested_on),
+          items,
+          hasLabel:
+            !r.amazon_rma_id &&
+            ["approved", "label_issued", "in_transit", "received", "refund_pending", "completed"].includes(String(r.status)),
+        });
+        returnsByOrder.set(String(r.order_id), list);
+      }
+    }
+  } catch (error) {
+    console.error("Return lookup failed:", error);
+  }
+
   const orders: OrderRow[] = ((res.data ?? []) as unknown as Record<string, unknown>[]).map((o) => {
     const ship = Array.isArray(o.shipments) ? o.shipments[0] : o.shipments;
     return {
       id: String(o.id),
+      returnLabels: returnsByOrder.get(String(o.id)) ?? [],
       number: String(o.order_number ?? ""),
       status: String(o.status ?? ""),
       fulfillment: String(o.fulfillment_status ?? ""),

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { deliveryCarrierLabel } from "@/lib/delivery-carrier";
 import { AdminNav } from "@/components/AdminNav";
 import ReturnsManager, { type ReturnRow } from "@/components/admin/ReturnsManager";
 
@@ -32,6 +34,29 @@ export default async function ReturnsAdminPage() {
 
   if (error) {
     throw new Error(`Unable to load return requests: ${error.message}`);
+  }
+
+  // How each order was originally delivered (shown in the return details).
+  const carrierByOrder = new Map<string, string>();
+  try {
+    const orderIds = [...new Set((requests ?? []).map((r) => String(r.order_id)))];
+    if (orderIds.length) {
+      const admin = createAdminClient();
+      const [{ data: os }, { data: ships }] = await Promise.all([
+        admin.from("orders").select("id, delivery_method, fulfillment_provider").in("id", orderIds),
+        admin.from("shipments").select("order_id, carrier, tracking_number").in("order_id", orderIds),
+      ]);
+      const shipBy = new Map((ships ?? []).map((s) => [String(s.order_id), s]));
+      for (const o of os ?? []) {
+        const s = shipBy.get(String(o.id));
+        carrierByOrder.set(
+          String(o.id),
+          deliveryCarrierLabel({ carrier: s?.carrier, tracking: s?.tracking_number, deliveryMethod: o.delivery_method, provider: o.fulfillment_provider })
+        );
+      }
+    }
+  } catch {
+    // optional
   }
 
   const { data: products } = await supabase
@@ -110,6 +135,7 @@ export default async function ReturnsAdminPage() {
       replacementPaymentUrl: (r.replacement_payment_url as string) ?? "",
       replacementAmountDue: Number(r.replacement_amount_due ?? 0),
       replacementRefundDue: Number(r.replacement_refund_due ?? 0),
+      deliveryCarrier: carrierByOrder.get(String(r.order_id)) ?? "",
       orderNumber: String(order?.order_number ?? ""),
       customerName: String(order?.customer_name ?? ""),
       customerEmail: String(order?.customer_email ?? ""),

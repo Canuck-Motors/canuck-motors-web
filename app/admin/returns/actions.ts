@@ -7,7 +7,7 @@ import { processNotificationOutbox } from "@/lib/notifications";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createStripeAmountCheckoutSession, createStripeRefund } from "@/lib/stripe";
 import { createAmazonMcfReturn, syncAmazonMcfReturn } from "@/lib/amazon-mcf-returns";
-import { formatReturnAddress } from "@/lib/return-label";
+import { formatReturnAddress, saveReturnLabelSnapshot } from "@/lib/return-label";
 
 async function requireAuthenticatedStaff() {
   const supabase = await createClient();
@@ -80,10 +80,14 @@ async function queueReturnEmail(
         }),
       },
     });
-    if (error) return false;
+    if (error) {
+      console.error("[returns] could not queue email:", error.message);
+      return false;
+    }
     // Send right away instead of waiting for the scheduled job (which does not run locally).
     try {
-      await processNotificationOutbox(10);
+      const r = await processNotificationOutbox(10);
+      console.log("[returns] email flush:", JSON.stringify(r));
     } catch (e) {
       console.error("[returns] could not send queued email now:", e);
     }
@@ -120,7 +124,36 @@ export async function updateReturnRequest(
   }
 
   let emailed = false;
-  if (email?.notify) {
+  let labelEmailed = false;
+
+  // Approving a return (not an Amazon MCF one, which uses Amazon's RMA): save the label with the return
+  // and send it in the approval email, so the customer and the admin get exactly the same label.
+  if (status === "approved") {
+    const admin = createAdminClient();
+    const { data: req } = await admin
+      .from("return_requests")
+      .select("fulfillment_provider, amazon_rma_id")
+      .eq("id", requestId)
+      .maybeSingle();
+    const usesLabel = !req?.amazon_rma_id;
+    if (usesLabel) {
+      const label = await saveReturnLabelSnapshot(requestId);
+      if (!label) console.error("[returns] could not build label for", requestId);
+      if (label && email?.notify) {
+        labelEmailed = await queueReturnEmail(requestId, "return_instructions", {
+          message:
+            email.message ||
+            "Your return has been approved. Your return label is attached to this email as a PDF. Print it, attach it flat to the outside of the box and send the part back with any carrier. Return postage is not included.",
+          return_address: formatReturnAddress(),
+          return_label_url: `${getSiteUrl()}/account/returns/${encodeURIComponent(requestId)}/label`,
+          return_label_request_id: requestId,
+        });
+        emailed = labelEmailed;
+      }
+    }
+  }
+
+  if (email?.notify && !labelEmailed) {
     emailed = await queueReturnEmail(requestId, "return_update", {
       status,
       message: email.message,
@@ -132,7 +165,7 @@ export async function updateReturnRequest(
   await logActivity(
     requestId,
     "status",
-    `Status set to ${status.replaceAll("_", " ")}${returnTrackingNumber ? `, tracking ${returnTrackingNumber}` : ""}${notes ? ", note saved" : ""}${emailed ? ", customer emailed" : ""}`
+    `Status set to ${status.replaceAll("_", " ")}${returnTrackingNumber ? `, tracking ${returnTrackingNumber}` : ""}${notes ? ", note saved" : ""}${labelEmailed ? ", return label saved and emailed" : emailed ? ", customer emailed" : ""}`
   );
   revalidatePath("/admin/returns");
 }

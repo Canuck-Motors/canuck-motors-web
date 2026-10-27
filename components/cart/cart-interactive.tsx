@@ -112,7 +112,7 @@ export default function CartInteractive({
       clearTimeout(t);
     };
   }, [stdPostal, delivery.method, qtySig]);
-  const uberReady = (delivery.method === "standard" && stdFeeCents != null && (shipTo === "account" || otherComplete)) || (delivery.feeCents != null && !!delivery.fields.name.trim() && !!delivery.fields.phone.trim());
+  const uberReady = (delivery.method === "standard" && stdFeeCents != null && (shipTo === "account" || otherComplete)) || (delivery.feeCents != null && !!delivery.fields.name.trim() && delivery.fields.phone.replace(/\D/g, "").length >= 10);
   const deliveryFee =
     delivery.method === "uber"
       ? delivery.feeCents != null ? delivery.feeCents / 100 : 0
