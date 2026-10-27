@@ -410,7 +410,6 @@ export default function OrdersManager({
             >
               <option value="">Set status...</option>
               <option value="shipped">Shipped</option>
-              <option value="out_for_delivery">Out for delivery</option>
               <option value="delivered">Delivered</option>
               <option value="cancelled">Cancel</option>
             </select>
@@ -564,7 +563,6 @@ export default function OrdersManager({
                             >
                               <option value="">Update status</option>
                               <option value="shipped">Mark as shipped</option>
-                              <option value="out_for_delivery">Out for delivery</option>
                               <option value="delivered">Mark as delivered</option>
                               <option value="cancelled">Cancel order</option>
                             </select>
