@@ -370,18 +370,7 @@ export default function InventoryManager({
                         <button className="rounded-full bg-ink px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand">
                           Save
                         </button>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                            available <= 0
-                              ? "bg-red-100 text-red-700"
-                              : available <= r.lowStock
-                                ? "bg-amber-100 text-amber-800"
-                                : "text-muted-foreground"
-                          }`}
-                        >
-                          {available <= 0 ? "Out of stock" : `${available} available`}
-                          {r.reserved > 0 && ` · ${r.reserved} reserved`}
-                        </span>
+
                       </form>
                     </td>
                     <td className="px-5 py-3">
