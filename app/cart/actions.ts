@@ -127,7 +127,12 @@ export async function addToCart(productId: number): Promise<{ error?: string } |
 
   if (existingItem) {
     if (existingItem.quantity >= available) {
-      return { error: `Only ${available} unit${available === 1 ? "" : "s"} available, and you already have that many in your cart.` };
+      return {
+        error:
+          available === 1
+            ? "This is the last one currently available, and it’s already in your cart."
+            : `You already have the full available quantity (${available}) of this item in your cart.`,
+      };
     }
 
     const nextQuantity = Math.min(existingItem.quantity + 1, 99, available);
