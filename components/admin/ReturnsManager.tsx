@@ -73,7 +73,7 @@ export type ReturnRow = {
 };
 
 type Product = { id: number; sku: string; name: string; price: number };
-type Filter = "action" | "review" | "waiting" | "refund" | "exchange" | "done" | "rejected" | "all";
+type Filter = "action" | "review" | "waiting" | "refund" | "exchange" | "done" | "rejected" | "overdue" | "open" | "all";
 
 const label = (s: string) => s.replaceAll("_", " ");
 const money = (n: number, c = "CAD") =>
@@ -204,14 +204,16 @@ export default function ReturnsManager({
   );
 
   const summary = useMemo(() => {
-    const openRows = rows.filter(isOpen);
+    const openRows = scoped.filter(isOpen);
+    const refundRows = scoped.filter(isRefundDue);
     return {
       open: openRows.length,
-      refundCount: rows.filter(isRefundDue).length,
-      refundAmount: rows.filter(isRefundDue).reduce((t, r) => t + r.subtotal, 0),
+      refundCount: refundRows.length,
+      refundAmount: refundRows.reduce((t, r) => t + r.subtotal, 0),
       overdue: openRows.filter((r) => days(r.requestedOn) > OVERDUE_DAYS).length,
+      all: scoped.length,
     };
-  }, [rows]);
+  }, [scoped]);
 
   const report = useMemo(() => {
     const top = (keyOf: (r: ReturnRow) => string[]) => {
@@ -228,6 +230,8 @@ export default function ReturnsManager({
   const shown = useMemo(() => {
     const term = q.trim().toLowerCase();
     return scoped.filter((r) => {
+      if (filter === "open" && !isOpen(r)) return false;
+      if (filter === "overdue" && !(isOpen(r) && days(r.requestedOn) > OVERDUE_DAYS)) return false;
       if (filter === "action" && !(needsAction(r) || isUnderReview(r))) return false;
       if (filter === "review" && !isUnderReview(r)) return false;
       if (filter === "waiting" && !WAITING.includes(r.status)) return false;
@@ -296,22 +300,49 @@ export default function ReturnsManager({
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          ["Open requests", String(summary.open), ""],
-          ["Refunds to pay", String(summary.refundCount), money(summary.refundAmount)],
-          [`Overdue (> ${OVERDUE_DAYS} days)`, String(summary.overdue), summary.overdue ? "needs attention" : ""],
-          ["All requests", String(rows.length), ""],
-        ].map(([title, value, sub]) => (
-          <div
-            key={title}
-            className={`rounded-[22px] border bg-white p-5 shadow-sm ${
-              title.startsWith("Overdue") && summary.overdue ? "border-brand/40" : "border-black/5"
-            }`}
-          >
-            <p className="text-sm font-semibold text-muted-foreground">{title}</p>
-            <p className="mt-1 text-3xl font-black tracking-[-0.04em] text-ink">{value}</p>
-            {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
-          </div>
-        ))}
+          { key: "open" as Filter, title: "Open requests", value: String(summary.open), sub: "" },
+          { key: "refund" as Filter, title: "Refunds to pay", value: String(summary.refundCount), sub: money(summary.refundAmount) },
+          {
+            key: "overdue" as Filter,
+            title: `Overdue (> ${OVERDUE_DAYS} days)`,
+            value: String(summary.overdue),
+            sub: summary.overdue ? "Needs attention" : "",
+          },
+          { key: "all" as Filter, title: "All requests", value: String(summary.all), sub: "" },
+        ].map((card) => {
+          const activeCard = filter === card.key;
+          const overdueAlert = card.key === "overdue" && summary.overdue > 0;
+          return (
+            <button
+              key={card.title}
+              type="button"
+              onClick={() => {
+                setFilter(card.key);
+                setLimit(50);
+                setOpen(null);
+              }}
+              aria-pressed={activeCard}
+              className={`group rounded-[22px] border p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand/10 ${
+                activeCard
+                  ? "border-brand bg-brand-tint/55"
+                  : overdueAlert
+                    ? "border-brand/40 bg-white hover:border-brand"
+                    : "border-black/5 bg-white hover:border-brand/30"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <p className={`text-sm font-semibold ${activeCard ? "text-brand" : "text-muted-foreground"}`}>
+                  {card.title}
+                </p>
+                <span className={`text-xs font-black transition ${activeCard ? "text-brand" : "text-black/25 group-hover:text-brand"}`}>
+                  View →
+                </span>
+              </div>
+              <p className="mt-1 text-3xl font-black tracking-[-0.04em] text-ink">{card.value}</p>
+              {card.sub && <p className="mt-1 text-xs text-muted-foreground">{card.sub}</p>}
+            </button>
+          );
+        })}
       </div>
 
       <div className="mt-4 grid gap-4 md:grid-cols-2">
