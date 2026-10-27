@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Clock, Instagram, Linkedin, Mail, MapPin, Phone } from "lucide-react";
 
@@ -44,6 +45,12 @@ const COLUMNS: { title: string; links: { label: string; href: string }[] }[] = [
 
 export default function Footer() {
   const pathname = usePathname() ?? "";
+  const [year, setYear] = useState(2026);
+
+  useEffect(() => {
+    setYear(new Date().getFullYear());
+  }, []);
+
   if (pathname.startsWith("/admin")) return null;
 
   const socials = [
@@ -147,7 +154,7 @@ export default function Footer() {
 
       <div className="border-t border-white/10">
         <div className="cm-container flex flex-col gap-2 py-6 text-xs text-white/50 sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} Canuck Motors. All rights reserved.</p>
+          <p>© {year} Canuck Motors. All rights reserved.</p>
           <p>Proudly Canadian · Shipping across Canada</p>
         </div>
       </div>
