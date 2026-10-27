@@ -1044,7 +1044,7 @@ export default function ReturnsManager({
                         <td colSpan={7} className="border-l-4 border-brand px-6 py-5">
                           {/* Step-by-step workflow */}
                           <ol
-                            className="mb-5 grid grid-cols-5 gap-1 rounded-2xl border border-black/5 bg-white/70 p-2 shadow-sm"
+                            className="mb-6 grid grid-cols-5 px-1 pt-2"
                             aria-label="Return progress"
                           >
                             {steps.map((st, n) => {
@@ -1059,23 +1059,10 @@ export default function ReturnsManager({
                                   : st;
 
                               return (
-                                <li
-                                  key={st}
-                                  className={`relative rounded-xl px-1.5 py-2.5 text-center transition-all duration-300 ${
-
-                                    me === "current"
-                                      ? "bg-brand-tint shadow-[0_8px_24px_rgba(220,38,38,0.12)]"
-                                      : me === "done"
-                                        ? "bg-emerald-50/70"
-                                        : me === "bad"
-                                          ? "bg-red-50"
-                                          : "bg-transparent"
-                                  }`}
-                                >
+                                <li key={st} className="relative text-center">
                                   <div className="flex items-center">
                                     <span
                                       className={`h-[3px] flex-1 rounded-full transition-all duration-500 ${
-
                                         n === 0
                                           ? "bg-transparent"
                                           : me !== "todo" && prev === "done"
@@ -1084,13 +1071,13 @@ export default function ReturnsManager({
                                       }`}
                                     />
                                     <span
-                                      className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-black text-white transition ${
+                                      className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-black text-white transition-all duration-300 ${
                                         me === "bad"
-                                          ? "bg-red-500 shadow-[0_0_0_5px_rgba(239,68,68,0.12)]"
+                                          ? "bg-red-500 shadow-[0_0_0_6px_rgba(239,68,68,0.10)]"
                                           : me === "done"
-                                            ? "bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.10)]"
+                                            ? "bg-emerald-500 shadow-[0_4px_12px_rgba(16,185,129,0.20)]"
                                             : me === "current"
-                                              ? "bg-brand shadow-[0_0_0_5px_rgba(220,38,38,0.14)] animate-pulse"
+                                              ? "bg-brand shadow-[0_0_0_6px_rgba(220,38,38,0.10),0_8px_18px_rgba(220,38,38,0.18)] animate-[pulse_1.8s_ease-in-out_infinite]"
                                               : "bg-black/15"
                                       }`}
                                     >
@@ -1104,7 +1091,6 @@ export default function ReturnsManager({
                                     </span>
                                     <span
                                       className={`h-[3px] flex-1 rounded-full transition-all duration-500 ${
-
                                         n === steps.length - 1
                                           ? "bg-transparent"
                                           : me === "done" && next !== "todo"
@@ -1115,7 +1101,7 @@ export default function ReturnsManager({
                                   </div>
 
                                   <p
-                                    className={`mt-2 text-[11px] font-black ${
+                                    className={`mt-2 text-[11px] font-black transition-colors ${
                                       me === "bad"
                                         ? "text-red-600"
                                         : me === "current"
@@ -1128,7 +1114,12 @@ export default function ReturnsManager({
                                     {stepLabel}
                                   </p>
 
-
+                                  {me === "current" && (
+                                    <span
+                                      aria-hidden="true"
+                                      className="mx-auto mt-1 block h-1 w-6 rounded-full bg-brand/70"
+                                    />
+                                  )}
                                 </li>
                               );
                             })}
