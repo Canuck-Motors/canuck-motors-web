@@ -85,6 +85,17 @@ export default function ChatLauncher() {
     checkChat(who);
   }, [who, open]);
 
+  // Other parts of the site (cart, product pages) can open the chat with this event
+  useEffect(() => {
+    const openChat = () => {
+      boxRef.current?.querySelector<HTMLElement>(".cm-window")?.getAnimations().forEach((x) => x.cancel());
+      setStarted(true);
+      setOpen(true);
+    };
+    window.addEventListener("cm-open-axel", openChat);
+    return () => window.removeEventListener("cm-open-axel", openChat);
+  }, []);
+
   useEffect(() => {
     const supabase = createClient();
     wipe(); // drop the old shared chat from before chats were per person

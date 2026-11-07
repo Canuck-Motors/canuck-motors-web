@@ -551,6 +551,21 @@ export default function CartInteractive({
                 <span className="mt-0.5 block text-xs text-white/55">I checked the year, make, model and engine.</span>
               </span>
             </label>
+            <p className="mt-3 border-t border-white/10 pt-3 text-xs leading-5 text-white/60">
+              Not sure it fits? Check your{" "}
+              <Link href="/products" className="font-semibold text-white underline underline-offset-2 hover:text-brand">
+                vehicle fitment
+              </Link>{" "}
+              or{" "}
+              <button
+                type="button"
+                onClick={() => window.dispatchEvent(new Event("cm-open-axel"))}
+                className="font-semibold text-white underline underline-offset-2 hover:text-brand"
+              >
+                ask Axel
+              </button>{" "}
+              before you pay.
+            </p>
           </div>
 
           <form action={beginCheckout}>

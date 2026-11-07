@@ -897,3 +897,35 @@ export async function findVerifiedProductsForVehicle(
   }
   return out;
 }
+
+// "Will CM1253270 fit my 2012 Honda Civic?": is that part listed for ANY version
+// (engine / trim) of the vehicle? null = part or vehicle not found.
+export async function skuListedForVehicle(sku: string, year: number, make: string, model: string) {
+  const supabase = createPublicClient();
+  const n = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const { data: prod } = await supabase
+    .from("products")
+    .select("id, sku")
+    .eq("is_active", true)
+    .eq("is_delete", false)
+    .eq("sku_norm", sku.toUpperCase().replace(/[^A-Z0-9]/g, ""))
+    .maybeSingle();
+  if (!prod) return null;
+  const [{ data: yr }, { data: makes }] = await Promise.all([
+    supabase.from("year").select("id").eq("year", year).maybeSingle(),
+    supabase.from("manufacturer").select("id, manufacturer_name"),
+  ]);
+  const mk = (makes ?? []).find((m: any) => n(m.manufacturer_name) === n(make));
+  if (!yr || !mk) return null;
+  const { data: models } = await supabase.from("models").select("id, model_name").eq("manufacturer_id", mk.id);
+  const md = (models ?? []).find((m: any) => n(m.model_name) === n(model));
+  if (!md) return null;
+  const { data: rows } = await supabase
+    .from("product_fitments")
+    .select("id, vehicle_fitments!inner ( year_id, model_id )")
+    .eq("product_id", prod.id)
+    .eq("vehicle_fitments.year_id", yr.id)
+    .eq("vehicle_fitments.model_id", md.id)
+    .limit(1);
+  return { sku: prod.sku as string, listed: (rows ?? []).length > 0 };
+}

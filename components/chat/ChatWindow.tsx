@@ -160,8 +160,35 @@ function renderBold(text: string) {
     }
   };
 
+  // "▸ Title" starts a panel: the part cards under it are framed together
+  let panel: { key: string; title: string; items: React.ReactNode[] } | null = null;
+  const closePanel = () => {
+    if (!panel) return;
+    const other = /^Other/i.test(panel.title);
+    out.push(
+      <div
+        key={panel.key}
+        className={`my-2 rounded-2xl border p-2.5 ${other ? "border-black/10 bg-white" : "border-brand/40 bg-brand/5"}`}
+      >
+        <div className={`mb-1 px-1 text-[12px] font-black uppercase tracking-[0.12em] ${other ? "text-ink/60" : "text-brand"}`}>
+          {panel.title}
+        </div>
+        {panel.items}
+      </div>,
+    );
+    panel = null;
+  };
+  const target = () => (panel ? panel.items : out);
+
   for (let n = 0; n < lines.length; n++) {
     const line = lines[n];
+    if (line.startsWith("▸ ")) {
+      flush(`t${n}`);
+      closePanel();
+      panel = { key: `p${n}`, title: line.slice(2).trim(), items: [] };
+      continue;
+    }
+    if (!line.trim() && panel) continue;
     if (line.startsWith("• ")) {
       flush(`t${n}`);
       const notes: string[] = [];
@@ -169,7 +196,7 @@ function renderBold(text: string) {
         notes.push(lines[n + 1].trim());
         n++;
       }
-      out.push(
+      target().push(
         <div
           key={`c${n}`}
           className="my-1.5 rounded-xl border border-black/10 bg-secondary/60 px-3 py-2"
@@ -180,26 +207,33 @@ function renderBold(text: string) {
               {notes
                 .flatMap((note) => note.split(" · "))
                 .filter(Boolean)
-                .map((detail, k) => (
-                  <span
-                    key={k}
-                    className="inline-flex items-center gap-1 rounded-full border border-brand/20 bg-white px-2.5 py-1 text-[13px] font-semibold leading-none text-ink shadow-sm"
-                  >
-                    <span aria-hidden="true" className="text-brand">
-                      ✓
+                .map((detail, k) => {
+                  const miss = detail.startsWith("✗ ");
+                  return (
+                    <span
+                      key={k}
+                      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[13px] font-semibold leading-none shadow-sm ${
+                        miss ? "border-black/15 bg-white text-ink/70" : "border-brand/20 bg-white text-ink"
+                      }`}
+                    >
+                      <span aria-hidden="true" className={miss ? "text-ink/50" : "text-brand"}>
+                        {miss ? "✗" : "✓"}
+                      </span>
+                      {miss ? detail.slice(2) : detail}
                     </span>
-                    {detail}
-                  </span>
-                ))}
+                  );
+                })}
             </div>
           )}
         </div>
       );
     } else {
+      closePanel();
       buf.push(line);
     }
   }
   flush("end");
+  closePanel();
 
   return <div>{out}</div>;
 }

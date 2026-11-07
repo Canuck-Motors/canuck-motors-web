@@ -1,16 +1,19 @@
 import { decodeVin } from "@/lib/catalog";
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { listCategories } from "@/lib/parts";
 import {
   findPartsByVin,
   findPartsForVehicle,
   searchCatalog,
+  skuListedForVehicle,
   type CatalogProduct,
 } from "@/lib/catalog";
 import { isSpecMessage } from "@/lib/axel-narrow";
 import { shippingNote } from "@/lib/shipping-note";
 import {
+  buildFacts,
   findPart,
   matchPartNumber,
   readAnswers,
@@ -18,9 +21,11 @@ import {
   DEFAULT_MAX_QUESTIONS,
   NOT_SURE,
   type Answer,
+  type DataIssue,
   type FinderResult,
 } from "@/lib/part-finder";
 import { getRefs, getSpecs } from "@/lib/part-finder-data";
+import { partNumbersIn, unknownPartNumbers } from "@/lib/axel-guard";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = process.env.CHAT_MODEL ?? "claude-haiku-4-5-20251001";
@@ -61,11 +66,17 @@ Other rules:
 - If search_catalog finds NOTHING for a part number from another brand (status no_results), you MUST call web_search before replying; never answer "nothing found" and ask for details until you have tried it. Use web_search (at most 3 searches) to find out what that number is: which part type it is and which vehicles (year, make, model, engine) it fits, and other numbers the web lists as equivalent. Then: (a) call search_catalog for each equivalent number you found and only treat exact matches as confirmed; (b) call find_parts_for_vehicle with the vehicle and part type from the web result, to see which Canuck Motors parts our own fitment data lists for that vehicle. Tell the customer plainly that the vehicle information came from web sources, and that only the fitment shown by our catalog counts. If the web result names one or more vehicles, do NOT ask the customer which vehicle it is: immediately call find_parts_for_vehicle for the most specific application the web lists (year, make, model, engine) and show what our catalog has. Only ask for the vehicle when the web gives none. Present our parts as "possible alternatives for that vehicle", never as an exact replacement for their number unless search_catalog matched it exactly. If the web result is unclear or conflicting, say so and ask for the vehicle or VIN instead of guessing.
 - If the customer asks for the trim, engine or model of a VIN (or wants to know what a VIN is), call decode_vin and answer from its result. If trim is missing, say the VIN data does not list a trim (the VIN identifies the vehicle but not always the trim level) and, if useful, share the series, drive and engine it did give. Do not send them to their registration or insurance card for that.
 - search_catalog does NOT confirm fitment: say so and ask for the vehicle or VIN to confirm.
-- Always pass the customer's part in the "part" field of the vehicle and VIN tools. Never say a part is "in stock" or "available".
+- Always pass the customer's part in the "part" field of the vehicle and VIN tools. Only mention stock when a tool result gives availability; never say a part is in stock otherwise.
+- Never claim what kinds of vehicles or parts we do or don't carry in general; only say what the tool results show for this vehicle and part.
+- Orders: customers see every order, its status and tracking in [My orders](/account/orders) (sign in first). You cannot see orders. For anything else about an order, give contactus@canuckmotors.ca and 604-445-0147.
+- Returns: the customer opens the order in [My orders](/account/orders) and uses "Return this item" (they can add photos), and the team follows up. Do not state return windows, refund amounts or rules.
+- Warranty or anything not covered here: say the team will confirm it, and give contactus@canuckmotors.ca and 604-445-0147. Never state warranty terms.
+- If the customer wants a person, a call or a human: give contactus@canuckmotors.ca and 604-445-0147 right away, and offer to keep helping with the part.
 - If the customer asks for a category list, use list_categories.
 - If the customer says a question was repeated or asks what fits their vehicle, say sorry in one short sentence and call find_parts_for_vehicle again with the details of the active search (given below when there is one). Never claim a part fits or is shown unless a tool result returned it.
 - Whenever you mention the customer's vehicle, give it in full: year, make, model, trim and engine (litres and cylinders) when known, e.g. "2024 Ford F-150 XLT with the 2.7L 6-cylinder".
 - If the customer sends a VIN before saying which part they need, say what it decodes to (in full) and ask which part they need. Never say whether we have parts for the vehicle until a find_parts tool with the part has returned.
+- If the customer asks for more than one part at once (for example brake pads and a water pump), say you'll find them one at a time, search for the first one, and offer the next one after.
 - Politely decline unrelated topics.`;
 
 const tools: Anthropic.ToolUnion[] = [
@@ -220,8 +231,9 @@ function formatProducts(
   detailLines?: Map<number, string[]>,
 ) {
   const lines = items.map((p) => {
+    const squash = (x: string) => x.toUpperCase().replace(/[^A-Z0-9]/g, "");
     const label = linkLabel(
-      p.sku && !p.product_name.includes(p.sku)
+      p.sku && !squash(p.product_name).includes(squash(p.sku))
         ? `${p.product_name} (${p.sku})`
         : p.product_name,
     );
@@ -275,9 +287,28 @@ type Presented = {
   lines?: Map<number, string[]>;
 };
 
+// "front brake pads", "rear pads", "front and rear brake pads": the position the customer
+// already named, so Axel does not ask "Which brakes are you replacing?"
+function positionFromText(texts: string[]): string | null {
+  for (let i = texts.length - 1; i >= 0; i--) {
+    const t = texts[i].toLowerCase();
+    if (/^spec:/.test(t.trim())) continue;
+    if (/\b(front\s*(and|&|\+|\/)\s*(rear|back)|(rear|back)\s*(and|&|\+|\/)\s*front|both (ends|axles|sides)|all four|full set|kit)\b/.test(t)) return "Front and Rear";
+    if (/\bfront\b/.test(t)) return "Front";
+    if (/\b(rear|back)\b/.test(t)) return "Rear";
+  }
+  return null;
+}
+// Per request (requests run at the same time, so never a shared variable)
+const requestHints = new AsyncLocalStorage<{ position: string | null }>();
+
 // Answers that are already known from the search itself
 function presetAnswers(input: any, answers: Answer[]): Answer[] {
   const out = [...answers];
+  const positionHint = requestHints.getStore()?.position ?? null;
+  if (positionHint && /brake|pad/i.test(String(input?.part ?? "")) && !out.some((a) => a.name === "Position")) {
+    out.unshift({ name: "Position", value: positionHint });
+  }
   // Customer said they don't know the engine: never ask for it again
   if (input?.any_engine && !out.some((a) => a.name === "Engine")) out.unshift({ name: "Engine", value: null });
   return out;
@@ -324,6 +355,60 @@ function questionLimit(history: { role: string; content: string }[]) {
     else if (MORE.test(t)) extra++;
   }
   return DEFAULT_MAX_QUESTIONS * (1 + extra);
+}
+
+// "Show me other options": panel 1 = the part that matches the answers, panel 2 = the other
+// parts our catalog lists for the vehicle, each with what does not match what the customer said.
+// Everything comes from the vehicle search: no other part can ever be shown.
+const OTHER_OPTIONS =
+  /\b(other|another|different|alternative|more)\s+(options?|choices?|parts?|pumps?|pads?|kits?|ones?|products?)\b|\balternatives?\b|\bwhat else\b|\bshow (me )?(all|every|the rest)\b/i;
+
+async function presentOthers(out: any, answers: Answer[], input?: any, maxQuestions?: number) {
+  const { r, specs, refs, all } = await narrowResult(out, answers, input, maxQuestions);
+  const vehicle = out.vehicle ? ` for your ${out.vehicle}` : "";
+  const picked = new Set(r.candidates.map((p) => p.id));
+  const others = all.filter((p) => !picked.has(p.id));
+  const facts = new Map(buildFacts(others, specs, refs, [] as DataIssue[]).map((f) => [f.product.id, f]));
+  const known = answers.filter((a) => a.value != null);
+  const eqv = (x: string, y: string) => x.trim().toLowerCase() === y.trim().toLowerCase();
+
+  const why = new Map<number, string[]>();
+  for (const p of others) {
+    const f = facts.get(p.id);
+    const lines: string[] = [];
+    for (const a of known) {
+      const label = a.name.replace(/^(Part note|Note|Has): /, "");
+      const own = f?.part.get(a.name);
+      if (own != null) {
+        if (!eqv(own, a.value!)) lines.push(`✗ ${label}: ${own} (you said ${a.value})`);
+        continue;
+      }
+      const rowVals = new Set((f?.rows ?? []).map((row) => row.get(a.name)).filter((v): v is string => !!v));
+      if (rowVals.size && ![...rowVals].some((v) => eqv(v, a.value!))) {
+        lines.push(`✗ Not listed for ${label}: ${a.value}`);
+      }
+    }
+    why.set(p.id, lines.length ? lines.slice(0, 4) : ["✗ Does not match your answers"]);
+  }
+
+  const main = detailLines(r);
+  const blocks: string[] = [];
+  const intro = others.length
+    ? `Here is the part that matches your answers, and the other ${others.length === 1 ? "part" : `${others.length} parts`} we list${vehicle}.`
+    : `This is the only part that fits what you told me${vehicle}. We don't list any other option.`;
+  blocks.push(intro);
+  blocks.push(
+    [`▸ Recommended${vehicle}`, formatProducts(r.candidates.slice(0, 8) as CatalogProduct[], r.candidates.length, null, null, main)].join("\n"),
+  );
+  if (others.length) {
+    blocks.push(
+      [
+        "▸ Other options (they don't match what you told me)",
+        formatProducts(others.slice(0, 8) as CatalogProduct[], others.length, null, null, why),
+      ].join("\n"),
+    );
+  }
+  return { reply: blocks.join("\n\n"), products: [...r.candidates, ...others].slice(0, 16) as CatalogProduct[] };
 }
 
 async function present(out: any, answers: Answer[], input?: any, maxQuestions?: number): Promise<Presented> {
@@ -518,6 +603,7 @@ export async function POST(req: Request) {
       ? { tool: body.context.tool, input: body.context.input }
       : null;
   const lastText = String(messages[messages.length - 1].content);
+  requestHints.enterWith({ position: positionFromText(messages.filter((m) => m.role === "user").map((m) => String(m.content))) });
 
   const partNumberTyped = !!ctx && looksLikePartNumber(lastText);
 
@@ -546,6 +632,13 @@ export async function POST(req: Request) {
   }
 
   const maxQuestions = questionLimit(rawHistory);
+  if (ctx && OTHER_OPTIONS.test(lastText) && !MORE.test(lastText) && !partNumberTyped) {
+    const out: any = ctxOut ?? (await runTool(ctx.tool, ctx.input));
+    if (out?.status === "ok" && (out.products ?? []).length) {
+      const o = await presentOthers(out, answeredSoFar, ctx.input, maxQuestions);
+      return NextResponse.json({ reply: o.reply, products: o.products, choices: null, context: ctx });
+    }
+  }
   if (ctx && (isSpecMessage(lastText) || RECAP.test(lastText) || partNumberTyped || typedAnswer || MORE.test(lastText))) {
     const out: any = ctxOut ?? (await runTool(ctx.tool, ctx.input));
     if (out?.status === "ok") {
@@ -583,6 +676,10 @@ export async function POST(req: Request) {
     if (/^[A-HJ-NPR-Z0-9]{17}$/.test(compact) && /\d/.test(compact) && /[A-Z]/.test(compact)) {
       return "find_parts_by_vin";
     }
+    // "brake pads" after a search: a new part for the same vehicle, look it up (with buttons)
+    if (ctx && t.split(/\s+/).length <= 6 && /\b(water\s*pump|brake|pads?|timing belt|kit)\b/i.test(t)) {
+      return ctx.tool;
+    }
     // "2012 dodge caravan": a year plus at least two more words
     const words = t.split(/\s+/).filter(Boolean);
     if (/\b(19[5-9]\d|20[0-4]\d)\b/.test(t) && words.length >= 3 && !/\d{5,}/.test(t)) {
@@ -593,6 +690,21 @@ export async function POST(req: Request) {
 
   let lastOut: any = null;
   let lastCtx: Ctx | null = null;
+  // "Will CM1253270 fit my 2012 Honda Civic?": checked against our fitment data for every
+  // version of that vehicle, so the answer never depends on Axel's wording
+  const askedSku = lastText.match(/\bCMK?-?\d{3,}[A-Z0-9-]*\b/i)?.[0] ?? null;
+  let skuNote: string | null = null;
+
+  // Every part number the catalog really returned (this turn, or in earlier server-written replies)
+  const seenSkus = new Set<string>();
+  for (const m of rawHistory) {
+    if (m.role === "assistant") {
+      for (const hit of String(m.content).matchAll(/\/product\/([a-z0-9-]+)/gi)) seenSkus.add(hit[1].toUpperCase());
+    } else {
+      // A number the customer typed may be repeated back ("CM1253256 is not in our catalog")
+      for (const n of partNumbersIn(String(m.content))) seenSkus.add(n);
+    }
+  }
   let forcedReply: string | null = null;
 
   // What the tools found in this turn
@@ -635,6 +747,19 @@ export async function POST(req: Request) {
           );
 
         let replyText = forcedReply ?? text; // we word the engine/trim questions ourselves
+
+        // Axel may never name or link a part the catalog did not return (it once made up
+        // "CM1253256"). Any unknown part number in its own words: drop that text.
+        if (!forcedReply) {
+          const allowed = new Set([...seenSkus, ...shown.map((p) => String(p.sku ?? "").toUpperCase())]);
+          const unknown = unknownPartNumbers(replyText, allowed);
+          if (unknown.length) {
+            console.warn("Axel named a part the catalog did not return:", unknown);
+            replyText = ctx || lastCtx
+              ? "I can only show parts our catalog lists for your vehicle. Ask me to \"show other options\" to see all of them, or send the number printed on your old part."
+              : "I couldn't find that part in our catalog. Send me the part number from your old part, or your vehicle, and I'll check.";
+          }
+        }
         let outShown = shown;
         let outTotal = shownTotal;
         let outHeading = heading;
@@ -656,6 +781,17 @@ export async function POST(req: Request) {
           }
         }
 
+        if (skuNote) replyText = `${skuNote} ${replyText}`.trim();
+        // Two parts asked at once ("brake pads and a water pump"): say which one comes next
+        {
+          const kinds: [string, RegExp][] = [["water pump", /water\s*pump/i], ["brake pads", /brake|pads?\b/i], ["timing belt kit", /timing/i]];
+          const asked = kinds.filter(([, re]) => re.test(lastText));
+          const searched = String(lastCtx?.input?.part ?? ctx?.input?.part ?? "");
+          if (asked.length > 1 && searched) {
+            const next = asked.find(([, re]) => !re.test(searched));
+            if (next) replyText = `${replyText}\n\nI started with the ${searched}. Say "${next[0]}" when you want the ${next[0]} next.`.trim();
+          }
+        }
         const list = outShown.length
           ? "\n\n" + formatProducts(outShown, outTotal, outHeading, vehicleUrl, outLines)
           : "";
@@ -715,6 +851,19 @@ export async function POST(req: Request) {
           }
 
           const out: any = await runTool(block.name, toolInput);
+          for (const p of (out?.products ?? []) as any[]) {
+            if (p?.sku) seenSkus.add(String(p.sku).toUpperCase());
+            for (const n of partNumbersIn(String(p?.url ?? ""))) seenSkus.add(n);
+          }
+          if (askedSku && block.name === "find_parts_for_vehicle" && toolInput.year && toolInput.make && toolInput.model) {
+            const chk = await skuListedForVehicle(askedSku, Number(toolInput.year), String(toolInput.make), String(toolInput.model));
+            if (chk) {
+              const veh = [toolInput.year, toolInput.make, toolInput.model].join(" ");
+              skuNote = chk.listed
+                ? null
+                : `No, ${chk.sku} is not listed for the ${veh} in our catalog, so it isn't the right part for it.`;
+            }
+          }
           if (isVehicleTool && realPart(toolInput.part)) {
             // Remember the search (also while we are still asking for the engine)
             lastCtx = { tool: block.name as Ctx["tool"], input: toolInput };

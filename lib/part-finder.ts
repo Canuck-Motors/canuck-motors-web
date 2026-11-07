@@ -58,14 +58,16 @@ const DIMS: Record<string, DimInfo> = {
   "Parking Brake": { kind: "vehicle", rank: 9 },
   "Wheel Size": { kind: "vehicle", rank: 10 },
   "Caliper Pistons": { kind: "vehicle", rank: 11 },
-  "Front Rotor Size": { kind: "vehicle", rank: 12 },
-  "Rear Rotor Size": { kind: "vehicle", rank: 12 },
-  "Rotor Size": { kind: "vehicle", rank: 12 },
+  // Rotor size is a vehicle option (in the owner's manual / known by a shop): asked late, after the brake code
+  "Front Rotor Size": { kind: "vehicle", rank: 17 },
+  "Rear Rotor Size": { kind: "vehicle", rank: 17 },
+  "Rotor Size": { kind: "vehicle", rank: 17 },
   "Valve Train": { kind: "vehicle", rank: 13 },
   Aspiration: { kind: "vehicle", rank: 13 },
   "Engine Code": { kind: "vehicle", rank: 14 },
   "Build Date": { kind: "vehicle", rank: 15 },
   "Brake Code": { kind: "vehicle", rank: 16 },
+  "Rear Brake Type": { kind: "part", rank: 19 },
   Application: { kind: "part", rank: 20 },
   "Water Pump Drive Type": { kind: "part", rank: 21 },
   "Pulley Included": { kind: "part", rank: 22 },
@@ -395,6 +397,12 @@ export function buildFacts(products: FinderProduct[], specs: SpecMap, refs: RefM
       }
       part.set(name, v);
     }
+    // Front & rear kits: the rear set is either disc pads (CM...H) or drum shoes (e.g. 945CM).
+    // The kit name says "Disc Brake Pad Set" either way, so tell them apart by the rear part.
+    {
+      const rear = (part.get("Contents") ?? "").match(/rear [a-z ]*?\b(CM\d{3,}[A-Z]*|\d{3,}CM[A-Z]*)\b/i)?.[1];
+      if (rear) part.set("Rear Brake Type", /^\d{3,}CM/i.test(rear) ? "Drum" : "Disc");
+    }
     // A chain-driven pump has no pulley flange: nothing for pulley bolts to hold.
     // So a customer who counts pulley bolts on their old pump does not have this one.
     if (!part.has("Pulley Flange Bolts") && /\bchain\b/i.test(part.get("Water Pump Drive Type") ?? "")) {
@@ -612,6 +620,7 @@ export function questionWording(name: string, count: number): string {
   const q = ((): string => {
     if (name === "Position") return "Which brakes are you replacing?";
     if (name === "Brake Type") return "Does your vehicle have disc or drum brakes at that position?";
+    if (name === "Rear Brake Type") return "Does your vehicle have disc brakes or drum brakes at the rear? Look behind the rear wheel: a flat disc means disc, a round drum means drum.";
     if (name === "Body Type") return "What body style is your vehicle?";
     if (name === "Doors") return "How many doors does your vehicle have?";
     if (name === "Fuel Type") return "What fuel does your vehicle use?";
@@ -623,8 +632,10 @@ export function questionWording(name: string, count: number): string {
     if (name === "Wheel Lugs") return "How many lug nuts are on each wheel?";
     if (name === "Parking Brake") return "What kind of parking brake does your vehicle have?";
     if (name === "Wheel Size") return "What size are your wheels?";
-    if (name === "Caliper Pistons") return "How many pistons does your brake caliper have?";
-    if (/Rotor Size$/.test(name)) return `What is the diameter of your ${name.startsWith("Rear") ? "rear" : name.startsWith("Front") ? "front" : ""} brake rotor?`.replace("  ", " ");
+    if (name === "Caliper Pistons")
+      return "Does your front brake caliper have one piston or two? You can often see it through the wheel.";
+    if (/Rotor Size$/.test(name))
+      return `Do you know the size of your ${name.startsWith("Rear") ? "rear " : name.startsWith("Front") ? "front " : ""}brake rotors? It's in the owner's manual, or a shop can tell you.`;
     if (name === "Valve Train") return "Is your engine SOHC or DOHC?";
     if (name === "Aspiration") return "Is your engine naturally aspirated (no turbo or supercharger)?";
     if (name === "Engine Code") return "What is your engine code? It is on the emissions sticker under the hood or stamped on the engine.";
@@ -648,6 +659,8 @@ export function questionWording(name: string, count: number): string {
     if (name.startsWith("Part note: ")) return `Does this match your old part: "${name.slice(11)}"?`;
     const info = dimInfo(name);
     if (info.kind === "measure") return `What is the ${name.toLowerCase()} of your old part? Choose Not sure if you can't measure it.`;
+    if (info.kind === "preference" && / included$/i.test(name))
+      return `They all fit based on your answers. Do you want ${name.replace(/ included$/i, "").toLowerCase()} included in the box?`;
     if (info.kind === "preference") return `They all fit based on your answers. Which ${name.toLowerCase()} do you prefer?`;
     return `What is the ${name.toLowerCase()} of your old part?`;
   })();

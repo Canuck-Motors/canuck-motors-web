@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import AboutTabs from "@/components/about/AboutTabs";
-import ProductArt from "@/components/blog/ProductArt";
 import AboutHero from "@/components/about/AboutHero";
 import { getAllPosts } from "@/lib/blog-store";
 import { safeJsonLd } from "@/lib/json-ld";
@@ -24,7 +23,7 @@ function Cover({ p, sizes }: { p: Post; sizes: string }) {
   if (p.photos?.[0]) {
     return <Image src={p.photos[0].url} alt={p.title} fill sizes={sizes} className="object-cover transition duration-500 group-hover:scale-105" />;
   }
-  if (p.bodyHtml && p.cover) return <ProductArt src={p.cover} alt={p.title} uid={p.slug.slice(0, 20)} />;
+  if (p.bodyHtml) return <Image src="/about/manufacturer-hero.jpg" alt={p.title} fill sizes={sizes} className="object-cover transition duration-500 group-hover:scale-105" />;
   return p.cover ? <Image src={p.cover} alt={p.title} fill sizes={sizes} className="object-cover transition duration-500 group-hover:scale-105" /> : null;
 }
 

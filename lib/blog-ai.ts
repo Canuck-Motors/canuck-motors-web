@@ -74,6 +74,8 @@ async function ask(system: string, user: string, opts: { search?: boolean; maxTo
   return { text: text.trim(), sources: Array.from(sources, ([url, title]) => ({ url, title })) };
 }
 
+const SHOW_PRODUCTS = false;
+
 const tag = (text: string, name: string) => {
   const m = text.match(new RegExp(`<${name}>([\\s\\S]*?)</${name}>`, "i"));
   return m ? m[1].trim() : "";
@@ -114,7 +116,7 @@ MODE: <guide or news>
 TOPIC: <working article topic, one line>
 VEHICLE: <make | model if the topic is about ONE specific vehicle, e.g. "Ford | Mustang" or "Ford | F-150"; otherwise "none">
 PART: <the part in 1-3 words, e.g. "water pump", "brake pad", or "none">
-PHOTO: <2-3 word stock-photo search. If the topic names a vehicle, use ONLY the vehicle (e.g. "ford mustang", "ford f-150 truck"), never the part. Otherwise a general car-part scene such as "car engine" or "brake disc">
+PHOTO: <2-3 word stock-photo search for a photo of a CAR or TRUCK (never a part by itself). If the topic names a vehicle, use ONLY the vehicle (e.g. "ford mustang", "ford f-150 truck"), never the part. Otherwise a general vehicle or garage scene such as "car engine bay" or "mechanic garage">
 NOTES:
 <concise bullet notes: verified facts, numbers, dates, what readers ask, common mistakes. Note which source each fact came from (for checking only). If you are unsure of a fact, leave it out.>`;
 
@@ -128,7 +130,9 @@ NOTES:
 
   const topic = (res.text.match(/^TOPIC:\s*(.+)$/im)?.[1] ?? topicHint ?? "").trim();
 
-  const photoQuery = (res.text.match(/^PHOTO:\s*(.+)$/im)?.[1] ?? topic).trim();
+  let photoQuery = (res.text.match(/^PHOTO:\s*(.+)$/im)?.[1] ?? topic).trim();
+  // Winter topics: look for the vehicle in snow
+  if (/\b(winter|snow|cold|ice|icy|salt|frost)\b/i.test(`${topic} ${topicHint}`) && !/\bsnow/i.test(photoQuery)) photoQuery += " snow";
   const { data: usedRows } = await createAdminClient().from("blog_posts").select("photos");
   const used = new Set<string>();
   for (const row of (usedRows ?? []) as { photos?: { url: string }[] | null }[]) for (const ph of row.photos ?? []) used.add(ph.url);
@@ -148,7 +152,8 @@ NOTES:
   const partWords = /^none$/i.test(partLine) ? [] : partLine.toLowerCase().split(/\s+/).filter(Boolean);
   const [vMake, vModel] = vehicleLine.split("|").map((x) => x.trim());
   let found: { id: number; product_name: string; sku: string | null; price: number | null; position: string | null; url: string }[] = [];
-  if (partWords.length > 0) {
+  // Blog posts show vehicle photos and text only: no Canuck Motors products are looked up or shown.
+  if (SHOW_PRODUCTS && partWords.length > 0) {
     if (vMake && vModel && !/^none$/i.test(vMake)) {
       found = (await findVerifiedProductsForVehicle(vMake, vModel, partWords, 6).catch(() => [])).map((p) => ({ ...p, product_name: p.name }));
     } else if (/^none$/i.test(vehicleLine)) {
@@ -223,7 +228,7 @@ REQUIREMENTS
 - Section headings (h2) written as the questions people actually ask. Give the first two h2 an id attribute (lowercase-hyphen).
 - Where options exist, include one comparison <table> (what differs, how to tell which one you have).
 - Include a short numbered "how to check" list.
-- Product photos: where a product above has a "photo:" URL, show up to 3 of them, each next to the section that discusses it, exactly like <figure><img src="PHOTO_URL" alt="specific descriptive alt text"><figcaption><a href="PRODUCT_URL">Product name</a></figcaption></figure>. Use only the photo URLs given. Never invent image URLs.
+- Do not include any <figure>, <img> or product photos (the page adds vehicle photos itself). Do not link to individual product pages.
 - Finish with <h2 id="faq">Frequently asked questions</h2> then 4 to 5 <h3>question</h3><p>answer</p> pairs (answers 1 to 3 sentences).
 - End with a short paragraph pointing to the vehicle finder (/products) or our contact email.
 - Never mention competitor websites, retailers, forums or brands of other auto-parts sellers, and never link outside canuckmotors pages.
@@ -283,34 +288,9 @@ const GENERIC_PUMP_PHOTOS = [
   { src: "/about/waterseal.png", alt: "Water pump seal", caption: "A worn seal is a common cause of coolant leaks." },
 ];
 
-// Makes sure the article has pictures even if the AI skipped them: real product photos first
-function ensurePhotos(body: string, r: Research) {
-  if (/<img /i.test(body)) return body;
-  let figs = r.products
-    .filter((p) => p.image)
-    .slice(0, 3)
-    .map(
-      (p) =>
-        `<figure><img src="${p.image}" alt="${esc(p.name)} from Canuck Motors" loading="lazy"><figcaption><a href="${p.url}">${esc(p.name)}</a></figcaption></figure>`,
-    );
-  if (figs.length === 0 && /water\s*pump/i.test(r.topic)) {
-    figs = GENERIC_PUMP_PHOTOS.map(
-      (g) => `<figure><img src="${g.src}" alt="${g.alt}" loading="lazy"><figcaption>${g.caption}</figcaption></figure>`,
-    );
-  }
-  if (figs.length === 0) return body;
-
-  // put one photo after the first paragraph that follows each of the first h2 headings
-  const parts = body.split(/(?=<h2)/i);
-  let used = 0;
-  for (let i = 1; i < parts.length && used < figs.length; i++) {
-    if (/id="faq"/i.test(parts[i])) continue;
-    parts[i] = parts[i].replace(/<\/p>/i, (m) => `${m}${figs[used++]}`);
-  }
-  // leftovers go right after the quick-answer box
-  let out = parts.join("");
-  if (used < figs.length) out = out.replace(/<\/blockquote>/i, (m) => `${m}${figs.slice(used).join("")}`);
-  return out;
+// Photos are stock vehicle photos stored with the post; the article page places them in the text.
+function ensurePhotos(body: string, _r: Research) {
+  return body.replace(/<figure>[\s\S]*?<\/figure>/gi, "");
 }
 
 // ---------------------------------------------------------------- 4. save (as draft)
@@ -345,7 +325,7 @@ export async function saveDraft(d: Draft, r: Research, generatedBy: "admin" | "a
       description: d.description,
       excerpt: d.excerpt,
       body_html: body,
-      cover: r.products.find((p) => p.image)?.image ?? "/about/manufacturer-hero.jpg",
+      cover: r.photos[0]?.url ?? "/about/manufacturer-hero.jpg",
       photos: r.photos.map((p) => ({ url: p.url, source: p.source, credit: p.credit, creditUrl: p.creditUrl, pageUrl: p.pageUrl })),
       faq: extractFaq(body),
       sources: [],

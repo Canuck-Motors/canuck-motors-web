@@ -1,5 +1,6 @@
 // Small, hand-made cases for the rules in the brief. Run: npx tsx tests/part-finder/unit.test.ts
 import assert from "node:assert/strict";
+import { unknownPartNumbers } from "../../lib/axel-guard";
 import { findPart, matchPartNumber, readAnswers, type FinderProduct, type Answer } from "../../lib/part-finder";
 
 const P = (id: number, sku: string, fits: any[], position: string | null = null): FinderProduct =>
@@ -99,3 +100,13 @@ run("answers are read from the chat history and reset on a new vehicle", () => {
   assert.deepEqual(readAnswers([{ role: "user", content: "Spec: Trim = XL" }, { role: "user", content: "2015 ford f150" }]), []);
 });
 console.log("all unit tests passed");
+
+// Axel must never name a part the catalog did not return (it once invented "CM1253256")
+run("guard: made-up part numbers and links are caught", () => {
+  const allowed = new Set(["CM1253255", "945CM"]);
+  assert.deepEqual(unknownPartNumbers("The CM1253255 fits.", allowed), []);
+  assert.deepEqual(unknownPartNumbers("Try [Engine Water Pump - CM1253256](https://x.app/product/cm1253256)", allowed), ["CM1253256"]);
+  assert.deepEqual(unknownPartNumbers("cmk1084-967 is a kit", allowed), ["CMK1084-967"]);
+  assert.deepEqual(unknownPartNumbers("945CM shoe", allowed), []);
+  assert.deepEqual(unknownPartNumbers("Your OE number is BR3Z8501A", allowed), []);
+});
