@@ -48,7 +48,7 @@ async function fetchAll<T>(
 async function loadDashboard(supabase: Supa, role: string) {
   const since = new Date(Date.now() - 31 * 86400000).toISOString();
 
-  const [orders, items, stock, products, returns, run, disputes, recent] = await Promise.all([
+  const [orders, items, stock, products, returns, run, disputes, recent, toShipCount] = await Promise.all([
     fetchAll<{ total_amount: number; created_on: string; status: string; payment_status: string }>((a, b) =>
       supabase
         .from("orders")
@@ -102,6 +102,13 @@ async function loadDashboard(supabase: Supa, role: string) {
       .select("id, order_number, status, payment_status, total_amount, customer_name, created_on")
       .order("created_on", { ascending: false })
       .limit(5),
+    // Orders waiting to ship, however old: the sales numbers only look back 31 days,
+    // but an unshipped order from last month must still show here.
+    supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("payment_status", "paid")
+      .in("status", TO_SHIP),
   ]);
 
   // Sales
@@ -125,7 +132,7 @@ async function loadDashboard(supabase: Supa, role: string) {
   const chartMax = Math.max(1, ...chart.map(([, v]) => v));
 
   // Needs attention
-  const toShip = orders.filter((o) => o.payment_status === "paid" && TO_SHIP.includes(o.status)).length;
+  const toShip = toShipCount.count ?? 0;
   const openReturns = (returns.data ?? []).filter((r) => RETURN_NEEDS_REVIEW.includes(String(r.status))).length;
   const openDisputes = (disputes.data ?? []).filter((d) => /needs_response|warning_needs|under_review/.test(String(d.status))).length;
   const stripeIssues = run.data && run.data.status !== "running" ? Number(run.data.issue_count ?? 0) : 0;

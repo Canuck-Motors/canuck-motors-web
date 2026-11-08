@@ -13,6 +13,12 @@ export async function importInventory(formData: FormData) {
     redirect("/login");
   }
 
+  // Customers are signed in too: only staff may replace or change stock.
+  const { data: staffRole, error: roleError } = await supabase.rpc("current_user_staff_role");
+  if (roleError || !staffRole) {
+    throw new Error("You are not authorized to perform this action.");
+  }
+
   const file = formData.get("file");
   const mode = String(formData.get("mode") || "replace");
 
